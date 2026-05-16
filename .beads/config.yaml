@@ -55,3 +55,5 @@
 
 dolt.shared-server: true
 types.custom: validation
+
+sync.remote: "git+ssh://git@github.com/spadaval/originium.git"
