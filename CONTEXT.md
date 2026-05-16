@@ -46,6 +46,8 @@ _Avoid_: event store, revision history
 
 **Agent Session**:
 A bounded unit of agent work whose Graph Wiki mutations can be reviewed through the Change Log.
+For Agent Workspace work, the Agent Session also stores the workspace key and
+Codex thread metadata that bind web chat turns to the same mutation history.
 _Avoid_: run, transaction, checkpoint
 
 **Agent Workspace**:

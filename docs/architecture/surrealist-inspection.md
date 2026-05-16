@@ -254,7 +254,7 @@ LIMIT 50;
 List recent Agent Sessions:
 
 ```sql
-SELECT id, purpose, created_at
+SELECT id, purpose, workspace_key, codex_thread_id, codex_model, codex_model_provider, codex_cwd, created_at, updated_at
 FROM agent_session
 ORDER BY created_at DESC
 LIMIT 20;

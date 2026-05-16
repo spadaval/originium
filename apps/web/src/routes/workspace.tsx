@@ -3,6 +3,8 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { createServerFn } from "@tanstack/react-start";
 import { type CSSProperties, type FormEvent, useEffect, useState, useTransition } from "react";
 import {
+  type AgentSessionRecord,
+  createOrResumeWorkspaceAgentSession,
   type GraphNeighborhoodData,
   type GraphNeighborhoodEdge,
   type GraphNeighborhoodNode,
@@ -21,6 +23,7 @@ type WorkspaceSearch = {
 };
 
 type WorkspacePageData = {
+  readonly session?: AgentSessionRecord;
   readonly pages: readonly WikiPageRecord[];
   readonly selectedRecordId?: string;
   readonly graph?: GraphNeighborhoodData;
@@ -63,6 +66,7 @@ type SavePageBodyResult =
     };
 
 const graphLimit = 9;
+const workspaceKey = "default";
 
 const graphPositions = [
   { x: 50, y: 18 },
@@ -84,9 +88,12 @@ const getWorkspacePageData = createServerFn({ method: "GET" })
     }),
   )
   .handler(async ({ data }): Promise<WorkspacePageData> => {
+    const sessionResult = await createOrResumeWorkspaceAgentSession({ workspaceKey });
     const listResult = await listWikiPages();
+    const session = sessionResult.ok ? sessionResult.data.session : undefined;
     if (!listResult.ok) {
       return {
+        session,
         pages: [],
         listError: listResult.error,
       };
@@ -95,6 +102,7 @@ const getWorkspacePageData = createServerFn({ method: "GET" })
     const selectedRecordId = data.recordId ?? listResult.data[0]?.id;
     if (!selectedRecordId) {
       return {
+        session,
         pages: listResult.data,
       };
     }
@@ -102,6 +110,7 @@ const getWorkspacePageData = createServerFn({ method: "GET" })
     const graphResult = await readGraphNeighborhood({ recordId: selectedRecordId, limit: graphLimit });
     if (!graphResult.ok) {
       return {
+        session,
         pages: listResult.data,
         selectedRecordId,
         graphError: graphResult.error,
@@ -111,6 +120,7 @@ const getWorkspacePageData = createServerFn({ method: "GET" })
     const selectedNode = graphResult.data.nodes.find((node) => node.selected);
     if (selectedNode?.kind !== "wiki_page") {
       return {
+        session,
         pages: listResult.data,
         selectedRecordId,
         graph: graphResult.data,
@@ -120,6 +130,7 @@ const getWorkspacePageData = createServerFn({ method: "GET" })
     const pageResult = await readWikiPage({ pageId: selectedNode.id });
     if (!pageResult.ok) {
       return {
+        session,
         pages: listResult.data,
         selectedRecordId,
         graph: graphResult.data,
@@ -153,6 +164,7 @@ const getWorkspacePageData = createServerFn({ method: "GET" })
           });
 
     return {
+      session,
       pages: listResult.data,
       selectedRecordId,
       graph: graphResult.data,
@@ -171,7 +183,13 @@ const savePageBody = createServerFn({ method: "POST" })
     };
   })
   .handler(async ({ data }): Promise<SavePageBodyResult> => {
-    const result = await saveWikiPageBody({ pageId: data.pageId, body: data.body });
+    const sessionResult = await createOrResumeWorkspaceAgentSession({ workspaceKey });
+    if (!sessionResult.ok) return { ok: false, error: sessionResult.error };
+    const result = await saveWikiPageBody({
+      pageId: data.pageId,
+      body: data.body,
+      sessionId: sessionResult.data.session.id,
+    });
     if (!result.ok) return { ok: false, error: result.error };
     return {
       ok: true,
@@ -205,6 +223,7 @@ function WorkspaceRoute() {
   const search = Route.useSearch();
   const activeTab = search.tab ?? "graph";
   const selectedNode = data.graph?.nodes.find((node) => node.selected);
+  const session = data.session;
 
   return (
     <section className="route-stack" aria-labelledby="workspace-title">
@@ -228,14 +247,18 @@ function WorkspaceRoute() {
           <div className="panel-toolbar">
             <div>
               <h2 id="session-heading">Chat</h2>
-              <span className="quiet-label">Codex app-server disconnected</span>
+              <span className="quiet-label">{session?.id ?? "Agent Session unavailable"}</span>
             </div>
-            <span className="status-pill warning">Idle</span>
+            <span className="status-pill warning">{session ? "Ready" : "Idle"}</span>
           </div>
 
           <div className="empty-state compact-empty">
-            <strong>No Agent Session</strong>
-            <p>Select or create a session when the backend connection is available.</p>
+            <strong>{session ? "Agent Session ready" : "No Agent Session"}</strong>
+            <p>
+              {session
+                ? "Graph Wiki edits from this workspace are logged to the active session."
+                : "Session creation failed; inspect the backend operation error."}
+            </p>
           </div>
 
           <form className="composer" aria-label="Session message composer">

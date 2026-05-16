@@ -36,7 +36,14 @@ DEFINE INDEX IF NOT EXISTS wiki_page_slug ON wiki_page FIELDS slug UNIQUE;
 
 DEFINE TABLE IF NOT EXISTS agent_session SCHEMAFULL;
 DEFINE FIELD IF NOT EXISTS purpose ON agent_session TYPE string;
+DEFINE FIELD IF NOT EXISTS workspace_key ON agent_session TYPE option<string>;
+DEFINE FIELD IF NOT EXISTS codex_thread_id ON agent_session TYPE option<string>;
+DEFINE FIELD IF NOT EXISTS codex_model ON agent_session TYPE option<string>;
+DEFINE FIELD IF NOT EXISTS codex_model_provider ON agent_session TYPE option<string>;
+DEFINE FIELD IF NOT EXISTS codex_cwd ON agent_session TYPE option<string>;
 DEFINE FIELD IF NOT EXISTS created_at ON agent_session TYPE datetime DEFAULT time::now();
+DEFINE FIELD IF NOT EXISTS updated_at ON agent_session TYPE datetime DEFAULT time::now();
+DEFINE INDEX IF NOT EXISTS agent_session_workspace_key ON agent_session FIELDS workspace_key;
 
 DEFINE TABLE IF NOT EXISTS source_anchor SCHEMAFULL;
 DEFINE FIELD IF NOT EXISTS title ON source_anchor TYPE string;

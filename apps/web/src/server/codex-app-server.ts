@@ -1,6 +1,13 @@
 import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process";
 import type { CodexAppServerConfig, WebRuntimeConfig } from "../config.ts";
-import { type AgentActivityDraft, recordAgentActivity, type WebGraphWikiDependencies } from "./graph-wiki.ts";
+import {
+  type AgentActivityDraft,
+  type AgentSessionRecord,
+  createOrResumeWorkspaceAgentSession,
+  recordAgentActivity,
+  recordAgentSessionCodexThread,
+  type WebGraphWikiDependencies,
+} from "./graph-wiki.ts";
 
 type JsonPrimitive = string | number | boolean | null;
 type JsonValue = JsonPrimitive | JsonObject | readonly JsonValue[];
@@ -46,6 +53,27 @@ export type CodexAppServerSmokeData = {
   readonly boundary: CodexAppServerProcessBoundary;
   readonly userAgent: string;
   readonly threadId: string;
+  readonly turnId: string;
+  readonly messageText: string;
+  readonly streamedEventCount: number;
+  readonly activityRecordCount: number;
+};
+
+export type CodexWorkspaceTurnInput = {
+  readonly workspaceKey: string;
+  readonly prompt: string;
+  readonly purpose?: string;
+  readonly cwd?: string;
+  readonly timeoutMs?: number;
+};
+
+export type CodexWorkspaceTurnData = {
+  readonly boundary: CodexAppServerProcessBoundary;
+  readonly session: AgentSessionRecord;
+  readonly sessionCreated: boolean;
+  readonly userAgent: string;
+  readonly threadId: string;
+  readonly threadStarted: boolean;
   readonly turnId: string;
   readonly messageText: string;
   readonly streamedEventCount: number;
@@ -321,6 +349,218 @@ export async function runCodexAppServerSmoke(
         reason: errorReason(error),
         action:
           "Inspect Codex app-server logs, verify the configured model/auth state, and retry the smoke with a reachable app-server.",
+      }),
+    };
+  } finally {
+    await safeClose(connection.data);
+  }
+}
+
+export async function runCodexWorkspaceTurn(
+  config: WebRuntimeConfig,
+  input: CodexWorkspaceTurnInput,
+  dependencies: CodexAppServerDependencies = {},
+): Promise<CodexAppServerResult<CodexWorkspaceTurnData>> {
+  const operation = "web.codex_app_server.workspace.turn";
+  const sessionResult = await createOrResumeWorkspaceAgentSession(
+    { workspaceKey: input.workspaceKey, purpose: input.purpose },
+    dependencies.activity,
+  );
+  if (!sessionResult.ok) {
+    return {
+      ok: false,
+      error: codexFailure({
+        operation,
+        target: "agent_session",
+        input: { workspaceKey: input.workspaceKey },
+        reason: sessionResult.error.reason,
+        action: sessionResult.error.action,
+      }),
+    };
+  }
+
+  const boundary = await ensureCodexAppServer(config, dependencies);
+  if (!boundary.ok) return boundary;
+
+  let activityRecordCount = 0;
+  const sessionId = sessionResult.data.session.id;
+  const activityTargetRecords = [sessionId];
+  const recordActivity = async (draft: Omit<AgentActivityDraft, "source" | "targetRecords">) => {
+    const result = await recordAgentActivity(
+      {
+        ...draft,
+        source: "codex_app_server",
+        targetRecords: activityTargetRecords,
+      },
+      dependencies.activity,
+    );
+    if (!result.ok) {
+      throw new Error(
+        `Agent Activity persistence failed for operation=${draft.operation ?? operation}: ${result.error.reason}`,
+      );
+    }
+    activityRecordCount += 1;
+  };
+
+  const messageDeltas: string[] = [];
+  let streamedEventCount = 0;
+  let observedThreadId: string | undefined = sessionResult.data.session.codex_thread_id;
+  let observedTurnId: string | undefined;
+  let terminalError: Error | undefined;
+  let completed = false;
+
+  const connection = await openJsonRpcConnection(boundary.data.protocolUrl, dependencies, async (notification) => {
+    try {
+      const activity = activityFromNotification(notification, sessionId);
+      if (activity) {
+        streamedEventCount += 1;
+        if (notification.method === "item/agentMessage/delta") {
+          const delta = stringProperty(notification.params, "delta");
+          if (delta) messageDeltas.push(delta);
+        }
+        await recordActivity(activity);
+      }
+      if (notification.method === "turn/completed") {
+        completed = true;
+        observedThreadId = stringProperty(notification.params, "threadId") ?? observedThreadId;
+        observedTurnId = stringProperty(objectProperty(notification.params, "turn"), "id") ?? observedTurnId;
+      }
+      if (notification.method === "error") {
+        const error = objectProperty(notification.params, "error");
+        const message = stringProperty(error, "message") ?? JSON.stringify(error ?? notification.params);
+        terminalError = new Error(message);
+        completed = true;
+      }
+    } catch (error) {
+      terminalError = error instanceof Error ? error : new Error(String(error));
+      completed = true;
+    }
+  });
+  if (!connection.ok) {
+    return {
+      ok: false,
+      error: codexFailure({
+        operation,
+        target: boundary.data.protocolUrl,
+        input: { sessionId, workspaceKey: input.workspaceKey, promptLength: input.prompt.length },
+        reason: connection.error.reason,
+        action: "Verify ORIGINIUM_CODEX_APP_SERVER_URL points to the Codex app-server WebSocket endpoint.",
+      }),
+    };
+  }
+
+  try {
+    await recordActivity({
+      sessionId,
+      kind: "status",
+      status: "started",
+      summary: `Codex workspace turn ${boundary.data.mode}`,
+      operation: "web.codex_app_server.workspace.turn",
+      metadata: { ...boundary.data, workspaceKey: input.workspaceKey },
+    });
+
+    const initialize = await connection.data.request("initialize", {
+      clientInfo: { name: "originium-web", version: "0.1.0" },
+      capabilities: null,
+    });
+    const userAgent = stringProperty(initialize, "userAgent") ?? "unknown";
+
+    let threadId = sessionResult.data.session.codex_thread_id;
+    let session = sessionResult.data.session;
+    let threadStarted = false;
+
+    if (!threadId) {
+      const cwd = input.cwd ?? dependencies.cwd ?? process.cwd();
+      const threadResponse = await connection.data.request("thread/start", {
+        cwd,
+        approvalPolicy: "never",
+        sandbox: "danger-full-access",
+        ephemeral: true,
+        serviceName: "Originium",
+      });
+      const thread = objectProperty(threadResponse, "thread");
+      threadId = requireStringProperty(thread, "id", "thread/start response");
+      observedThreadId = threadId;
+      threadStarted = true;
+
+      const metadataResult = await recordAgentSessionCodexThread(
+        {
+          sessionId,
+          threadId,
+          model: stringProperty(threadResponse, "model"),
+          modelProvider: stringProperty(threadResponse, "modelProvider"),
+          cwd: stringProperty(threadResponse, "cwd") ?? cwd,
+        },
+        dependencies.activity,
+      );
+      if (!metadataResult.ok) {
+        throw new Error(
+          `Agent Session Codex thread persistence failed for threadId=${threadId}: ${metadataResult.error.reason}`,
+        );
+      }
+      session = metadataResult.data ?? { ...session, codex_thread_id: threadId };
+
+      await recordActivity({
+        sessionId,
+        kind: "status",
+        status: "completed",
+        summary: `Codex thread started ${threadId}`,
+        operation: "thread/start",
+        metadata: { threadId },
+      });
+    }
+
+    const turnResponse = await connection.data.request("turn/start", {
+      threadId,
+      input: [{ type: "text", text: input.prompt }],
+    });
+    const turn = objectProperty(turnResponse, "turn");
+    const turnId = requireStringProperty(turn, "id", "turn/start response");
+    observedTurnId = turnId;
+
+    await waitForTurnCompletion(() => completed, input.timeoutMs ?? smokeTimeoutMs);
+    if (terminalError) throw terminalError;
+    const messageText = messageDeltas.join("");
+    if (!messageText) {
+      throw new Error(
+        `Codex app-server turn ${observedTurnId ?? turnId} on thread ${observedThreadId ?? threadId} completed without item/agentMessage/delta notifications`,
+      );
+    }
+
+    return {
+      ok: true,
+      operation,
+      target: boundary.data.protocolUrl,
+      data: {
+        boundary: boundary.data,
+        session,
+        sessionCreated: sessionResult.data.created,
+        userAgent,
+        threadId,
+        threadStarted,
+        turnId,
+        messageText,
+        streamedEventCount,
+        activityRecordCount,
+      },
+    };
+  } catch (error) {
+    await safeClose(connection.data);
+    return {
+      ok: false,
+      error: codexFailure({
+        operation,
+        target: boundary.data.protocolUrl,
+        input: {
+          sessionId,
+          workspaceKey: input.workspaceKey,
+          threadId: observedThreadId,
+          turnId: observedTurnId,
+          promptLength: input.prompt.length,
+        },
+        reason: errorReason(error),
+        action:
+          "Inspect Codex app-server logs, verify the mapped Agent Session and Codex thread metadata, and retry the workspace turn.",
       }),
     };
   } finally {

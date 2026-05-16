@@ -2,12 +2,14 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import type { SurrealFetch } from "@originium/surreal";
 import {
+  createOrResumeWorkspaceAgentSession,
   listAgentActivity,
   listSourceDocuments,
   readGraphNeighborhood,
   readSourceHeadings,
   readWikiPage,
   recordAgentActivity,
+  recordAgentSessionCodexThread,
   saveWikiPageBody,
 } from "./graph-wiki.ts";
 
@@ -144,6 +146,124 @@ test("records Agent Activity without writing Change Log", async () => {
   assert.match(queries[0] ?? "", /operation = "item\/agentMessage\/delta"/);
   assert.doesNotMatch(queries[0] ?? "", /change_log/);
   assert.equal(result.data?.kind, "message");
+});
+
+test("creates a workspace Agent Session when no mapping exists", async () => {
+  const queries: string[] = [];
+  const fetchImpl: SurrealFetch = async (_url, init) => {
+    const query = String(init?.body);
+    queries.push(query);
+    if (query.includes('WHERE workspace_key = "default"')) {
+      return new Response(JSON.stringify([{ status: "OK", result: [] }]), { status: 200 });
+    }
+
+    return new Response(
+      JSON.stringify([
+        { status: "OK", result: [{ id: "agent_session:new" }] },
+        {
+          status: "OK",
+          result: [
+            {
+              id: "agent_session:new",
+              purpose: "Codex-powered Agent Workspace",
+              workspace_key: "default",
+            },
+          ],
+        },
+      ]),
+      { status: 200 },
+    );
+  };
+
+  const result = await createOrResumeWorkspaceAgentSession(
+    { workspaceKey: " default " },
+    { fetch: fetchImpl, newId: () => "00000000-0000-0000-0000-000000000123" },
+  );
+
+  assert.equal(result.ok, true);
+  assert.equal(result.data.created, true);
+  assert.equal(result.data.session.id, "agent_session:new");
+  assert.equal(result.data.session.workspace_key, "default");
+  assert.match(queries[0] ?? "", /SELECT .* FROM agent_session WHERE workspace_key = "default" LIMIT 1;/);
+  assert.match(queries[1] ?? "", /CREATE agent_session:00000000000000000000000000000123 SET/);
+});
+
+test("resumes a workspace Agent Session with existing Codex thread metadata", async () => {
+  const queries: string[] = [];
+  const fetchImpl: SurrealFetch = async (_url, init) => {
+    queries.push(String(init?.body));
+    return new Response(
+      JSON.stringify([
+        {
+          status: "OK",
+          result: [
+            {
+              id: "agent_session:existing",
+              purpose: "Codex-powered Agent Workspace",
+              workspace_key: "default",
+              codex_thread_id: "codex-thread-1",
+              codex_model: "gpt-test",
+              codex_model_provider: "openai",
+            },
+          ],
+        },
+      ]),
+      { status: 200 },
+    );
+  };
+
+  const result = await createOrResumeWorkspaceAgentSession({ workspaceKey: "default" }, { fetch: fetchImpl });
+
+  assert.equal(result.ok, true);
+  assert.equal(result.data.created, false);
+  assert.equal(result.data.session.id, "agent_session:existing");
+  assert.equal(result.data.session.codex_thread_id, "codex-thread-1");
+  assert.equal(queries.length, 1);
+});
+
+test("records Codex thread metadata on a workspace Agent Session", async () => {
+  const queries: string[] = [];
+  const fetchImpl: SurrealFetch = async (_url, init) => {
+    queries.push(String(init?.body));
+    return new Response(
+      JSON.stringify([
+        { status: "OK", result: [{ id: "agent_session:existing" }] },
+        {
+          status: "OK",
+          result: [
+            {
+              id: "agent_session:existing",
+              purpose: "Codex-powered Agent Workspace",
+              workspace_key: "default",
+              codex_thread_id: "codex-thread-1",
+              codex_model: "gpt-test",
+              codex_model_provider: "openai",
+              codex_cwd: "/repo",
+            },
+          ],
+        },
+      ]),
+      { status: 200 },
+    );
+  };
+
+  const result = await recordAgentSessionCodexThread(
+    {
+      sessionId: "agent_session:existing",
+      threadId: "codex-thread-1",
+      model: "gpt-test",
+      modelProvider: "openai",
+      cwd: "/repo",
+    },
+    { fetch: fetchImpl },
+  );
+
+  assert.equal(result.ok, true);
+  assert.equal(result.data?.codex_thread_id, "codex-thread-1");
+  assert.match(queries[0] ?? "", /UPDATE agent_session:existing SET codex_thread_id = "codex-thread-1"/);
+  assert.match(queries[0] ?? "", /codex_model = "gpt-test"/);
+  assert.match(queries[0] ?? "", /codex_model_provider = "openai"/);
+  assert.match(queries[0] ?? "", /codex_cwd = "\/repo"/);
 });
 
 test("reads Source Headings for a selected Source Document in outline order", async () => {

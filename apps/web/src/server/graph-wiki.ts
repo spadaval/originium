@@ -144,7 +144,31 @@ export type GraphNeighborhoodData = {
 export type AgentSessionRecord = {
   readonly id: string;
   readonly purpose: string;
+  readonly workspace_key?: string;
+  readonly codex_thread_id?: string;
+  readonly codex_model?: string;
+  readonly codex_model_provider?: string;
+  readonly codex_cwd?: string;
   readonly created_at?: string;
+  readonly updated_at?: string;
+};
+
+export type WorkspaceAgentSessionInput = {
+  readonly workspaceKey: string;
+  readonly purpose?: string;
+};
+
+export type WorkspaceAgentSessionData = {
+  readonly session: AgentSessionRecord;
+  readonly created: boolean;
+};
+
+export type CodexThreadMetadataInput = {
+  readonly sessionId: string;
+  readonly threadId: string;
+  readonly model?: string;
+  readonly modelProvider?: string;
+  readonly cwd?: string;
 };
 
 export type ChangeLogRecord = {
@@ -420,7 +444,7 @@ export async function listAgentSessions(
   const operation = "web.graph.agent_session.list";
   return queryRows(
     operation,
-    "SELECT id, purpose, created_at FROM agent_session ORDER BY created_at DESC;",
+    agentSessionSelect("agent_session", "ORDER BY created_at DESC"),
     { table: "agent_session" },
     dependencies,
     "agent_session",
@@ -434,8 +458,81 @@ export async function readAgentSession(
   const operation = "web.graph.agent_session.read";
   return querySingle(
     operation,
-    `SELECT id, purpose, created_at FROM ${recordId(id, "agent_session")};`,
+    agentSessionSelect(recordId(id, "agent_session")),
     { id },
+    dependencies,
+    "agent_session",
+  );
+}
+
+export async function createOrResumeWorkspaceAgentSession(
+  input: WorkspaceAgentSessionInput,
+  dependencies: WebGraphWikiDependencies = {},
+): Promise<WebGraphWikiResult<WorkspaceAgentSessionData>> {
+  const operation = "web.graph.agent_session.workspace.resume";
+  const workspaceKey = normalizeWorkspaceKey(input.workspaceKey);
+  const purpose = input.purpose ?? "Codex-powered Agent Workspace";
+  const existingResult = await queryRows<AgentSessionRecord>(
+    operation,
+    agentSessionSelect("agent_session", `WHERE workspace_key = "${escapeSurrealString(workspaceKey)}" LIMIT 1`),
+    { workspaceKey },
+    dependencies,
+    "agent_session",
+  );
+  if (!existingResult.ok) return existingResult;
+
+  const existing = existingResult.data[0];
+  if (existing) {
+    return {
+      ...existingResult,
+      data: { session: existing, created: false },
+    };
+  }
+
+  const sessionId = `agent_session:${(dependencies.newId ?? randomUUID)().replaceAll("-", "")}`;
+  const createdResult = await querySingle<AgentSessionRecord>(
+    operation,
+    [
+      `CREATE ${sessionId} SET purpose = "${escapeSurrealString(purpose)}", workspace_key = "${escapeSurrealString(workspaceKey)}", created_at = time::now(), updated_at = time::now();`,
+      agentSessionSelect(sessionId),
+    ].join("\n"),
+    { workspaceKey, sessionId },
+    dependencies,
+    "agent_session",
+  );
+  if (!createdResult.ok) return createdResult;
+  if (createdResult.data === undefined) {
+    return {
+      ok: false,
+      error: operationFailure({
+        operation,
+        config: resolveConfig(dependencies),
+        input: { workspaceKey, sessionId },
+        reason: `Agent Session ${sessionId} was created but SELECT returned no session record.`,
+        action: "Retry workspace startup and inspect the agent_session table if creation continues to return no row.",
+      }),
+    };
+  }
+
+  return {
+    ...createdResult,
+    data: { session: createdResult.data, created: true },
+  };
+}
+
+export async function recordAgentSessionCodexThread(
+  input: CodexThreadMetadataInput,
+  dependencies: WebGraphWikiDependencies = {},
+): Promise<WebGraphWikiResult<AgentSessionRecord | undefined>> {
+  const operation = "web.graph.agent_session.codex_thread.record";
+  const sessionId = recordId(input.sessionId, "agent_session");
+  return querySingle(
+    operation,
+    [
+      `UPDATE ${sessionId} SET codex_thread_id = "${escapeSurrealString(input.threadId)}", codex_model = ${optionalString(input.model)}, codex_model_provider = ${optionalString(input.modelProvider)}, codex_cwd = ${optionalString(input.cwd)}, updated_at = time::now();`,
+      agentSessionSelect(sessionId),
+    ].join("\n"),
+    compactInput({ sessionId, threadId: input.threadId, model: input.model, modelProvider: input.modelProvider }),
     dependencies,
     "agent_session",
   );
@@ -705,6 +802,20 @@ function queryId(operation: string, input: OperationInput): string {
     input.table ??
     "query";
   return `${operation}:${String(identifier)}`;
+}
+
+function agentSessionSelect(target: string, suffix = ""): string {
+  const clause = suffix ? ` ${suffix}` : "";
+  return `SELECT id, purpose, workspace_key, codex_thread_id, codex_model, codex_model_provider, codex_cwd, created_at, updated_at FROM ${target}${clause};`;
+}
+
+function normalizeWorkspaceKey(value: string): string {
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : "default";
+}
+
+function optionalString(value: string | undefined): string {
+  return value === undefined ? "NONE" : `"${escapeSurrealString(value)}"`;
 }
 
 function recordId(
