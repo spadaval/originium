@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
-import { resolve } from "node:path";
+import { dirname, resolve } from "node:path";
 import test from "node:test";
+import { fileURLToPath } from "node:url";
 import { readWebRuntimeConfig, WebRuntimeConfigError } from "./config.ts";
+
+const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
+const webRoot = resolve(repoRoot, "apps/web");
 
 test("reads host-direct web runtime defaults", () => {
   const config = readWebRuntimeConfig({});
@@ -9,14 +13,33 @@ test("reads host-direct web runtime defaults", () => {
   assert.deepEqual(config.backend.listen, { host: "127.0.0.1", port: 3000 });
   assert.deepEqual(config.codexAppServer.listen, { host: "127.0.0.1", port: 3001 });
   assert.equal(config.codexAppServer.url, "http://127.0.0.1:3001");
-  assert.equal(config.cli.path, resolve("apps/cli/dist/originium"));
+  assert.equal(config.cli.path, resolve(repoRoot, "apps/cli/dist/originium"));
   assert.equal(config.sourcePdf.enabled, true);
   assert.equal(config.sourcePdf.routePrefix, "/sources/pdf");
   assert.equal(config.sourcePdf.bucketName, "source_documents");
-  assert.equal(config.sourcePdf.bucketDir, resolve(".originium/surreal-files"));
+  assert.equal(config.sourcePdf.bucketDir, resolve(repoRoot, ".originium/surreal-files"));
   assert.equal(config.surreal.url, "http://127.0.0.1:8000");
   assert.equal(config.surreal.namespace, "originium");
   assert.equal(config.surreal.database, "originium");
+});
+
+test("repo-owned defaults are stable from repo root or apps/web cwd", () => {
+  const expectedCliPath = resolve(repoRoot, "apps/cli/dist/originium");
+  const expectedBucketDir = resolve(repoRoot, ".originium/surreal-files");
+  const expectedDataDir = resolve(repoRoot, ".originium/surrealdb");
+  const expectedPidFile = resolve(repoRoot, ".originium/surrealdb.pid");
+
+  for (const cwd of [repoRoot, webRoot]) {
+    withWorkingDirectory(cwd, () => {
+      const config = readWebRuntimeConfig({});
+
+      assert.equal(config.cli.path, expectedCliPath);
+      assert.equal(config.sourcePdf.bucketDir, expectedBucketDir);
+      assert.equal(config.surreal.bucketDir, expectedBucketDir);
+      assert.equal(config.surreal.dataDir, expectedDataDir);
+      assert.equal(config.surreal.pidFile, expectedPidFile);
+    });
+  }
 });
 
 test("reads web runtime environment overrides", () => {
@@ -45,6 +68,16 @@ test("reads web runtime environment overrides", () => {
   assert.equal(config.surreal.namespace, "wiki");
   assert.equal(config.surreal.database, "graph");
 });
+
+function withWorkingDirectory(cwd: string, callback: () => void): void {
+  const previous = process.cwd();
+  try {
+    process.chdir(cwd);
+    callback();
+  } finally {
+    process.chdir(previous);
+  }
+}
 
 test("source PDF serving defaults to the SurrealDB bucket directory override", () => {
   const config = readWebRuntimeConfig({

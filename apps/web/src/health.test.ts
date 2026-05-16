@@ -1,10 +1,14 @@
 import assert from "node:assert/strict";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import test from "node:test";
+import { fileURLToPath } from "node:url";
 import { readWebRuntimeConfig } from "./config.ts";
 import { checkWebRuntimeHealth, type WebRuntimeHealthCheckName } from "./health.ts";
+
+const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
+const webRoot = resolve(repoRoot, "apps/web");
 
 test("reports ok runtime health when host deployment dependencies respond", async () => {
   const bucketDir = await mkdtemp(join(tmpdir(), "originium-web-health-"));
@@ -40,10 +44,37 @@ test("reports ok runtime health when host deployment dependencies respond", asyn
   }
 });
 
+test("reports bundled CLI default path consistently from repo root and apps/web cwd", async () => {
+  const expectedCliPath = resolve(repoRoot, "apps/cli/dist/originium");
+
+  for (const cwd of [repoRoot, webRoot]) {
+    await withWorkingDirectory(cwd, async () => {
+      const config = readWebRuntimeConfig({
+        ORIGINIUM_WEB_SOURCE_PDFS_ENABLED: "false",
+      });
+      const report = await checkWebRuntimeHealth(config, {
+        access: async () => {},
+        fetch: async (url) => {
+          if (String(url).endsWith("/sql")) {
+            return new Response(JSON.stringify([{ status: "OK", result: true }]), { status: 200 });
+          }
+          return new Response("ok", { status: 204 });
+        },
+      });
+
+      const cli = report.checks.find((check) => check.name === "cli");
+      assert.equal(cli?.target, expectedCliPath);
+      assert.deepEqual(cli?.input, { path: expectedCliPath });
+    });
+  }
+});
+
 test("reports concrete remediation when runtime dependencies are unavailable", async () => {
+  const secret = "super-secret-web-health-password";
   const config = readWebRuntimeConfig({
     ORIGINIUM_CLI_PATH: "missing/originium",
     ORIGINIUM_CODEX_APP_SERVER_URL: "http://127.0.0.1:3999",
+    ORIGINIUM_SURREAL_PASSWORD: secret,
     ORIGINIUM_WEB_SOURCE_PDF_BUCKET_DIR: "missing/pdfs",
   });
   const report = await checkWebRuntimeHealth(config, {
@@ -66,6 +97,7 @@ test("reports concrete remediation when runtime dependencies are unavailable", a
   assertCheckFailure(report, "cli", /ENOENT.*missing\/originium/, /ORIGINIUM_CLI_PATH/);
   assertCheckFailure(report, "codex-app-server", /ECONNREFUSED 127\.0\.0\.1:3999/, /Codex app-server/);
   assertCheckFailure(report, "source-pdf-bucket", /ENOENT.*missing\/pdfs/, /ORIGINIUM_WEB_SOURCE_PDF_BUCKET_DIR/);
+  assert.doesNotMatch(JSON.stringify(report), new RegExp(secret));
 
   const backend = report.checks.find((check) => check.name === "web-backend");
   assert.equal(backend?.status, "ok");
@@ -117,4 +149,14 @@ function assertCheckFailure(
   assert.equal(check?.failure?.target, check?.target);
   assert.match(check?.failure?.reason ?? "", reason);
   assert.match(check?.failure?.action ?? "", action);
+}
+
+async function withWorkingDirectory(cwd: string, callback: () => Promise<void>): Promise<void> {
+  const previous = process.cwd();
+  try {
+    process.chdir(cwd);
+    await callback();
+  } finally {
+    process.chdir(previous);
+  }
 }

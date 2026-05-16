@@ -1,4 +1,5 @@
-import { resolve } from "node:path";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { readSurrealConfig, type SurrealConfig, sourceDocumentBucketName } from "@originium/surreal";
 
 export type ListenTarget = {
@@ -54,8 +55,15 @@ export class WebRuntimeConfigError extends Error {
   }
 }
 
+const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
+
 export function readWebRuntimeConfig(env: NodeJS.ProcessEnv = process.env): WebRuntimeConfig {
-  const surreal = readSurrealConfig(env);
+  const surreal = readSurrealConfig({
+    ...env,
+    ORIGINIUM_SURREAL_BUCKET_DIR: env.ORIGINIUM_SURREAL_BUCKET_DIR ?? resolveRepoPath(".originium/surreal-files"),
+    ORIGINIUM_SURREAL_DATA_DIR: env.ORIGINIUM_SURREAL_DATA_DIR ?? resolveRepoPath(".originium/surrealdb"),
+    ORIGINIUM_SURREAL_PID_FILE: env.ORIGINIUM_SURREAL_PID_FILE ?? resolveRepoPath(".originium/surrealdb.pid"),
+  });
   const backendListen = parseListenTarget(
     env.ORIGINIUM_WEB_BACKEND_BIND ?? "127.0.0.1:3000",
     "ORIGINIUM_WEB_BACKEND_BIND",
@@ -78,7 +86,10 @@ export function readWebRuntimeConfig(env: NodeJS.ProcessEnv = process.env): WebR
       ),
     },
     cli: {
-      path: parseRequiredPath(env.ORIGINIUM_CLI_PATH ?? "apps/cli/dist/originium", "ORIGINIUM_CLI_PATH"),
+      path: parseRequiredPath(
+        env.ORIGINIUM_CLI_PATH ?? resolveRepoPath("apps/cli/dist/originium"),
+        "ORIGINIUM_CLI_PATH",
+      ),
     },
     sourcePdf: {
       enabled: parseBoolean(env.ORIGINIUM_WEB_SOURCE_PDFS_ENABLED ?? "true", "ORIGINIUM_WEB_SOURCE_PDFS_ENABLED"),
@@ -91,6 +102,10 @@ export function readWebRuntimeConfig(env: NodeJS.ProcessEnv = process.env): WebR
     },
     surreal,
   };
+}
+
+function resolveRepoPath(path: string): string {
+  return resolve(repoRoot, path);
 }
 
 function parseListenTarget(value: string, name: string): ListenTarget {
