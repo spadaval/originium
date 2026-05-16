@@ -91,6 +91,56 @@ export type WikiPageWithCitations = WikiPageRecord & {
   readonly citations: readonly CitationRecord[];
 };
 
+export type ManualLinkRecord = {
+  readonly id?: string;
+  readonly in?: unknown;
+  readonly out?: unknown;
+  readonly reason?: string;
+  readonly label?: string;
+  readonly created_session?: unknown;
+  readonly created_at?: string;
+};
+
+export type GraphNeighborhoodInput = {
+  readonly recordId?: string;
+  readonly pageId?: string;
+  readonly sourceHeadingId?: string;
+  readonly title?: string;
+  readonly limit?: number;
+};
+
+export type GraphNeighborhoodNode = {
+  readonly id: string;
+  readonly kind: "source_heading" | "wiki_page";
+  readonly label: string;
+  readonly selected: boolean;
+  readonly navigation: {
+    readonly recordId: string;
+    readonly slug?: string;
+    readonly sourceDocumentId?: string;
+    readonly startPage?: number;
+    readonly endPage?: number;
+  };
+  readonly metadata: OperationInput;
+};
+
+export type GraphNeighborhoodEdge = {
+  readonly id: string;
+  readonly kind: "citation" | "manual_link";
+  readonly from: string;
+  readonly to: string;
+  readonly label?: string;
+  readonly metadata: OperationInput;
+};
+
+export type GraphNeighborhoodData = {
+  readonly selectedRecordId: string;
+  readonly selectedKind: GraphNeighborhoodNode["kind"];
+  readonly limit: number;
+  readonly nodes: readonly GraphNeighborhoodNode[];
+  readonly edges: readonly GraphNeighborhoodEdge[];
+};
+
 export type AgentSessionRecord = {
   readonly id: string;
   readonly purpose: string;
@@ -206,6 +256,52 @@ export async function readWikiPage(
   return {
     ...result,
     data: page === undefined ? undefined : { ...page, citations: rowsAt<CitationRecord>(result.data, 1) },
+  };
+}
+
+export async function readGraphNeighborhood(
+  input: GraphNeighborhoodInput,
+  dependencies: WebGraphWikiDependencies = {},
+): Promise<WebGraphWikiResult<GraphNeighborhoodData>> {
+  const operation = "web.graph.neighborhood.read";
+  const selectedRecordId = graphSelectedRecordId(input);
+  const selectedKind = graphNodeKind(selectedRecordId);
+  const limit = graphLimit(input.limit);
+  const queryInput = compactInput(
+    { recordId: input.recordId, pageId: input.pageId, sourceHeadingId: input.sourceHeadingId, title: input.title },
+    { selectedRecordId, limit },
+  );
+
+  if (selectedKind === undefined) {
+    return {
+      ok: false,
+      error: operationFailure({
+        operation,
+        config: resolveConfig(dependencies),
+        input: queryInput,
+        reason: `Record ${selectedRecordId} is not supported for graph neighborhood reads; expected a wiki_page or source_heading record ID.`,
+        action: "Select a Wiki Page or Source Heading record, then retry the bounded Graph Wiki neighborhood read.",
+      }),
+    };
+  }
+
+  const result = await runQuery(
+    operation,
+    selectedKind === "wiki_page"
+      ? wikiPageNeighborhoodQuery(selectedRecordId, limit)
+      : sourceHeadingNeighborhoodQuery(selectedRecordId, limit),
+    queryInput,
+    dependencies,
+    "Read the selected Wiki Page or Source Heading neighborhood, including Citation and Manual Link edges, from the Graph Wiki database.",
+  );
+  if (!result.ok) return result;
+
+  return {
+    ...result,
+    data:
+      selectedKind === "wiki_page"
+        ? wikiPageNeighborhoodData(selectedRecordId, limit, result.data)
+        : sourceHeadingNeighborhoodData(selectedRecordId, limit, result.data),
   };
 }
 
@@ -528,28 +624,241 @@ function inputForPage(input: { readonly pageId?: string; readonly title?: string
 }
 
 function compactInput(
-  input: Record<string, string | undefined>,
+  input: Record<string, JsonPrimitive | readonly JsonPrimitive[] | undefined>,
   base: Record<string, JsonPrimitive | readonly JsonPrimitive[] | undefined> = {},
 ): OperationInput {
-  const entries = Object.entries({ ...base, ...input }).filter((entry): entry is [string, JsonPrimitive] => {
-    const value = entry[1];
-    return typeof value === "string" || typeof value === "number" || typeof value === "boolean" || value === null;
-  });
+  const entries = Object.entries({ ...base, ...input }).filter(
+    (entry): entry is [string, JsonPrimitive | readonly JsonPrimitive[]] => isOperationInputValue(entry[1]),
+  );
   return Object.fromEntries(entries);
 }
 
+function isOperationInputValue(value: unknown): value is JsonPrimitive | readonly JsonPrimitive[] {
+  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean" || value === null) {
+    return true;
+  }
+  return Array.isArray(value) && value.every((item) => isOperationInputValue(item) && !Array.isArray(item));
+}
+
 function queryId(operation: string, input: OperationInput): string {
-  const identifier = input.id ?? input.pageId ?? input.sourceDocumentId ?? input.sessionId ?? input.table ?? "query";
+  const identifier =
+    input.id ??
+    input.selectedRecordId ??
+    input.pageId ??
+    input.sourceHeadingId ??
+    input.sourceDocumentId ??
+    input.sessionId ??
+    input.table ??
+    "query";
   return `${operation}:${String(identifier)}`;
 }
 
 function recordId(
   value: string,
-  fallbackTable: "agent_activity" | "agent_session" | "change_log" | "source_document" | "wiki_page",
+  fallbackTable: "agent_activity" | "agent_session" | "change_log" | "source_document" | "source_heading" | "wiki_page",
 ): string {
   if (value.includes(":")) return value;
   const slug = toSlug(value);
   return `${fallbackTable}:${slug.replace(/-/g, "_")}`;
+}
+
+function graphSelectedRecordId(input: GraphNeighborhoodInput): string {
+  if (input.sourceHeadingId) return recordId(input.sourceHeadingId, "source_heading");
+  if (input.pageId) return recordId(input.pageId, "wiki_page");
+  if (input.recordId) return input.recordId;
+  return pageIdFromInput(input);
+}
+
+function graphNodeKind(recordIdValue: string): GraphNeighborhoodNode["kind"] | undefined {
+  if (recordIdValue.startsWith("wiki_page:")) return "wiki_page";
+  if (recordIdValue.startsWith("source_heading:")) return "source_heading";
+  return undefined;
+}
+
+function graphLimit(limit: number | undefined): number {
+  if (typeof limit !== "number" || !Number.isFinite(limit)) return 25;
+  return Math.max(1, Math.min(50, Math.trunc(limit)));
+}
+
+function wikiPageNeighborhoodQuery(pageId: string, limit: number): string {
+  const citedHeadings = `(SELECT out FROM cites WHERE in = ${pageId} LIMIT ${limit})`;
+  return [
+    `SELECT id, title, slug, created_at, updated_at FROM ${pageId} LIMIT ${limit};`,
+    `SELECT id, in, out, key, label, quote, created_at FROM cites WHERE in = ${pageId} ORDER BY key ASC LIMIT ${limit};`,
+    `SELECT id, source_document, title, heading_path, level, start_page, end_page, order, extraction_method FROM source_heading WHERE id IN ${citedHeadings} ORDER BY order ASC LIMIT ${limit};`,
+    `SELECT id, in, out, reason, label, created_session, created_at FROM manual_link WHERE in = ${pageId} OR out = ${pageId} ORDER BY created_at DESC LIMIT ${limit};`,
+    `SELECT id, title, slug, created_at, updated_at FROM wiki_page WHERE id IN (SELECT out FROM manual_link WHERE in = ${pageId} LIMIT ${limit}) OR id IN (SELECT in FROM manual_link WHERE out = ${pageId} LIMIT ${limit}) ORDER BY updated_at DESC, title ASC LIMIT ${limit};`,
+    `SELECT id, source_document, title, heading_path, level, start_page, end_page, order, extraction_method FROM source_heading WHERE id IN (SELECT out FROM manual_link WHERE in = ${pageId} LIMIT ${limit}) OR id IN (SELECT in FROM manual_link WHERE out = ${pageId} LIMIT ${limit}) ORDER BY order ASC LIMIT ${limit};`,
+    `SELECT id, title, slug, created_at, updated_at FROM wiki_page WHERE id != ${pageId} AND id IN (SELECT in FROM cites WHERE out IN ${citedHeadings} LIMIT ${limit}) ORDER BY updated_at DESC, title ASC LIMIT ${limit};`,
+    `SELECT id, in, out, key, label, quote, created_at FROM cites WHERE in != ${pageId} AND out IN ${citedHeadings} ORDER BY key ASC LIMIT ${limit};`,
+  ].join("\n");
+}
+
+function sourceHeadingNeighborhoodQuery(headingId: string, limit: number): string {
+  return [
+    `SELECT id, source_document, title, heading_path, level, start_page, end_page, order, extraction_method FROM ${headingId} LIMIT ${limit};`,
+    `SELECT id, in, out, key, label, quote, created_at FROM cites WHERE out = ${headingId} ORDER BY key ASC LIMIT ${limit};`,
+    `SELECT id, title, slug, created_at, updated_at FROM wiki_page WHERE id IN (SELECT in FROM cites WHERE out = ${headingId} LIMIT ${limit}) ORDER BY updated_at DESC, title ASC LIMIT ${limit};`,
+    `SELECT id, in, out, reason, label, created_session, created_at FROM manual_link WHERE in = ${headingId} OR out = ${headingId} ORDER BY created_at DESC LIMIT ${limit};`,
+    `SELECT id, title, slug, created_at, updated_at FROM wiki_page WHERE id IN (SELECT out FROM manual_link WHERE in = ${headingId} LIMIT ${limit}) OR id IN (SELECT in FROM manual_link WHERE out = ${headingId} LIMIT ${limit}) ORDER BY updated_at DESC, title ASC LIMIT ${limit};`,
+    `SELECT id, source_document, title, heading_path, level, start_page, end_page, order, extraction_method FROM source_heading WHERE id IN (SELECT out FROM manual_link WHERE in = ${headingId} LIMIT ${limit}) OR id IN (SELECT in FROM manual_link WHERE out = ${headingId} LIMIT ${limit}) ORDER BY order ASC LIMIT ${limit};`,
+  ].join("\n");
+}
+
+function wikiPageNeighborhoodData(selectedRecordId: string, limit: number, result: unknown): GraphNeighborhoodData {
+  const nodes = new Map<string, GraphNeighborhoodNode>();
+  const edges = new Map<string, GraphNeighborhoodEdge>();
+
+  addWikiPageNodes(nodes, rowsAt<WikiPageRecord>(result, 0), selectedRecordId);
+  addSourceHeadingNodes(nodes, rowsAt<SourceHeadingRecord>(result, 2), selectedRecordId);
+  addGraphEdges(edges, rowsAt<CitationGraphEdgeRow>(result, 1), "citation");
+  addGraphEdges(edges, rowsAt<ManualLinkRecord>(result, 3), "manual_link");
+  addWikiPageNodes(nodes, rowsAt<WikiPageRecord>(result, 4), selectedRecordId);
+  addSourceHeadingNodes(nodes, rowsAt<SourceHeadingRecord>(result, 5), selectedRecordId);
+  addWikiPageNodes(nodes, rowsAt<WikiPageRecord>(result, 6), selectedRecordId);
+  addGraphEdges(edges, rowsAt<CitationGraphEdgeRow>(result, 7), "citation");
+
+  return {
+    selectedRecordId,
+    selectedKind: "wiki_page",
+    limit,
+    nodes: [...nodes.values()],
+    edges: [...edges.values()].filter((edge) => nodes.has(edge.from) && nodes.has(edge.to)),
+  };
+}
+
+function sourceHeadingNeighborhoodData(
+  selectedRecordId: string,
+  limit: number,
+  result: unknown,
+): GraphNeighborhoodData {
+  const nodes = new Map<string, GraphNeighborhoodNode>();
+  const edges = new Map<string, GraphNeighborhoodEdge>();
+
+  addSourceHeadingNodes(nodes, rowsAt<SourceHeadingRecord>(result, 0), selectedRecordId);
+  addGraphEdges(edges, rowsAt<CitationGraphEdgeRow>(result, 1), "citation");
+  addWikiPageNodes(nodes, rowsAt<WikiPageRecord>(result, 2), selectedRecordId);
+  addGraphEdges(edges, rowsAt<ManualLinkRecord>(result, 3), "manual_link");
+  addWikiPageNodes(nodes, rowsAt<WikiPageRecord>(result, 4), selectedRecordId);
+  addSourceHeadingNodes(nodes, rowsAt<SourceHeadingRecord>(result, 5), selectedRecordId);
+
+  return {
+    selectedRecordId,
+    selectedKind: "source_heading",
+    limit,
+    nodes: [...nodes.values()],
+    edges: [...edges.values()].filter((edge) => nodes.has(edge.from) && nodes.has(edge.to)),
+  };
+}
+
+type CitationGraphEdgeRow = CitationRecord & {
+  readonly in?: unknown;
+  readonly out?: unknown;
+  readonly created_at?: string;
+};
+
+function addWikiPageNodes(
+  nodes: Map<string, GraphNeighborhoodNode>,
+  records: readonly WikiPageRecord[],
+  selectedRecordId: string,
+): void {
+  for (const record of records) {
+    if (!record.id || nodes.has(record.id)) continue;
+    nodes.set(record.id, {
+      id: record.id,
+      kind: "wiki_page",
+      label: record.title,
+      selected: record.id === selectedRecordId,
+      navigation: {
+        recordId: record.id,
+        slug: record.slug,
+      },
+      metadata: compactInput({
+        createdAt: record.created_at,
+        updatedAt: record.updated_at,
+      }),
+    });
+  }
+}
+
+function addSourceHeadingNodes(
+  nodes: Map<string, GraphNeighborhoodNode>,
+  records: readonly SourceHeadingRecord[],
+  selectedRecordId: string,
+): void {
+  for (const record of records) {
+    if (!record.id || nodes.has(record.id)) continue;
+    nodes.set(record.id, {
+      id: record.id,
+      kind: "source_heading",
+      label: record.title,
+      selected: record.id === selectedRecordId,
+      navigation: {
+        recordId: record.id,
+        sourceDocumentId: record.source_document,
+        startPage: record.start_page,
+        endPage: record.end_page,
+      },
+      metadata: compactInput(
+        {
+          extractionMethod: record.extraction_method,
+        },
+        {
+          headingPath: record.heading_path,
+          level: record.level,
+          order: record.order,
+        },
+      ),
+    });
+  }
+}
+
+function addGraphEdges(
+  edges: Map<string, GraphNeighborhoodEdge>,
+  records: readonly (CitationGraphEdgeRow | ManualLinkRecord)[],
+  kind: GraphNeighborhoodEdge["kind"],
+): void {
+  for (const record of records) {
+    const from = graphRecordId(record.in);
+    const to = graphRecordId(record.out);
+    if (!from || !to) continue;
+    const id = record.id ?? `${from}->${kind === "citation" ? "cites" : "manual_link"}->${to}`;
+    if (edges.has(id)) continue;
+    edges.set(id, {
+      id,
+      kind,
+      from,
+      to,
+      label: edgeLabel(record, kind),
+      metadata:
+        kind === "citation"
+          ? compactInput({
+              key: "key" in record ? record.key : undefined,
+              quote: "quote" in record ? record.quote : undefined,
+              createdAt: record.created_at,
+            })
+          : compactInput({
+              reason: "reason" in record ? record.reason : undefined,
+              createdSession: "created_session" in record ? graphRecordId(record.created_session) : undefined,
+              createdAt: record.created_at,
+            }),
+    });
+  }
+}
+
+function edgeLabel(
+  record: CitationGraphEdgeRow | ManualLinkRecord,
+  kind: GraphNeighborhoodEdge["kind"],
+): string | undefined {
+  if (typeof record.label === "string" && record.label.length > 0) return record.label;
+  if (kind === "citation" && "key" in record && typeof record.key === "string") return record.key;
+  return undefined;
+}
+
+function graphRecordId(value: unknown): string | undefined {
+  if (typeof value === "string") return value;
+  if (value && typeof value === "object" && "id" in value && typeof value.id === "string") return value.id;
+  return undefined;
 }
 
 function rowsAt<T>(result: unknown, index: number): readonly T[] {
