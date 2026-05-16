@@ -257,16 +257,10 @@ Preferred answer flow:
 
 Do not build the POC around raw PDF text search as the primary answer path. The point of the system is for Wiki Pages to compound into the useful knowledge layer.
 
-## Access And Edit Log
+## Change Log
 
-Every CLI command that reads or writes the Graph Wiki should append a Change Log entry.
-
-For reads, log:
-
-- session
-- command
-- target records or query string
-- timestamp
+Mutating CLI commands should append Change Log entries. Read commands should not
+create durable Change Log history.
 
 For edits, log:
 

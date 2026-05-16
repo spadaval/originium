@@ -41,7 +41,7 @@ A rendered view of graph data for humans or agents, such as markdown-like text g
 _Avoid_: canonical markdown, export
 
 **Change Log**:
-An append-only record of Graph Wiki accesses and edits used to inspect and undo agent work.
+An append-only record of Graph Wiki mutations used to inspect and undo agent work.
 _Avoid_: event store, revision history
 
 **Agent Session**:
@@ -74,7 +74,7 @@ _Avoid_: RAG, similarity search
 - A **Page Body** may contain Citation Markers, but Citation targets live in graph relations.
 - A **Projection** is derived from graph state and is not the canonical source of truth.
 - An **Agent Session** writes one or more **Change Log** entries.
-- A **Change Log** entry describes one access or edit to Graph Wiki state.
+- A **Change Log** entry describes one mutation to Graph Wiki state.
 - **Chapter Ingestion** creates or updates Wiki Pages one chapter or major Source Heading at a time.
 - **Chapter Ingestion** uses **Ingestion Chunks** sized to a practical agent context budget.
 - A **Manual Link** may connect Wiki Pages, Source Headings, or other graph records.
