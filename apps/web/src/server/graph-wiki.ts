@@ -681,15 +681,15 @@ function graphLimit(limit: number | undefined): number {
 }
 
 function wikiPageNeighborhoodQuery(pageId: string, limit: number): string {
-  const citedHeadings = `(SELECT out FROM cites WHERE in = ${pageId} LIMIT ${limit})`;
+  const citedHeadings = `(SELECT VALUE out FROM cites WHERE in = ${pageId} LIMIT ${limit})`;
   return [
     `SELECT id, title, slug, created_at, updated_at FROM ${pageId} LIMIT ${limit};`,
     `SELECT id, in, out, key, label, quote, created_at FROM cites WHERE in = ${pageId} ORDER BY key ASC LIMIT ${limit};`,
     `SELECT id, source_document, title, heading_path, level, start_page, end_page, order, extraction_method FROM source_heading WHERE id IN ${citedHeadings} ORDER BY order ASC LIMIT ${limit};`,
     `SELECT id, in, out, reason, label, created_session, created_at FROM manual_link WHERE in = ${pageId} OR out = ${pageId} ORDER BY created_at DESC LIMIT ${limit};`,
-    `SELECT id, title, slug, created_at, updated_at FROM wiki_page WHERE id IN (SELECT out FROM manual_link WHERE in = ${pageId} LIMIT ${limit}) OR id IN (SELECT in FROM manual_link WHERE out = ${pageId} LIMIT ${limit}) ORDER BY updated_at DESC, title ASC LIMIT ${limit};`,
-    `SELECT id, source_document, title, heading_path, level, start_page, end_page, order, extraction_method FROM source_heading WHERE id IN (SELECT out FROM manual_link WHERE in = ${pageId} LIMIT ${limit}) OR id IN (SELECT in FROM manual_link WHERE out = ${pageId} LIMIT ${limit}) ORDER BY order ASC LIMIT ${limit};`,
-    `SELECT id, title, slug, created_at, updated_at FROM wiki_page WHERE id != ${pageId} AND id IN (SELECT in FROM cites WHERE out IN ${citedHeadings} LIMIT ${limit}) ORDER BY updated_at DESC, title ASC LIMIT ${limit};`,
+    `SELECT id, title, slug, created_at, updated_at FROM wiki_page WHERE id IN (SELECT VALUE out FROM manual_link WHERE in = ${pageId} LIMIT ${limit}) OR id IN (SELECT VALUE in FROM manual_link WHERE out = ${pageId} LIMIT ${limit}) ORDER BY updated_at DESC, title ASC LIMIT ${limit};`,
+    `SELECT id, source_document, title, heading_path, level, start_page, end_page, order, extraction_method FROM source_heading WHERE id IN (SELECT VALUE out FROM manual_link WHERE in = ${pageId} LIMIT ${limit}) OR id IN (SELECT VALUE in FROM manual_link WHERE out = ${pageId} LIMIT ${limit}) ORDER BY order ASC LIMIT ${limit};`,
+    `SELECT id, title, slug, created_at, updated_at FROM wiki_page WHERE id != ${pageId} AND id IN (SELECT VALUE in FROM cites WHERE out IN ${citedHeadings} LIMIT ${limit}) ORDER BY updated_at DESC, title ASC LIMIT ${limit};`,
     `SELECT id, in, out, key, label, quote, created_at FROM cites WHERE in != ${pageId} AND out IN ${citedHeadings} ORDER BY key ASC LIMIT ${limit};`,
   ].join("\n");
 }
@@ -698,10 +698,10 @@ function sourceHeadingNeighborhoodQuery(headingId: string, limit: number): strin
   return [
     `SELECT id, source_document, title, heading_path, level, start_page, end_page, order, extraction_method FROM ${headingId} LIMIT ${limit};`,
     `SELECT id, in, out, key, label, quote, created_at FROM cites WHERE out = ${headingId} ORDER BY key ASC LIMIT ${limit};`,
-    `SELECT id, title, slug, created_at, updated_at FROM wiki_page WHERE id IN (SELECT in FROM cites WHERE out = ${headingId} LIMIT ${limit}) ORDER BY updated_at DESC, title ASC LIMIT ${limit};`,
+    `SELECT id, title, slug, created_at, updated_at FROM wiki_page WHERE id IN (SELECT VALUE in FROM cites WHERE out = ${headingId} LIMIT ${limit}) ORDER BY updated_at DESC, title ASC LIMIT ${limit};`,
     `SELECT id, in, out, reason, label, created_session, created_at FROM manual_link WHERE in = ${headingId} OR out = ${headingId} ORDER BY created_at DESC LIMIT ${limit};`,
-    `SELECT id, title, slug, created_at, updated_at FROM wiki_page WHERE id IN (SELECT out FROM manual_link WHERE in = ${headingId} LIMIT ${limit}) OR id IN (SELECT in FROM manual_link WHERE out = ${headingId} LIMIT ${limit}) ORDER BY updated_at DESC, title ASC LIMIT ${limit};`,
-    `SELECT id, source_document, title, heading_path, level, start_page, end_page, order, extraction_method FROM source_heading WHERE id IN (SELECT out FROM manual_link WHERE in = ${headingId} LIMIT ${limit}) OR id IN (SELECT in FROM manual_link WHERE out = ${headingId} LIMIT ${limit}) ORDER BY order ASC LIMIT ${limit};`,
+    `SELECT id, title, slug, created_at, updated_at FROM wiki_page WHERE id IN (SELECT VALUE out FROM manual_link WHERE in = ${headingId} LIMIT ${limit}) OR id IN (SELECT VALUE in FROM manual_link WHERE out = ${headingId} LIMIT ${limit}) ORDER BY updated_at DESC, title ASC LIMIT ${limit};`,
+    `SELECT id, source_document, title, heading_path, level, start_page, end_page, order, extraction_method FROM source_heading WHERE id IN (SELECT VALUE out FROM manual_link WHERE in = ${headingId} LIMIT ${limit}) OR id IN (SELECT VALUE in FROM manual_link WHERE out = ${headingId} LIMIT ${limit}) ORDER BY order ASC LIMIT ${limit};`,
   ].join("\n");
 }
 

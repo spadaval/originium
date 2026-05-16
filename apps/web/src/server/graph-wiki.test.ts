@@ -225,6 +225,7 @@ test("reads a bounded Wiki Page graph neighborhood with citations, Manual Links,
   assert.equal(result.data.selectedRecordId, "wiki_page:test");
   assert.equal(result.data.limit, 2);
   assert.match(queries[0] ?? "", /LIMIT 2/);
+  assert.match(queries[0] ?? "", /SELECT VALUE out FROM cites WHERE in = wiki_page:test/);
   assert.match(queries[0] ?? "", /FROM manual_link WHERE in = wiki_page:test OR out = wiki_page:test/);
   assert.deepEqual(
     result.data.nodes.map((node) => [node.id, node.kind, node.label, node.selected]),
@@ -249,6 +250,73 @@ test("reads a bounded Wiki Page graph neighborhood with citations, Manual Links,
     startPage: 3,
     endPage: 4,
   });
+});
+
+test("reads inbound Citation edges for a selected Source Heading graph neighborhood", async () => {
+  const queries: string[] = [];
+  const fetchImpl: SurrealFetch = async (_url, init) => {
+    queries.push(String(init?.body));
+    return new Response(
+      JSON.stringify([
+        {
+          status: "OK",
+          result: [
+            {
+              id: "source_heading:source",
+              source_document: "source_document:doc",
+              title: "Source Heading",
+              heading_path: ["Chapter 1", "Source Heading"],
+              level: 2,
+              start_page: 3,
+              end_page: 4,
+              order: 7,
+              extraction_method: "pdf-outline",
+            },
+          ],
+        },
+        {
+          status: "OK",
+          result: [
+            {
+              id: "cites:test_source",
+              in: "wiki_page:test",
+              out: "source_heading:source",
+              key: "source",
+              label: "Source",
+              quote: "quoted support",
+            },
+          ],
+        },
+        {
+          status: "OK",
+          result: [{ id: "wiki_page:test", title: "Test", slug: "test", updated_at: "2026-05-16T12:00:00Z" }],
+        },
+        { status: "OK", result: [] },
+        { status: "OK", result: [] },
+        { status: "OK", result: [] },
+      ]),
+      { status: 200 },
+    );
+  };
+
+  const result = await readGraphNeighborhood(
+    { sourceHeadingId: "source_heading:source", limit: 3 },
+    { fetch: fetchImpl },
+  );
+
+  assert.equal(result.ok, true);
+  assert.match(queries[0] ?? "", /SELECT VALUE in FROM cites WHERE out = source_heading:source/);
+  assert.deepEqual(
+    result.data.nodes.map((node) => [node.id, node.kind, node.label, node.selected]),
+    [
+      ["source_heading:source", "source_heading", "Source Heading", true],
+      ["wiki_page:test", "wiki_page", "Test", false],
+    ],
+  );
+  assert.deepEqual(
+    result.data.edges.map((edge) => [edge.id, edge.kind, edge.from, edge.to, edge.label]),
+    [["cites:test_source", "citation", "wiki_page:test", "source_heading:source", "Source"]],
+  );
 });
 
 test("reads an empty graph neighborhood for a selected Source Heading", async () => {
