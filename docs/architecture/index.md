@@ -5,6 +5,7 @@ Originium stores canonical Graph Wiki state in SurrealDB and exposes projections
 ## Start Here
 
 - [Quality](quality/index.md): baseline standards for errors, validation, and scope control.
+- [Surrealist inspection](surrealist-inspection.md): POC database inspection workflow and queries.
 - [ADRs](../adr): durable architecture decisions and historical context.
 - [SPEC.md](../../SPEC.md): source of truth for Graph Wiki behavior.
 - [CONTEXT.md](../../CONTEXT.md): source of truth for product language.
@@ -47,6 +48,10 @@ Current local cache target:
 - macOS arm64 asset: `Surrealist_3.8.5_aarch64.dmg`
 - SHA-256:
   `07112ecba22409717ddcce1ba744c9631add7bc07805773543dd5222ffdd3b81`
+
+Use Surrealist for inspection and manual validation only. Originium-owned
+mutation workflows, schema application, ingestion, and Graph Wiki projections
+remain CLI/package responsibilities.
 
 ## Dependency Direction
 

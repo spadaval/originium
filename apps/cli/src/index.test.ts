@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 
@@ -17,4 +17,57 @@ test("bundled CLI reports the configured SurrealDB target", () => {
   });
 
   assert.match(output, /SurrealDB target: http:\/\/127\.0\.0\.1:8000 ns=testns db=testdb/);
+  const result = JSON.parse(output);
+  assert.equal(result.ok, true);
+  assert.equal(result.operation, "db.status");
+  assert.deepEqual(result.data.target, {
+    url: "http://127.0.0.1:8000",
+    namespace: "testns",
+    database: "testdb",
+  });
+});
+
+test("bundled CLI reports structured unknown command failures", () => {
+  const result = spawnSync(bundledCli, ["unknown"], {
+    encoding: "utf8",
+  });
+
+  assert.equal(result.status, 1);
+  const output = JSON.parse(result.stdout);
+  assert.equal(output.ok, false);
+  assert.equal(output.error.kind, "usage_error");
+  assert.equal(output.error.operation, "cli.route");
+  assert.equal(output.error.input, "unknown");
+  assert.match(output.error.reason, /Unknown command group 'unknown'/);
+  assert.match(output.error.action, /Choose one of:/);
+});
+
+test("bundled CLI reports structured missing argument failures", () => {
+  const result = spawnSync(bundledCli, ["db"], {
+    encoding: "utf8",
+  });
+
+  assert.equal(result.status, 1);
+  const output = JSON.parse(result.stdout);
+  assert.equal(output.ok, false);
+  assert.equal(output.command, "db");
+  assert.equal(output.error.kind, "usage_error");
+  assert.equal(output.error.operation, "db.route");
+  assert.equal(output.error.input, "db");
+  assert.equal(output.error.reason, "Missing db command.");
+  assert.equal(output.error.action, "Use one of: start, stop, status, doctor, apply-schema.");
+});
+
+test("bundled CLI reports structured unknown subgroup failures", () => {
+  const result = spawnSync(bundledCli, ["source", "bogus"], {
+    encoding: "utf8",
+  });
+
+  assert.equal(result.status, 1);
+  const output = JSON.parse(result.stdout);
+  assert.equal(output.ok, false);
+  assert.equal(output.command, "source bogus");
+  assert.equal(output.error.kind, "usage_error");
+  assert.equal(output.error.operation, "source.route");
+  assert.match(output.error.reason, /Unknown source command 'bogus'/);
 });
