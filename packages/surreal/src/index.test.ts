@@ -1,7 +1,13 @@
 import assert from "node:assert/strict";
 import { resolve } from "node:path";
 import test from "node:test";
-import { describeSurrealTarget, executeSurrealQuery, readSurrealConfig, type SurrealFetch } from "./index.ts";
+import {
+  describeSurrealTarget,
+  executeSurrealQuery,
+  localSurrealStartCommand,
+  readSurrealConfig,
+  type SurrealFetch,
+} from "./index.ts";
 
 test("reads SurrealDB config defaults and environment overrides", () => {
   assert.deepEqual(readSurrealConfig({}), {
@@ -83,6 +89,31 @@ test("SurrealDB query sends current HTTP namespace and database headers", async 
   assert.equal(result.ok, true);
   assert.equal((headers as Record<string, string>)["Surreal-NS"], "wiki");
   assert.equal((headers as Record<string, string>)["Surreal-DB"], "graph");
+});
+
+test("local SurrealDB start command allows Surrealist-compatible HTTP and RPC routes", () => {
+  const command = localSurrealStartCommand(readSurrealConfig({}));
+
+  assert.equal(command.command, "surreal");
+  assert.deepEqual(command.args, [
+    "start",
+    "--no-banner",
+    "--log",
+    "warn",
+    "--bind",
+    "127.0.0.1:8000",
+    "--user",
+    "root",
+    "--pass",
+    "root",
+    "--allow-http",
+    "--allow-rpc",
+    "--",
+    `surrealkv:${resolve(".originium/surrealdb")}`,
+  ]);
+  assert.equal(command.env.SURREAL_CAPS_ALLOW_EXPERIMENTAL, "files");
+  assert.equal(command.env.SURREAL_DEFAULT_NAMESPACE, "originium");
+  assert.equal(command.env.SURREAL_DEFAULT_DATABASE, "originium");
 });
 
 test("SurrealDB query converts statement errors into operation failures", async () => {

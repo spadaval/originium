@@ -53,8 +53,13 @@ SURREAL_CAPS_ALLOW_EXPERIMENTAL=files
 SURREAL_BUCKET_FOLDER_ALLOWLIST=.originium/surreal-files
 SURREAL_DEFAULT_NAMESPACE=originium
 SURREAL_DEFAULT_DATABASE=originium
-surreal start --no-banner --log warn --bind 127.0.0.1:8000 --user root --pass root --allow-http sql --allow-rpc query -- surrealkv:.originium/surrealdb
+surreal start --no-banner --log warn --bind 127.0.0.1:8000 --user root --pass root --allow-http --allow-rpc -- surrealkv:.originium/surrealdb
 ```
+
+The unscoped `--allow-http` and `--allow-rpc` flags are intentional for the
+local POC database. Originium's CLI currently uses the HTTP SQL route, while
+Surrealist uses the WebSocket/RPC connection flow for sign-in, namespace and
+database selection, and query execution.
 
 If the bucket directory is overridden, keep
 `SURREAL_BUCKET_FOLDER_ALLOWLIST` aligned with `ORIGINIUM_SURREAL_BUCKET_DIR`.
