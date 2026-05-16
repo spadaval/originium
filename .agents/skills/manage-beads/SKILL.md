@@ -179,7 +179,7 @@ Notes do not replace acceptance criteria.
 - includes focused tests or validation for that seam in `Acceptance Criteria`;
 - avoids preserving legacy contracts.
 
-`validation`:
+`validation` (configured custom issue type):
 
 - starts from a product, operator, live-runtime, browser, integration, or
   behavior-preservation scenario, not a diff;

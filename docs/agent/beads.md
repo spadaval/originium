@@ -35,6 +35,20 @@ A ready executable bead should name:
 Do not leave vague executable work in the ready queue. Split broad work into
 owned slices with clear dependencies.
 
+## Issue Types
+
+Originium uses the built-in Beads types plus one configured custom type:
+
+- `validation`: scenario proof for product, operator, integration, browser, or
+  behavior-preservation workflows. Validation beads should recommend
+  `validate-behavior`, depend on the implementation they prove, and include the
+  scenario, procedure, required evidence, pass criteria, and failure
+  classification in the description.
+
+Use implementation types such as `task` or `feature` for building behavior.
+Use `validation` when the bead exists to prove behavior rather than implement
+it.
+
 ## Tracker Sync
 
 For long orchestrated work, check tracker health before assigning work:

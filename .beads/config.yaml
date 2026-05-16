@@ -54,3 +54,4 @@
 # - github.repo
 
 dolt.shared-server: true
+types.custom: validation
