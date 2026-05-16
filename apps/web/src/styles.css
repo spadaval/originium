@@ -248,6 +248,10 @@ p {
 
 .detail-grid {
   grid-template-columns: minmax(220px, 0.75fr) minmax(280px, 1fr);
+  grid-template-areas:
+    "metadata pdf"
+    "headings pdf";
+  align-items: start;
 }
 
 .panel,
@@ -382,10 +386,23 @@ dd {
 .context-panel,
 .source-list-panel,
 .metadata-pane,
+.headings-pane,
 .pdf-pane {
   display: grid;
   align-content: start;
   gap: 14px;
+}
+
+.metadata-pane {
+  grid-area: metadata;
+}
+
+.headings-pane {
+  grid-area: headings;
+}
+
+.pdf-pane {
+  grid-area: pdf;
 }
 
 .empty-state {
@@ -678,45 +695,44 @@ dd {
 }
 
 .pdf-frame {
-  display: grid;
+  display: block;
+  overflow: hidden;
   min-height: 330px;
-  place-items: center;
   border: 1px solid oklch(83% 0.011 86);
   border-radius: 8px;
   background: oklch(92% 0.008 86);
 }
 
-.pdf-page-skeleton {
-  display: grid;
-  gap: 12px;
-  width: min(180px, 70%);
-  min-height: 240px;
-  align-content: start;
-  border: 1px solid oklch(82% 0.01 86);
-  border-radius: 5px;
-  background: oklch(98.5% 0.003 86);
-  padding: 28px 20px;
+.pdf-document-frame {
+  display: block;
+  width: 100%;
+  height: 70vh;
+  min-height: 520px;
+  border: 0;
+  background: oklch(96.5% 0.008 86);
 }
 
-.pdf-page-skeleton span,
+.pdf-unavailable-state {
+  margin: 14px;
+}
+
+.pdf-unavailable-state .button-link {
+  width: fit-content;
+  margin-top: 12px;
+}
+
+.pdf-state {
+  display: grid;
+  min-height: 180px;
+  align-content: center;
+}
+
 .skeleton-line,
 .skeleton-block {
   display: block;
   border-radius: 6px;
   background: linear-gradient(90deg, oklch(88% 0.01 86), oklch(94% 0.008 86), oklch(88% 0.01 86));
   background-size: 200% 100%;
-}
-
-.pdf-page-skeleton span {
-  height: 10px;
-}
-
-.pdf-page-skeleton span:nth-child(2) {
-  width: 72%;
-}
-
-.pdf-page-skeleton span:nth-child(3) {
-  width: 48%;
 }
 
 .skeleton-line {
@@ -769,6 +785,13 @@ dd {
   .sources-layout,
   .detail-grid {
     grid-template-columns: 1fr;
+  }
+
+  .detail-grid {
+    grid-template-areas:
+      "metadata"
+      "pdf"
+      "headings";
   }
 }
 
@@ -828,6 +851,11 @@ dd {
   }
 
   .pdf-frame {
-    min-height: 260px;
+    min-height: 360px;
+  }
+
+  .pdf-document-frame {
+    height: 62vh;
+    min-height: 360px;
   }
 }

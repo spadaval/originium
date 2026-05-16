@@ -26,6 +26,8 @@ type SourcesPageData = {
 
 type SourceDataError = WebGraphWikiOperationFailure | WebGraphWikiValidationFailure;
 
+const sourcePdfRoutePrefix = "/sources/pdf";
+
 const getSourcesPageData = createServerFn({ method: "GET" })
   .inputValidator(
     (input: SourcesSearch | undefined): SourcesSearch => ({
@@ -107,6 +109,8 @@ function SourcesRoute() {
   const data = Route.useLoaderData();
   const selectedDocument = data.selectedDocument;
   const selectedStatus = selectedDocument ? formatStatus(selectedDocument.extraction_status) : "No selection";
+  const pdfSrc =
+    selectedDocument && isPdfSourceDocument(selectedDocument) ? sourcePdfUrl(selectedDocument.id) : undefined;
 
   return (
     <section className="route-stack" aria-labelledby="sources-title">
@@ -193,58 +197,114 @@ function SourcesRoute() {
                   <p>Select a Source Document from the inventory.</p>
                 </div>
               )}
-
-              <section className="headings-pane" aria-labelledby="headings-heading">
-                <div className="panel-heading tight">
-                  <h3 id="headings-heading">Source Headings</h3>
-                  <span className="quiet-label">{data.headings.length}</span>
-                </div>
-                {data.headingsError ? (
-                  <SourceDataErrorPanel title="Source Headings failed" error={data.headingsError} />
-                ) : data.headings.length > 0 ? (
-                  <ol className="heading-list">
-                    {data.headings.map((heading) => (
-                      <li key={heading.id}>
-                        <span className="heading-level">H{heading.level}</span>
-                        <span>
-                          <strong>{heading.title}</strong>
-                          <small>{headingMeta(heading)}</small>
-                        </span>
-                      </li>
-                    ))}
-                  </ol>
-                ) : (
-                  <div className="empty-state inline-empty" role="status">
-                    <strong>No Source Headings</strong>
-                    <p>Heading anchors will appear after extraction.</p>
-                  </div>
-                )}
-              </section>
             </div>
 
             <section className="pdf-pane" aria-labelledby="pdf-heading">
               <div className="panel-heading">
                 <h2 id="pdf-heading">PDF</h2>
-                <button type="button" className="button-link secondary small" disabled>
-                  Open
-                </button>
+                {pdfSrc ? (
+                  <a href={pdfSrc} target="_blank" rel="noreferrer" className="button-link secondary small">
+                    Open
+                  </a>
+                ) : (
+                  <button type="button" className="button-link secondary small" disabled>
+                    Open
+                  </button>
+                )}
               </div>
-              <div className="pdf-frame" role="img" aria-label="PDF lane placeholder">
-                <div className="pdf-page-skeleton">
-                  <span />
-                  <span />
-                  <span />
+              <SourcePdfPane document={selectedDocument} pdfSrc={pdfSrc} selectedDocumentId={data.selectedDocumentId} />
+            </section>
+
+            <section className="headings-pane" aria-labelledby="headings-heading">
+              <div className="panel-heading tight">
+                <h3 id="headings-heading">Source Headings</h3>
+                <span className="quiet-label">{data.headings.length}</span>
+              </div>
+              {data.headingsError ? (
+                <SourceDataErrorPanel title="Source Headings failed" error={data.headingsError} />
+              ) : data.headings.length > 0 ? (
+                <ol className="heading-list">
+                  {data.headings.map((heading) => (
+                    <li key={heading.id}>
+                      <span className="heading-level">H{heading.level}</span>
+                      <span>
+                        <strong>{heading.title}</strong>
+                        <small>{headingMeta(heading)}</small>
+                      </span>
+                    </li>
+                  ))}
+                </ol>
+              ) : (
+                <div className="empty-state inline-empty" role="status">
+                  <strong>No Source Headings</strong>
+                  <p>Heading anchors will appear after extraction.</p>
                 </div>
-              </div>
-              <div className="state-panel slim" role="status">
-                <strong>PDF viewer pending</strong>
-                <p>PDF embedding is owned by the next Source Document Page slice.</p>
-              </div>
+              )}
             </section>
           </div>
         </section>
       </div>
     </section>
+  );
+}
+
+function SourcePdfPane({
+  document,
+  pdfSrc,
+  selectedDocumentId,
+}: {
+  readonly document?: SourceDocumentRecord;
+  readonly pdfSrc?: string;
+  readonly selectedDocumentId?: string;
+}) {
+  if (pdfSrc && document) {
+    return (
+      <div className="pdf-frame">
+        <object
+          className="pdf-document-frame"
+          data={pdfSrc}
+          type="application/pdf"
+          aria-label={`${document.title} PDF`}
+        >
+          <div className="state-panel slim pdf-unavailable-state" role="status">
+            <strong>PDF unavailable</strong>
+            <p>The backend stream did not return an embeddable PDF for this Source Document.</p>
+            <a href={pdfSrc} target="_blank" rel="noreferrer" className="button-link secondary small">
+              Open stream response
+            </a>
+          </div>
+        </object>
+      </div>
+    );
+  }
+
+  if (document) {
+    return (
+      <div className="state-panel slim pdf-state" role="status">
+        <strong>No PDF file for this Source Document</strong>
+        <p>
+          {document.title || document.id} is recorded as{" "}
+          {document.kind || document.mime_type || "an unknown source type"}. PDF preview is only available for PDF
+          Source Documents.
+        </p>
+      </div>
+    );
+  }
+
+  if (selectedDocumentId) {
+    return (
+      <div className="state-panel slim pdf-state" role="status">
+        <strong>PDF unavailable</strong>
+        <p>Select a valid PDF Source Document before opening the backend stream.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="empty-state inline-empty pdf-state" role="status">
+      <strong>No Source Document selected</strong>
+      <p>Select a PDF Source Document from the inventory to read it here.</p>
+    </div>
   );
 }
 
@@ -360,6 +420,18 @@ function formatDate(value: string | undefined): string {
   if (!value) return "Unknown";
   const dateOnly = value.match(/^\d{4}-\d{2}-\d{2}/)?.[0];
   return dateOnly ?? value;
+}
+
+function isPdfSourceDocument(document: SourceDocumentRecord): boolean {
+  return (
+    document.kind.toLowerCase() === "pdf" ||
+    document.mime_type.toLowerCase() === "application/pdf" ||
+    document.source_uri?.toLowerCase().endsWith(".pdf") === true
+  );
+}
+
+function sourcePdfUrl(sourceDocumentId: string): string {
+  return `${sourcePdfRoutePrefix}/${encodeURIComponent(sourceDocumentId)}`;
 }
 
 function statusClassName(status: string | undefined): string {
