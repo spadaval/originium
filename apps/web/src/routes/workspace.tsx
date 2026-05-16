@@ -1,16 +1,15 @@
 import { validatePageBodyCitationMarkers } from "@originium/domain";
+import type { AgentActivityRecord } from "@originium/surreal";
 import { createFileRoute, Link, useRouter } from "@tanstack/react-router";
 import { createServerFn } from "@tanstack/react-start";
-import { type CSSProperties, type FormEvent, useEffect, useState, useTransition } from "react";
+import { type FormEvent, useEffect, useState, useTransition } from "react";
 import { readWebRuntimeConfig } from "../config.ts";
 import { type CodexWorkspaceTurnData, runCodexWorkspaceTurn } from "../server/codex-app-server.ts";
 import {
-  type AgentActivityRecord,
   type AgentSessionRecord,
   type ChangeLogRecord,
   createOrResumeWorkspaceAgentSession,
   type GraphNeighborhoodData,
-  type GraphNeighborhoodEdge,
   type GraphNeighborhoodNode,
   listAgentActivity,
   listChangeLogs,
@@ -18,10 +17,22 @@ import {
   readGraphNeighborhood,
   readWikiPage,
   saveWikiPageBody,
-  type WebGraphWikiOperationFailure,
-  type WebGraphWikiValidationFailure,
   type WikiPageRecord,
 } from "../server/graph-wiki.ts";
+import {
+  ActivityTimeline,
+  type ChatMessage,
+  formatCount,
+  mergeTimeline,
+  messageStatusLabel,
+  type WorkspaceAgentActivityRecord,
+  type WorkspaceChangeLogRecord,
+  type WorkspaceDataError,
+  WorkspaceDataErrorPanel,
+  type WorkspaceTurnError,
+  WorkspaceTurnErrorPanel,
+} from "./-workspace-activity.tsx";
+import { GraphTab } from "./-workspace-graph.tsx";
 
 type WorkspaceSearch = {
   readonly recordId?: string;
@@ -45,21 +56,7 @@ type WorkspacePageData = {
   readonly changeLogError?: WorkspaceDataError;
 };
 
-type WorkspaceDataError = WebGraphWikiOperationFailure | WebGraphWikiValidationFailure;
-type WorkspaceTurnError = {
-  readonly kind: "codex_app_server_failure";
-  readonly operation: string;
-  readonly target: string;
-  readonly input: Record<string, string | number | boolean | null>;
-  readonly reason: string;
-  readonly action: string;
-};
 type PageCitationValidation = ReturnType<typeof validatePageBodyCitationMarkers>;
-
-type WorkspaceAgentActivityRecord = Omit<AgentActivityRecord, "metadata"> & {
-  readonly metadata?: string;
-};
-type WorkspaceChangeLogRecord = Omit<ChangeLogRecord, "before" | "after">;
 
 type WorkspaceCitationRecord = {
   readonly key: string;
@@ -103,51 +100,8 @@ type SendWorkspaceMessageResult =
       readonly error: WorkspaceTurnError;
     };
 
-type ChatMessage = {
-  readonly id: string;
-  readonly role: "user" | "assistant";
-  readonly text: string;
-  readonly status: "streaming" | "completed" | "failed";
-};
-
-type WorkspaceTimelineItem =
-  | {
-      readonly id: string;
-      readonly lane: "runtime";
-      readonly createdAt?: string;
-      readonly kind: AgentActivityRecord["kind"];
-      readonly status: AgentActivityRecord["status"];
-      readonly source: AgentActivityRecord["source"];
-      readonly summary: string;
-      readonly operation?: string;
-      readonly targetRecords: readonly string[];
-      readonly metadata?: string;
-    }
-  | {
-      readonly id: string;
-      readonly lane: "graph";
-      readonly createdAt?: string;
-      readonly command: string;
-      readonly operation: string;
-      readonly target: string;
-      readonly summary: string;
-      readonly targetRecords: readonly string[];
-    };
-
 const graphLimit = 9;
 const workspaceKey = "default";
-
-const graphPositions = [
-  { x: 50, y: 18 },
-  { x: 18, y: 42 },
-  { x: 50, y: 42 },
-  { x: 82, y: 42 },
-  { x: 18, y: 70 },
-  { x: 50, y: 70 },
-  { x: 82, y: 70 },
-  { x: 34, y: 88 },
-  { x: 66, y: 88 },
-] as const;
 
 const getWorkspacePageData = createServerFn({ method: "GET" })
   .inputValidator(
@@ -535,7 +489,14 @@ function WorkspaceRoute() {
           </div>
 
           {activeTab === "graph" ? (
-            <GraphTab data={data} selectedNode={selectedNode} />
+            <GraphTab
+              graph={data.graph}
+              pages={data.pages}
+              selectedRecordId={data.selectedRecordId}
+              selectedNode={selectedNode}
+              listError={data.listError}
+              graphError={data.graphError}
+            />
           ) : (
             <PageTab
               page={data.page}
@@ -552,170 +513,6 @@ function WorkspaceRoute() {
         </section>
       </div>
     </section>
-  );
-}
-
-function GraphTab({
-  data,
-  selectedNode,
-}: {
-  readonly data: WorkspacePageData;
-  readonly selectedNode?: GraphNeighborhoodNode;
-}) {
-  return (
-    <section className="graph-region" aria-labelledby="graph-heading">
-      <div className="panel-heading">
-        <div>
-          <h2 id="graph-heading">Graph focus</h2>
-          <span className="quiet-label">{selectedNode ? nodeMeta(selectedNode) : "No projection"}</span>
-        </div>
-        <span className="status-pill neutral">{data.graph ? boundedCount(data.graph) : "Read only"}</span>
-      </div>
-
-      <WikiPageFocusList pages={data.pages} selectedRecordId={data.selectedRecordId} listError={data.listError} />
-
-      {data.graph ? (
-        data.graph.nodes.length > 0 ? (
-          <>
-            <GraphCanvas graph={data.graph} />
-            <GraphEdgeList graph={data.graph} />
-          </>
-        ) : (
-          <div className="empty-state inline-empty" role="status">
-            <strong>No graph records</strong>
-            <p>{data.selectedRecordId} returned no Wiki Page or Source Heading node.</p>
-          </div>
-        )
-      ) : data.listError || data.graphError ? null : (
-        <div className="empty-state inline-empty" role="status">
-          <strong>No Wiki Pages</strong>
-          <p>Create or import Graph Wiki records before opening a graph neighborhood.</p>
-        </div>
-      )}
-    </section>
-  );
-}
-
-function WikiPageFocusList({
-  pages,
-  selectedRecordId,
-  listError,
-}: {
-  readonly pages: readonly WikiPageRecord[];
-  readonly selectedRecordId?: string;
-  readonly listError?: WorkspaceDataError;
-}) {
-  if (listError) return <WorkspaceDataErrorPanel title="Wiki Page list failed" error={listError} />;
-  if (pages.length === 0) return null;
-
-  return (
-    <section className="graph-focus-picker" aria-labelledby="graph-focus-picker-heading">
-      <div className="panel-heading tight">
-        <h3 id="graph-focus-picker-heading">Wiki Page focus</h3>
-        <span className="quiet-label">{formatCount(pages.length, "page")}</span>
-      </div>
-      <div className="focus-chip-list">
-        {pages.slice(0, 6).map((page) => (
-          <Link
-            key={page.id}
-            to="/workspace"
-            search={{ recordId: page.id, tab: "graph" }}
-            className={page.id === selectedRecordId ? "focus-chip selected" : "focus-chip"}
-          >
-            {page.title || page.id}
-          </Link>
-        ))}
-      </div>
-    </section>
-  );
-}
-
-function GraphCanvas({ graph }: { readonly graph: GraphNeighborhoodData }) {
-  const visibleNodes = graph.nodes.slice(0, graphPositions.length);
-  const positionById = new Map(visibleNodes.map((node, index) => [node.id, graphPositions[index]]));
-  const visibleEdges = graph.edges.filter((edge) => positionById.has(edge.from) && positionById.has(edge.to));
-
-  return (
-    <div className="graph-canvas" role="img" aria-label={`Bounded graph neighborhood for ${graph.selectedRecordId}`}>
-      <svg className="graph-svg" viewBox="0 0 100 100" aria-hidden="true" focusable="false">
-        {visibleEdges.map((edge) => {
-          const from = positionById.get(edge.from);
-          const to = positionById.get(edge.to);
-          if (!from || !to) return null;
-          const midX = (from.x + to.x) / 2;
-          const midY = (from.y + to.y) / 2;
-          return (
-            <g key={edge.id}>
-              <line
-                className={edge.kind === "citation" ? "graph-line citation" : "graph-line"}
-                x1={from.x}
-                y1={from.y}
-                x2={to.x}
-                y2={to.y}
-              />
-              <text className="graph-edge-text" x={midX} y={midY}>
-                {edgeShortLabel(edge)}
-              </text>
-            </g>
-          );
-        })}
-      </svg>
-      {visibleNodes.map((node, index) => {
-        const position = graphPositions[index];
-        return (
-          <Link
-            key={node.id}
-            to="/workspace"
-            search={{ recordId: node.id, tab: "graph" }}
-            className={graphNodeClassName(node)}
-            style={{ "--graph-x": `${position.x}%`, "--graph-y": `${position.y}%` } as CSSProperties}
-            title={`${nodeKindLabel(node.kind)}: ${node.label}`}
-          >
-            <span>{nodeKindLabel(node.kind)}</span>
-            <strong>{node.label || node.id}</strong>
-          </Link>
-        );
-      })}
-    </div>
-  );
-}
-
-function GraphEdgeList({ graph }: { readonly graph: GraphNeighborhoodData }) {
-  if (graph.edges.length === 0) {
-    return (
-      <div className="empty-state inline-empty compact-graph-empty" role="status">
-        <strong>No linked neighbors</strong>
-        <p>{graph.selectedRecordId} exists, but no Citation or Manual Link edges were returned.</p>
-      </div>
-    );
-  }
-
-  const nodesById = new Map(graph.nodes.map((node) => [node.id, node]));
-  return (
-    <section className="edge-list-region" aria-labelledby="edge-list-heading">
-      <div className="panel-heading tight">
-        <h3 id="edge-list-heading">Edges</h3>
-        <span className="quiet-label">{formatCount(graph.edges.length, "edge")}</span>
-      </div>
-      <ol className="graph-edge-list">
-        {graph.edges.map((edge) => (
-          <li key={edge.id}>
-            <GraphRecordChip node={nodesById.get(edge.from)} recordId={edge.from} />
-            <span className="edge-label">{edgeLabel(edge)}</span>
-            <GraphRecordChip node={nodesById.get(edge.to)} recordId={edge.to} />
-          </li>
-        ))}
-      </ol>
-    </section>
-  );
-}
-
-function GraphRecordChip({ node, recordId }: { readonly node?: GraphNeighborhoodNode; readonly recordId: string }) {
-  if (!node) return <span className="record-chip muted">{recordId}</span>;
-  return (
-    <Link to="/workspace" search={{ recordId: node.id, tab: "graph" }} className="record-chip">
-      {node.label || node.id}
-    </Link>
   );
 }
 
@@ -881,61 +678,6 @@ function PageTab({
   );
 }
 
-function ActivityTimeline({ items }: { readonly items: readonly WorkspaceTimelineItem[] }) {
-  if (items.length === 0) {
-    return (
-      <div className="empty-state inline-empty compact-graph-empty" role="status">
-        <strong>No activity yet</strong>
-        <p>Send a message or save a Wiki Page body to populate runtime events and Graph Wiki mutations.</p>
-      </div>
-    );
-  }
-
-  return (
-    <ol className="activity-list" aria-label="Agent Activity and Change Log records">
-      {items.map((item) => (
-        <li key={`${item.lane}-${item.id}`} className={`activity-item ${item.lane}`}>
-          <time dateTime={item.createdAt}>{formatActivityTime(item.createdAt)}</time>
-          <div>
-            <div className="activity-title-line">
-              <strong>{item.summary}</strong>
-              <span className={`activity-lane ${item.lane}`}>{item.lane === "runtime" ? "Runtime" : "Graph Wiki"}</span>
-            </div>
-            {item.lane === "runtime" ? (
-              <>
-                <span>
-                  {activityKindLabel(item.kind)} · {activityStatusLabel(item.status)} · {item.source}
-                </span>
-                {item.operation ? <code>{item.operation}</code> : null}
-              </>
-            ) : (
-              <>
-                <span>
-                  {item.command} · {item.target}
-                </span>
-                <code>{item.operation}</code>
-              </>
-            )}
-            {item.targetRecords.length > 0 ? <small>{item.targetRecords.join(", ")}</small> : null}
-          </div>
-        </li>
-      ))}
-    </ol>
-  );
-}
-
-function WorkspaceTurnErrorPanel({ title, error }: { readonly title: string; readonly error: WorkspaceTurnError }) {
-  return (
-    <div className="state-panel error-state slim" role="alert">
-      <strong>{title}</strong>
-      <p>
-        {error.operation} on {error.target}: {error.reason}
-      </p>
-      <p>{error.action}</p>
-    </div>
-  );
-}
-
 function WikiPageCitationPanel({
   citations,
   validation,
@@ -990,63 +732,6 @@ function WikiPageCitationPanel({
   );
 }
 
-function WorkspaceDataErrorPanel({ title, error }: { readonly title: string; readonly error: WorkspaceDataError }) {
-  return (
-    <div className="state-panel error-state slim" role="alert">
-      <strong>{title}</strong>
-      <p>
-        {error.operation}: {error.reason}
-      </p>
-      <p>{error.action}</p>
-      {error.kind === "validation_failure" ? (
-        <ul className="validation-list">
-          {error.issues.map((issue) => (
-            <li
-              key={`${issue.kind}-${issue.citationMarkerKey ?? "missing-marker"}-${issue.graphCitationKey ?? "missing-graph"}`}
-            >
-              <strong>{issue.kind}</strong>
-              <span>{issue.message}</span>
-            </li>
-          ))}
-        </ul>
-      ) : null}
-    </div>
-  );
-}
-
-function mergeTimeline(
-  activity: readonly WorkspaceAgentActivityRecord[],
-  changeLogs: readonly WorkspaceChangeLogRecord[],
-): readonly WorkspaceTimelineItem[] {
-  const runtimeItems: WorkspaceTimelineItem[] = activity.map((record) => ({
-    id: record.id,
-    lane: "runtime",
-    createdAt: record.created_at,
-    kind: record.kind,
-    status: record.status,
-    source: record.source,
-    summary: record.summary,
-    operation: record.operation,
-    targetRecords: record.target_records,
-    metadata: record.metadata,
-  }));
-  const graphItems: WorkspaceTimelineItem[] = changeLogs.map((record) => ({
-    id: record.id,
-    lane: "graph",
-    createdAt: record.created_at,
-    command: record.command,
-    operation: record.operation,
-    target: record.target,
-    summary: record.summary,
-    targetRecords: record.target_records,
-  }));
-  return [...runtimeItems, ...graphItems].sort((left, right) => {
-    const leftTime = left.createdAt ? Date.parse(left.createdAt) : 0;
-    const rightTime = right.createdAt ? Date.parse(right.createdAt) : 0;
-    return rightTime - leftTime;
-  });
-}
-
 function serializableActivityRecord(record: AgentActivityRecord): WorkspaceAgentActivityRecord {
   return {
     ...record,
@@ -1093,97 +778,6 @@ function serializableScalar(value: unknown): string | number | boolean | null {
   return JSON.stringify(value);
 }
 
-function messageStatusLabel(status: ChatMessage["status"]): string {
-  switch (status) {
-    case "streaming":
-      return "Streaming";
-    case "failed":
-      return "Failed";
-    case "completed":
-      return "Completed";
-  }
-}
-
-function activityKindLabel(kind: AgentActivityRecord["kind"]): string {
-  switch (kind) {
-    case "file_change":
-      return "File change";
-    case "graph_mutation":
-      return "Graph mutation";
-    case "message":
-      return "Message";
-    case "command":
-      return "Command";
-    case "tool":
-      return "Tool";
-    case "status":
-      return "Status";
-    case "error":
-      return "Error";
-  }
-}
-
-function activityStatusLabel(status: AgentActivityRecord["status"]): string {
-  switch (status) {
-    case "started":
-      return "Started";
-    case "streaming":
-      return "Streaming";
-    case "completed":
-      return "Completed";
-    case "failed":
-      return "Failed";
-  }
-}
-
-function formatActivityTime(value: string | undefined): string {
-  if (!value) return "--:--";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return new Intl.DateTimeFormat(undefined, { hour: "2-digit", minute: "2-digit" }).format(date);
-}
-
-function graphNodeClassName(node: GraphNeighborhoodNode): string {
-  return [
-    "graph-map-node",
-    node.kind === "source_heading" ? "source-heading" : "wiki-page",
-    node.selected ? "selected" : "",
-  ]
-    .filter(Boolean)
-    .join(" ");
-}
-
-function nodeKindLabel(kind: GraphNeighborhoodNode["kind"]): string {
-  return kind === "source_heading" ? "Source Heading" : "Wiki Page";
-}
-
-function nodeMeta(node: GraphNeighborhoodNode): string {
-  if (node.kind === "source_heading") {
-    const page = node.navigation.startPage ? `page ${node.navigation.startPage}` : "no page";
-    return `${nodeKindLabel(node.kind)} - ${page}`;
-  }
-  return `${nodeKindLabel(node.kind)} - ${node.navigation.slug ?? node.id}`;
-}
-
-function boundedCount(graph: GraphNeighborhoodData): string {
-  return `${formatCount(graph.nodes.length, "node")} / ${formatCount(graph.edges.length, "edge")}`;
-}
-
-function edgeLabel(edge: GraphNeighborhoodEdge): string {
-  const label =
-    edge.label && edge.label.length > 0 ? edge.label : edge.kind === "citation" ? "Citation" : "Manual Link";
-  return `${edgeKindLabel(edge.kind)}: ${label}`;
-}
-
-function edgeShortLabel(edge: GraphNeighborhoodEdge): string {
-  const label = edge.label && edge.label.length > 0 ? edge.label : edgeKindLabel(edge.kind);
-  return label.length > 18 ? `${label.slice(0, 17)}...` : label;
-}
-
-function edgeKindLabel(kind: GraphNeighborhoodEdge["kind"]): string {
-  return kind === "citation" ? "Citation" : "Manual Link";
-}
-
 function navigationSummary(node: GraphNeighborhoodNode | undefined): string {
   if (!node) return "No graph node selected";
   if (node.kind === "wiki_page") return node.navigation.slug ? `Wiki Page slug ${node.navigation.slug}` : node.id;
@@ -1192,10 +786,6 @@ function navigationSummary(node: GraphNeighborhoodNode | undefined): string {
       ? `pages ${node.navigation.startPage}-${node.navigation.endPage}`
       : `page ${node.navigation.startPage ?? "unknown"}`;
   return `${node.navigation.sourceDocumentId ?? "Unknown Source Document"} - ${pageRange}`;
-}
-
-function formatCount(count: number, singular: string): string {
-  return `${count} ${singular}${count === 1 ? "" : "s"}`;
 }
 
 function WorkspacePending() {

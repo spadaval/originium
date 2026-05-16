@@ -1,4 +1,6 @@
+import { randomUUID } from "node:crypto";
 import { resolve } from "node:path";
+import { toSlug } from "@originium/domain";
 
 export type SurrealConfig = {
   readonly url: string;
@@ -49,6 +51,47 @@ export type SurrealFetch = (...args: Parameters<typeof fetch>) => ReturnType<typ
 
 export const coreSchemaPath = "schema/core.surql";
 export const sourceDocumentBucketName = "source_documents";
+export const agentActivitySources = ["codex_app_server", "cli", "web"] as const;
+export const agentActivityKinds = [
+  "message",
+  "command",
+  "tool",
+  "file_change",
+  "graph_mutation",
+  "status",
+  "error",
+] as const;
+export const agentActivityStatuses = ["started", "streaming", "completed", "failed"] as const;
+
+export type AgentActivitySource = (typeof agentActivitySources)[number];
+export type AgentActivityKind = (typeof agentActivityKinds)[number];
+export type AgentActivityStatus = (typeof agentActivityStatuses)[number];
+
+export type AgentActivityRecord = {
+  readonly id: string;
+  readonly agent_session: string;
+  readonly source: AgentActivitySource;
+  readonly kind: AgentActivityKind;
+  readonly status: AgentActivityStatus;
+  readonly summary: string;
+  readonly operation?: string;
+  readonly target_records: readonly string[];
+  readonly metadata?: Record<string, unknown>;
+  readonly created_at?: string;
+};
+
+export type AgentActivityDraft = {
+  readonly id?: string;
+  readonly sessionId: string;
+  readonly createSession?: boolean;
+  readonly source: AgentActivitySource;
+  readonly kind: AgentActivityKind;
+  readonly status: AgentActivityStatus;
+  readonly summary: string;
+  readonly operation?: string;
+  readonly targetRecords: readonly string[];
+  readonly metadata?: Record<string, unknown>;
+};
 
 export function readSurrealConfig(env: NodeJS.ProcessEnv = process.env): SurrealConfig {
   return {
@@ -167,6 +210,49 @@ export function sourceDocumentBucketSurql(config: SurrealConfig = readSurrealCon
   return `DEFINE BUCKET IF NOT EXISTS ${sourceDocumentBucketName} BACKEND "file:${config.bucketDir}";`;
 }
 
+export function buildAgentActivityRecordQuery(
+  draft: AgentActivityDraft,
+  options: {
+    readonly newId?: () => string;
+    readonly implicitSessionPurpose?: string;
+  } = {},
+): string {
+  const sessionId = agentActivitySessionRecordId(draft.sessionId);
+  const activityId = draft.id ?? `agent_activity:${(options.newId ?? randomUUID)().replaceAll("-", "")}`;
+  const metadata = draft.metadata === undefined ? "NONE" : JSON.stringify(draft.metadata);
+
+  return [
+    draft.createSession
+      ? `CREATE ${sessionId} SET purpose = "${escapeSurrealString(options.implicitSessionPurpose ?? "Implicit Agent Activity session")}", created_at = time::now();`
+      : "",
+    `CREATE ${activityId} SET agent_session = ${sessionId}, source = "${draft.source}", kind = "${draft.kind}", status = "${draft.status}", summary = "${escapeSurrealString(draft.summary)}", operation = ${draft.operation === undefined ? "NONE" : `"${escapeSurrealString(draft.operation)}"`}, target_records = ${surrealArray(draft.targetRecords)}, metadata = ${metadata}, created_at = time::now();`,
+    `SELECT id, agent_session, source, kind, status, summary, operation, target_records, metadata, created_at FROM ${activityId};`,
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
+export function buildAgentActivityListQuery(sessionId?: string, order: "ASC" | "DESC" = "ASC"): string {
+  const where = sessionId ? ` WHERE agent_session = ${agentActivitySessionRecordId(sessionId)}` : "";
+  return `SELECT id, agent_session, source, kind, status, summary, operation, target_records, metadata, created_at FROM agent_activity${where} ORDER BY created_at ${order};`;
+}
+
+export function defaultAgentActivityStatus(kind: string | undefined): AgentActivityStatus {
+  return kind === "error" ? "failed" : "completed";
+}
+
+export function isAgentActivitySource(value: string): value is AgentActivitySource {
+  return agentActivitySources.includes(value as AgentActivitySource);
+}
+
+export function isAgentActivityKind(value: string | undefined): value is AgentActivityKind {
+  return value !== undefined && agentActivityKinds.includes(value as AgentActivityKind);
+}
+
+export function isAgentActivityStatus(value: string): value is AgentActivityStatus {
+  return agentActivityStatuses.includes(value as AgentActivityStatus);
+}
+
 export function localSurrealStartCommand(config: SurrealConfig = readSurrealConfig()): {
   readonly command: string;
   readonly args: readonly string[];
@@ -214,6 +300,19 @@ function operationFailure(input: {
     reason: input.reason,
     action: input.action,
   };
+}
+
+function agentActivitySessionRecordId(value: string): string {
+  if (value.includes(":")) return value;
+  return `agent_session:${toSlug(value).replace(/-/g, "_")}`;
+}
+
+function escapeSurrealString(input: string): string {
+  return input.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+}
+
+function surrealArray(values: readonly string[]): string {
+  return `[${values.map((value) => `"${escapeSurrealString(value)}"`).join(", ")}]`;
 }
 
 function sqlEndpoint(rawUrl: string): string {

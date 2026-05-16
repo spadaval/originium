@@ -1,7 +1,7 @@
 import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process";
+import type { AgentActivityDraft } from "@originium/surreal";
 import type { CodexAppServerConfig, WebRuntimeConfig } from "../config.ts";
 import {
-  type AgentActivityDraft,
   type AgentSessionRecord,
   createOrResumeWorkspaceAgentSession,
   recordAgentActivity,

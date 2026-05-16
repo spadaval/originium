@@ -1,6 +1,10 @@
 import { randomUUID } from "node:crypto";
 import { toSlug, validatePageBodyCitationMarkers, wikiPageRecordId, wikiPageSlugFromTitle } from "@originium/domain";
 import {
+  type AgentActivityDraft,
+  type AgentActivityRecord,
+  buildAgentActivityListQuery,
+  buildAgentActivityRecordQuery as buildSurrealAgentActivityRecordQuery,
   describeSurrealTarget,
   executeSurrealQuery,
   readSurrealConfig,
@@ -182,31 +186,6 @@ export type ChangeLogRecord = {
   readonly before?: unknown;
   readonly after?: unknown;
   readonly created_at?: string;
-};
-
-export type AgentActivityRecord = {
-  readonly id: string;
-  readonly agent_session: string;
-  readonly source: "codex_app_server" | "cli" | "web";
-  readonly kind: "message" | "command" | "tool" | "file_change" | "graph_mutation" | "status" | "error";
-  readonly status: "started" | "streaming" | "completed" | "failed";
-  readonly summary: string;
-  readonly operation?: string;
-  readonly target_records: readonly string[];
-  readonly metadata?: unknown;
-  readonly created_at?: string;
-};
-
-export type AgentActivityDraft = {
-  readonly sessionId: string;
-  readonly source: AgentActivityRecord["source"];
-  readonly kind: AgentActivityRecord["kind"];
-  readonly status: AgentActivityRecord["status"];
-  readonly summary: string;
-  readonly operation?: string;
-  readonly targetRecords: readonly string[];
-  readonly metadata?: Record<string, unknown>;
-  readonly id?: string;
 };
 
 export type SaveWikiPageBodyInput = {
@@ -576,10 +555,9 @@ export async function listAgentActivity(
   dependencies: WebGraphWikiDependencies = {},
 ): Promise<WebGraphWikiResult<readonly AgentActivityRecord[]>> {
   const operation = "web.graph.agent_activity.list";
-  const where = input.sessionId ? ` WHERE agent_session = ${recordId(input.sessionId, "agent_session")}` : "";
   return queryRows(
     operation,
-    `SELECT id, agent_session, source, kind, status, summary, operation, target_records, metadata, created_at FROM agent_activity${where} ORDER BY created_at DESC;`,
+    buildAgentActivityListQuery(input.sessionId, "DESC"),
     compactInput(input, { table: "agent_activity" }),
     dependencies,
     "agent_activity",
@@ -626,12 +604,7 @@ export async function recordAgentActivity(
 }
 
 export function buildAgentActivityRecordQuery(draft: AgentActivityDraft, newId: (() => string) | undefined): string {
-  const activityId = draft.id ?? `agent_activity:${(newId ?? randomUUID)().replaceAll("-", "")}`;
-  const metadata = draft.metadata === undefined ? "NONE" : JSON.stringify(draft.metadata);
-  return [
-    `CREATE ${activityId} SET agent_session = ${recordId(draft.sessionId, "agent_session")}, source = "${draft.source}", kind = "${draft.kind}", status = "${draft.status}", summary = "${escapeSurrealString(draft.summary)}", operation = ${draft.operation === undefined ? "NONE" : `"${escapeSurrealString(draft.operation)}"`}, target_records = ${surrealArray(draft.targetRecords)}, metadata = ${metadata}, created_at = time::now();`,
-    `SELECT id, agent_session, source, kind, status, summary, operation, target_records, metadata, created_at FROM ${activityId};`,
-  ].join("\n");
+  return buildSurrealAgentActivityRecordQuery(draft, { newId });
 }
 
 async function queryRows<T>(

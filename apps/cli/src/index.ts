@@ -21,9 +21,19 @@ import {
   searchPdfText,
 } from "@originium/pdf-ingest";
 import {
+  type AgentActivityDraft,
+  agentActivityKinds,
+  agentActivitySources,
+  agentActivityStatuses,
+  buildAgentActivityListQuery,
+  buildAgentActivityRecordQuery as buildSurrealAgentActivityRecordQuery,
   coreSchemaPath,
+  defaultAgentActivityStatus,
   describeSurrealTarget,
   executeSurrealQuery,
+  isAgentActivityKind,
+  isAgentActivitySource,
+  isAgentActivityStatus,
   localSurrealStartCommand,
   readSurrealConfig,
   type SurrealConfig,
@@ -64,27 +74,6 @@ type QueryLogOptions = {
   readonly afterQuery?: string;
   readonly sessionId?: string;
   readonly relateEditedTargets?: readonly string[];
-};
-
-const agentActivitySources = ["codex_app_server", "cli", "web"] as const;
-const agentActivityKinds = ["message", "command", "tool", "file_change", "graph_mutation", "status", "error"] as const;
-const agentActivityStatuses = ["started", "streaming", "completed", "failed"] as const;
-
-export type AgentActivitySource = (typeof agentActivitySources)[number];
-export type AgentActivityKind = (typeof agentActivityKinds)[number];
-export type AgentActivityStatus = (typeof agentActivityStatuses)[number];
-
-export type AgentActivityDraft = {
-  readonly sessionId: string;
-  readonly createSession: boolean;
-  readonly source: AgentActivitySource;
-  readonly kind: AgentActivityKind;
-  readonly status: AgentActivityStatus;
-  readonly summary: string;
-  readonly operation?: string;
-  readonly targetRecords: readonly string[];
-  readonly metadata?: Record<string, unknown>;
-  readonly id?: string;
 };
 
 type AcceptanceStageState = "pass" | "fail" | "blocked" | "deferred" | "not-applicable";
@@ -1592,22 +1581,9 @@ async function selectById(
 }
 
 export function buildAgentActivityRecordQuery(draft: AgentActivityDraft): string {
-  const activityId = draft.id ?? `agent_activity:${randomUUID().replaceAll("-", "")}`;
-  const metadata = draft.metadata === undefined ? "NONE" : JSON.stringify(draft.metadata);
-  return [
-    draft.createSession
-      ? `CREATE ${draft.sessionId} SET purpose = "Implicit Agent Activity CLI session", created_at = time::now();`
-      : "",
-    `CREATE ${activityId} SET agent_session = ${draft.sessionId}, source = "${draft.source}", kind = "${draft.kind}", status = "${draft.status}", summary = "${escapeSurrealString(draft.summary)}", operation = ${draft.operation === undefined ? "NONE" : `"${escapeSurrealString(draft.operation)}"`}, target_records = ${surrealArray(draft.targetRecords)}, metadata = ${metadata}, created_at = time::now();`,
-    `SELECT id, agent_session, source, kind, status, summary, operation, target_records, metadata, created_at FROM ${activityId};`,
-  ]
-    .filter(Boolean)
-    .join("\n");
-}
-
-export function buildAgentActivityListQuery(sessionId?: string): string {
-  const where = sessionId ? ` WHERE agent_session = ${sessionId}` : "";
-  return `SELECT id, agent_session, source, kind, status, summary, operation, target_records, metadata, created_at FROM agent_activity${where} ORDER BY created_at ASC;`;
+  return buildSurrealAgentActivityRecordQuery(draft, {
+    implicitSessionPurpose: "Implicit Agent Activity CLI session",
+  });
 }
 
 function agentActivityDraftFromArgv(argv: readonly string[]): AgentActivityDraft | CliFailure {
@@ -2701,22 +2677,6 @@ function toSurrealIdPart(input: string): string {
 
 function surrealArray(values: readonly string[]): string {
   return `[${values.map((value) => `"${escapeSurrealString(value)}"`).join(", ")}]`;
-}
-
-function defaultAgentActivityStatus(kind: string | undefined): AgentActivityStatus {
-  return kind === "error" ? "failed" : "completed";
-}
-
-function isAgentActivitySource(value: string): value is AgentActivitySource {
-  return agentActivitySources.includes(value as AgentActivitySource);
-}
-
-function isAgentActivityKind(value: string | undefined): value is AgentActivityKind {
-  return value !== undefined && agentActivityKinds.includes(value as AgentActivityKind);
-}
-
-function isAgentActivityStatus(value: string): value is AgentActivityStatus {
-  return agentActivityStatuses.includes(value as AgentActivityStatus);
 }
 
 function parseMetadataJson(value: string): Record<string, unknown> | Error {

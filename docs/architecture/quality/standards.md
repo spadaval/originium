@@ -41,7 +41,11 @@
 - `packages/domain` owns pure Graph Wiki language, identifiers, parsing, and
   policies.
 - `packages/surreal` owns SurrealDB connection, schema application, file bucket
-  helpers, graph queries, and logging wrappers.
+  helpers, shared persistence helpers, and narrow persistence contracts used by
+  multiple app surfaces such as Agent Activity.
+- Domain-specific Graph Wiki queries may live with the CLI or web business
+  surface that owns the command, route, or projection. Do not move them into
+  `packages/surreal` just to centralize query strings.
 - `packages/pdf-ingest` owns PDF metadata, heading extraction, and chunk
   projection.
 - `apps/cli` owns agent-facing command composition and bundled CLI behavior.

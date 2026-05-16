@@ -14,14 +14,14 @@ Originium stores canonical Graph Wiki state in SurrealDB and exposes projections
 
 ## Package Ownership
 
-| Area             | Owner                 | Purpose                                                                   |
-| ---------------- | --------------------- | ------------------------------------------------------------------------- |
-| Domain language  | `packages/domain`     | Shared Graph Wiki types, IDs, and small pure helpers.                     |
-| SurrealDB access | `packages/surreal`    | Database configuration, schema file references, and future query helpers. |
-| PDF ingestion    | `packages/pdf-ingest` | Source Document import and Chapter Ingestion boundaries.                  |
-| CLI              | `apps/cli`            | Local database commands, schema application, and ingestion entry points.  |
-| Web              | `apps/web`            | TanStack Start shell and host-direct browser/backend seams.               |
-| Schema           | `schema`              | Checked-in SurrealQL definitions.                                         |
+| Area             | Owner                 | Purpose                                                                                                                     |
+| ---------------- | --------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| Domain language  | `packages/domain`     | Shared Graph Wiki types, IDs, and small pure helpers.                                                                       |
+| SurrealDB access | `packages/surreal`    | Database configuration, schema file references, file-bucket helpers, and shared persistence helpers such as Agent Activity. |
+| PDF ingestion    | `packages/pdf-ingest` | Source Document import and Chapter Ingestion boundaries.                                                                    |
+| CLI              | `apps/cli`            | Local database commands, schema application, ingestion entry points, and agent-facing Graph Wiki query composition.         |
+| Web              | `apps/web`            | TanStack Start shell, host-direct browser/backend seams, and browser-facing Graph Wiki query composition.                   |
+| Schema           | `schema`              | Checked-in SurrealQL definitions.                                                                                           |
 
 ## Runtime Summary
 

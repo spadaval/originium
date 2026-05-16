@@ -2,12 +2,8 @@ import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
-import {
-  buildAgentActivityListQuery,
-  buildAgentActivityRecordQuery,
-  lintGraphWikiStatements,
-  previewPageReplace,
-} from "./index";
+import { buildAgentActivityListQuery, buildAgentActivityRecordQuery } from "@originium/surreal";
+import { lintGraphWikiStatements, previewPageReplace } from "./index";
 
 const bundledCli = fileURLToPath(new URL("../dist/originium", import.meta.url));
 const repoRoot = fileURLToPath(new URL("../../..", import.meta.url));
