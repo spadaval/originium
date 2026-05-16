@@ -18,7 +18,10 @@ class FakeCodexWebSocket {
   readonly sent: string[] = [];
   private readonly listeners = new Map<string, Listener[]>();
 
-  constructor(readonly url: string) {
+  constructor(
+    readonly url: string,
+    private readonly options: { readonly missingThreadIds?: ReadonlySet<string> } = {},
+  ) {
     setTimeout(() => this.emit("open", {}), 0);
   }
 
@@ -51,6 +54,10 @@ class FakeCodexWebSocket {
       const params =
         request.params && typeof request.params === "object" ? (request.params as { threadId?: string }) : {};
       const threadId = params.threadId ?? "codex-thread-1";
+      if (this.options.missingThreadIds?.has(threadId)) {
+        this.emitJson({ id: request.id, error: { code: -32000, message: `thread not found: ${threadId}` } });
+        return;
+      }
       const turn = { id: "codex-turn-1", status: "inProgress" };
       this.emitJson({ id: request.id, result: { turn } });
       setTimeout(() => {
@@ -318,6 +325,85 @@ test("resumes a workspace Agent Session and reuses the mapped Codex thread for a
   assert.match(sentMessages, /"method":"turn\/start"/);
   assert.match(sentMessages, /"threadId":"codex-thread-existing"/);
   assert.doesNotMatch(graphQueries.join("\n"), /UPDATE agent_session:workspace SET codex_thread_id/);
+});
+
+test("recovers a stale workspace Codex thread mapping by starting and persisting a new thread", async () => {
+  const config = readWebRuntimeConfig({ ORIGINIUM_CODEX_APP_SERVER_URL: "http://127.0.0.1:3001" });
+  const sockets: FakeCodexWebSocket[] = [];
+  const graphQueries: string[] = [];
+  const graphFetch: SurrealFetch = async (_url, init) => {
+    const query = String(init?.body);
+    graphQueries.push(query);
+    if (query.includes('FROM agent_session WHERE workspace_key = "default"')) {
+      return new Response(
+        JSON.stringify([
+          {
+            status: "OK",
+            result: [
+              {
+                id: "agent_session:workspace",
+                purpose: "Codex-powered Agent Workspace",
+                workspace_key: "default",
+                codex_thread_id: "codex-thread-stale",
+              },
+            ],
+          },
+        ]),
+        { status: 200 },
+      );
+    }
+    if (query.includes("UPDATE agent_session:workspace SET codex_thread_id")) {
+      return new Response(
+        JSON.stringify([
+          { status: "OK", result: [{ id: "agent_session:workspace" }] },
+          {
+            status: "OK",
+            result: [
+              {
+                id: "agent_session:workspace",
+                purpose: "Codex-powered Agent Workspace",
+                workspace_key: "default",
+                codex_thread_id: "codex-thread-1",
+                codex_model: "gpt-test",
+                codex_model_provider: "openai",
+                codex_cwd: "/tmp",
+              },
+            ],
+          },
+        ]),
+        { status: 200 },
+      );
+    }
+    return new Response(JSON.stringify([{ status: "OK", result: [{ id: "agent_activity:test" }] }]), { status: 200 });
+  };
+
+  const result = await runCodexWorkspaceTurn(
+    config,
+    { workspaceKey: "default", prompt: "Continue", timeoutMs: 1_000 },
+    {
+      activity: { fetch: graphFetch },
+      fetch: async () => new Response("ok", { status: 200 }),
+      webSocket: (url) => {
+        const socket = new FakeCodexWebSocket(url, { missingThreadIds: new Set(["codex-thread-stale"]) });
+        sockets.push(socket);
+        return socket;
+      },
+    },
+  );
+
+  assert.equal(result.ok, true);
+  assert.equal(result.data.sessionCreated, false);
+  assert.equal(result.data.threadStarted, true);
+  assert.equal(result.data.threadId, "codex-thread-1");
+  assert.equal(result.data.session.codex_thread_id, "codex-thread-1");
+  assert.equal(result.data.messageText, "hello");
+  const sentMessages = sockets[0]?.sent.join("\n") ?? "";
+  assert.match(sentMessages, /"threadId":"codex-thread-stale"/);
+  assert.match(sentMessages, /"method":"thread\/start"/);
+  assert.match(sentMessages, /"threadId":"codex-thread-1"/);
+  assert.match(graphQueries.join("\n"), /summary = "Codex thread mapping stale codex-thread-stale"/);
+  assert.match(graphQueries.join("\n"), /UPDATE agent_session:workspace SET codex_thread_id = "codex-thread-1"/);
+  assert.doesNotMatch(graphQueries.join("\n"), /CREATE change_log/);
 });
 
 test("reports concrete smoke failure when the app-server websocket cannot connect", async () => {

@@ -469,7 +469,7 @@ export async function runCodexWorkspaceTurn(
     let session = sessionResult.data.session;
     let threadStarted = false;
 
-    if (!threadId) {
+    const startThread = async () => {
       const cwd = input.cwd ?? dependencies.cwd ?? process.cwd();
       const threadResponse = await connection.data.request("thread/start", {
         cwd,
@@ -479,14 +479,14 @@ export async function runCodexWorkspaceTurn(
         serviceName: "Originium",
       });
       const thread = objectProperty(threadResponse, "thread");
-      threadId = requireStringProperty(thread, "id", "thread/start response");
-      observedThreadId = threadId;
+      const startedThreadId = requireStringProperty(thread, "id", "thread/start response");
+      observedThreadId = startedThreadId;
       threadStarted = true;
 
       const metadataResult = await recordAgentSessionCodexThread(
         {
           sessionId,
-          threadId,
+          threadId: startedThreadId,
           model: stringProperty(threadResponse, "model"),
           modelProvider: stringProperty(threadResponse, "modelProvider"),
           cwd: stringProperty(threadResponse, "cwd") ?? cwd,
@@ -495,25 +495,52 @@ export async function runCodexWorkspaceTurn(
       );
       if (!metadataResult.ok) {
         throw new Error(
-          `Agent Session Codex thread persistence failed for threadId=${threadId}: ${metadataResult.error.reason}`,
+          `Agent Session Codex thread persistence failed for threadId=${startedThreadId}: ${metadataResult.error.reason}`,
         );
       }
-      session = metadataResult.data ?? { ...session, codex_thread_id: threadId };
+      session = metadataResult.data ?? { ...session, codex_thread_id: startedThreadId };
 
       await recordActivity({
         sessionId,
         kind: "status",
         status: "completed",
-        summary: `Codex thread started ${threadId}`,
+        summary: `Codex thread started ${startedThreadId}`,
         operation: "thread/start",
-        metadata: { threadId },
+        metadata: { threadId: startedThreadId },
       });
+
+      return startedThreadId;
+    };
+
+    if (!threadId) {
+      threadId = await startThread();
     }
 
-    const turnResponse = await connection.data.request("turn/start", {
-      threadId,
-      input: [{ type: "text", text: input.prompt }],
-    });
+    let turnResponse: unknown;
+    try {
+      turnResponse = await connection.data.request("turn/start", {
+        threadId,
+        input: [{ type: "text", text: input.prompt }],
+      });
+    } catch (error) {
+      if (!isThreadNotFoundError(error)) throw error;
+
+      const staleThreadId = threadId;
+      await recordActivity({
+        sessionId,
+        kind: "error",
+        status: "failed",
+        summary: `Codex thread mapping stale ${staleThreadId}`,
+        operation: "turn/start",
+        metadata: { staleThreadId, reason: errorReason(error), recovery: "start_new_thread_and_retry" },
+      });
+
+      threadId = await startThread();
+      turnResponse = await connection.data.request("turn/start", {
+        threadId,
+        input: [{ type: "text", text: input.prompt }],
+      });
+    }
     const turn = objectProperty(turnResponse, "turn");
     const turnId = requireStringProperty(turn, "id", "turn/start response");
     observedTurnId = turnId;
@@ -920,6 +947,10 @@ function errorReason(error: unknown): string {
     return error.code;
   }
   return error instanceof Error ? error.message : String(error);
+}
+
+function isThreadNotFoundError(error: unknown): boolean {
+  return /\bthread not found\b/i.test(errorReason(error));
 }
 
 function delay(ms: number): Promise<void> {
