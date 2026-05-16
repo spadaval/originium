@@ -24,6 +24,9 @@ bun run check
 - Bundled CLI: `bun run --cwd apps/cli build && ./apps/cli/dist/originium db status`
 - Installable CLI: `bun run cli:install && originium db status`
 - Web shell: `bun run dev:web`
+- Host-direct web app: build the CLI, run `./apps/cli/dist/originium db start`,
+  run `./apps/cli/dist/originium db apply-schema`, then run `bun run dev:web`.
+- Web runtime health: `curl -fsS http://127.0.0.1:3000/api/health`
 - Full local gate: `bun run check`
 
 ## Operational Environment
@@ -39,6 +42,8 @@ bun run check
 - [SPEC.md](SPEC.md) defines the product and proof-of-concept target.
 - [CONTEXT.md](CONTEXT.md) defines canonical Graph Wiki language.
 - [docs/index.md](docs/index.md) is the compact knowledge map.
-- [docs/architecture/index.md](docs/architecture/index.md) summarizes package ownership and runtime boundaries.
+- [docs/architecture/index.md](docs/architecture/index.md) summarizes package
+  ownership, host-direct operation, runtime validation, and deferred split
+  topology/containerization work.
 - [docs/agent/index.md](docs/agent/index.md) summarizes the repo-local agent factory process.
 - [docs/architecture/quality/index.md](docs/architecture/quality/index.md) defines validation-centric engineering standards.
