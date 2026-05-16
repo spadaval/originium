@@ -13,6 +13,7 @@ import { Route as WorkspaceRouteImport } from './routes/workspace'
 import { Route as SourcesRouteImport } from './routes/sources'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ApiHealthRouteImport } from './routes/api.health'
+import { Route as SourcesPdfSourceDocumentIdRouteImport } from './routes/sources.pdf.$sourceDocumentId'
 
 const WorkspaceRoute = WorkspaceRouteImport.update({
   id: '/workspace',
@@ -34,37 +35,62 @@ const ApiHealthRoute = ApiHealthRouteImport.update({
   path: '/api/health',
   getParentRoute: () => rootRouteImport,
 } as any)
+const SourcesPdfSourceDocumentIdRoute =
+  SourcesPdfSourceDocumentIdRouteImport.update({
+    id: '/pdf/$sourceDocumentId',
+    path: '/pdf/$sourceDocumentId',
+    getParentRoute: () => SourcesRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
-  '/sources': typeof SourcesRoute
+  '/sources': typeof SourcesRouteWithChildren
   '/workspace': typeof WorkspaceRoute
   '/api/health': typeof ApiHealthRoute
+  '/sources/pdf/$sourceDocumentId': typeof SourcesPdfSourceDocumentIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
-  '/sources': typeof SourcesRoute
+  '/sources': typeof SourcesRouteWithChildren
   '/workspace': typeof WorkspaceRoute
   '/api/health': typeof ApiHealthRoute
+  '/sources/pdf/$sourceDocumentId': typeof SourcesPdfSourceDocumentIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
-  '/sources': typeof SourcesRoute
+  '/sources': typeof SourcesRouteWithChildren
   '/workspace': typeof WorkspaceRoute
   '/api/health': typeof ApiHealthRoute
+  '/sources/pdf/$sourceDocumentId': typeof SourcesPdfSourceDocumentIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/sources' | '/workspace' | '/api/health'
+  fullPaths:
+    | '/'
+    | '/sources'
+    | '/workspace'
+    | '/api/health'
+    | '/sources/pdf/$sourceDocumentId'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/sources' | '/workspace' | '/api/health'
-  id: '__root__' | '/' | '/sources' | '/workspace' | '/api/health'
+  to:
+    | '/'
+    | '/sources'
+    | '/workspace'
+    | '/api/health'
+    | '/sources/pdf/$sourceDocumentId'
+  id:
+    | '__root__'
+    | '/'
+    | '/sources'
+    | '/workspace'
+    | '/api/health'
+    | '/sources/pdf/$sourceDocumentId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
-  SourcesRoute: typeof SourcesRoute
+  SourcesRoute: typeof SourcesRouteWithChildren
   WorkspaceRoute: typeof WorkspaceRoute
   ApiHealthRoute: typeof ApiHealthRoute
 }
@@ -99,12 +125,30 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiHealthRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/sources/pdf/$sourceDocumentId': {
+      id: '/sources/pdf/$sourceDocumentId'
+      path: '/pdf/$sourceDocumentId'
+      fullPath: '/sources/pdf/$sourceDocumentId'
+      preLoaderRoute: typeof SourcesPdfSourceDocumentIdRouteImport
+      parentRoute: typeof SourcesRoute
+    }
   }
 }
 
+interface SourcesRouteChildren {
+  SourcesPdfSourceDocumentIdRoute: typeof SourcesPdfSourceDocumentIdRoute
+}
+
+const SourcesRouteChildren: SourcesRouteChildren = {
+  SourcesPdfSourceDocumentIdRoute: SourcesPdfSourceDocumentIdRoute,
+}
+
+const SourcesRouteWithChildren =
+  SourcesRoute._addFileChildren(SourcesRouteChildren)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
-  SourcesRoute: SourcesRoute,
+  SourcesRoute: SourcesRouteWithChildren,
   WorkspaceRoute: WorkspaceRoute,
   ApiHealthRoute: ApiHealthRoute,
 }
