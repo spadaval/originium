@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
+import { lintGraphWikiStatements, previewPageReplace } from "./index";
 
 const bundledCli = fileURLToPath(new URL("../dist/originium", import.meta.url));
 const repoRoot = fileURLToPath(new URL("../../..", import.meta.url));
@@ -10,7 +11,7 @@ const acceptanceFixture = fileURLToPath(
 );
 
 test("bundled CLI reports the configured SurrealDB target", () => {
-  const output = execFileSync(bundledCli, ["db", "status"], {
+  const output = execFileSync(bundledCli, ["db", "status", "--json"], {
     encoding: "utf8",
     env: {
       ...process.env,
@@ -31,8 +32,23 @@ test("bundled CLI reports the configured SurrealDB target", () => {
   });
 });
 
+test("bundled CLI defaults to concise human-readable output", () => {
+  const output = execFileSync(bundledCli, ["db", "status"], {
+    encoding: "utf8",
+    env: {
+      ...process.env,
+      ORIGINIUM_SURREAL_DATABASE: "testdb",
+      ORIGINIUM_SURREAL_NAMESPACE: "testns",
+      ORIGINIUM_SURREAL_URL: "http://127.0.0.1:8000",
+    },
+  });
+
+  assert.match(output, /^OK db status\nSurrealDB target:/);
+  assert.doesNotMatch(output, /^\{/);
+});
+
 test("bundled CLI reports structured unknown command failures", () => {
-  const result = spawnSync(bundledCli, ["unknown"], {
+  const result = spawnSync(bundledCli, ["unknown", "--json"], {
     encoding: "utf8",
   });
 
@@ -47,7 +63,7 @@ test("bundled CLI reports structured unknown command failures", () => {
 });
 
 test("bundled CLI reports structured missing argument failures", () => {
-  const result = spawnSync(bundledCli, ["db"], {
+  const result = spawnSync(bundledCli, ["db", "--json"], {
     encoding: "utf8",
   });
 
@@ -63,7 +79,7 @@ test("bundled CLI reports structured missing argument failures", () => {
 });
 
 test("bundled CLI reports structured unknown subgroup failures", () => {
-  const result = spawnSync(bundledCli, ["source", "bogus"], {
+  const result = spawnSync(bundledCli, ["source", "bogus", "--json"], {
     encoding: "utf8",
   });
 
@@ -76,8 +92,25 @@ test("bundled CLI reports structured unknown subgroup failures", () => {
   assert.match(output.error.reason, /Unknown source command 'bogus'/);
 });
 
+test("bundled CLI reports session current from ORIGINIUM_SESSION without database access", () => {
+  const result = spawnSync(bundledCli, ["session", "current", "--json"], {
+    encoding: "utf8",
+    env: {
+      ...process.env,
+      ORIGINIUM_SESSION: "agent_session:test_env_override",
+    },
+  });
+
+  assert.equal(result.status, 0);
+  const output = JSON.parse(result.stdout);
+  assert.equal(output.ok, true);
+  assert.equal(output.operation, "session.current");
+  assert.equal(output.data.id, "agent_session:test_env_override");
+  assert.equal(output.data.source, "env");
+});
+
 test("bundled acceptance harness reports blocked stages with nonzero exit", () => {
-  const result = spawnSync(bundledCli, ["acceptance", "poc", acceptanceFixture], {
+  const result = spawnSync(bundledCli, ["acceptance", "poc", acceptanceFixture, "--json"], {
     cwd: repoRoot,
     encoding: "utf8",
     env: {
@@ -112,7 +145,7 @@ test("bundled acceptance harness reports blocked stages with nonzero exit", () =
 });
 
 test("bundled page search reports concrete Ollama embedding failures", () => {
-  const result = spawnSync(bundledCli, ["page", "search", "mining"], {
+  const result = spawnSync(bundledCli, ["page", "search", "mining", "--json"], {
     encoding: "utf8",
     env: {
       ...process.env,
@@ -129,4 +162,121 @@ test("bundled page search reports concrete Ollama embedding failures", () => {
   assert.match(output.error.reason, /Ollama embedding request failed/);
   assert.match(output.error.reason, /missing-embed-model/);
   assert.match(output.error.action, /ollama pull missing-embed-model/);
+});
+
+test("bundled source read returns lossy text projection by page range", () => {
+  const result = spawnSync(
+    bundledCli,
+    ["source", "read", acceptanceFixture, "--pages", "1", "--max-tokens", "800", "--json"],
+    {
+      cwd: repoRoot,
+      encoding: "utf8",
+    },
+  );
+
+  assert.equal(result.status, 0);
+  const output = JSON.parse(result.stdout);
+  assert.equal(output.ok, true);
+  assert.equal(output.operation, "source.read");
+  assert.equal(output.data.sourceDocument, "source_document:ia-mining-dg");
+  assert.deepEqual(output.data.pageRange, { start: 1, end: 1 });
+  assert.equal(output.data.provenance.lossy, true);
+  assert.match(output.data.provenance.checksumSha256, /^[a-f0-9]{64}$/);
+  assert.match(output.data.warning, /Lossy source text projection/);
+  assert.match(output.data.text, /Autonomous|Mining/);
+  assert.match(output.data.nearestHeading.id, /^source_heading:/);
+  assert.match(output.data.nearestHeading.extractionHeadingId, /^source_heading:/);
+});
+
+test("bundled source search returns IA Mining snippets with persisted heading context", () => {
+  const result = spawnSync(
+    bundledCli,
+    [
+      "source",
+      "search",
+      acceptanceFixture,
+      "Cisco Ultra-Reliable Wireless Backhaul",
+      "--pages",
+      "11-20",
+      "--limit",
+      "2",
+      "--json",
+    ],
+    {
+      cwd: repoRoot,
+      encoding: "utf8",
+    },
+  );
+
+  assert.equal(result.status, 0);
+  const output = JSON.parse(result.stdout);
+  assert.equal(output.ok, true);
+  assert.equal(output.operation, "source.search");
+  assert.equal(output.data.sourceDocument, "source_document:ia-mining-dg");
+  assert.ok(output.data.hits.length > 0);
+  assert.match(output.data.hits[0].snippet, /Cisco Ultra-Reliable Wireless Backhaul/);
+  assert.match(output.data.hits[0].nearestHeading.id, /^source_heading:/);
+  assert.equal(output.data.hits[0].nearestHeading.id, output.data.hits[0].nearestHeading.persistedSourceHeadingId);
+  assert.equal(output.data.hits[0].provenance.lossy, true);
+});
+
+test("Wiki Page replace preview reports before/after context and does not mutate", () => {
+  const result = previewPageReplace("wiki_page:test", "Alpha detail.[^source]\n\nBeta detail.", ["source"], {
+    find: "Beta detail.",
+    replace: "Gamma detail.",
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(result.nextBody, "Alpha detail.[^source]\n\nGamma detail.");
+  assert.equal(result.data.matchCount, 1);
+  assert.match(result.data.beforeContext, /Beta detail/);
+  assert.match(result.data.afterContext, /Gamma detail/);
+  assert.equal(result.data.citationValidation.issues.length, 0);
+});
+
+test("Wiki Page replace fails for absent and ambiguous find text", () => {
+  const absent = previewPageReplace("wiki_page:test", "Alpha body.", [], {
+    find: "Missing",
+    replace: "Replacement",
+  });
+  assert.equal(absent.ok, false);
+  assert.match(absent.reason, /absent/);
+  assert.deepEqual(absent.data, { pageId: "wiki_page:test", find: "Missing", matchCount: 0 });
+
+  const ambiguous = previewPageReplace("wiki_page:test", "Alpha Beta Alpha", [], {
+    find: "Alpha",
+    replace: "Gamma",
+  });
+  assert.equal(ambiguous.ok, false);
+  assert.match(ambiguous.reason, /ambiguous/);
+  assert.deepEqual(ambiguous.data, { pageId: "wiki_page:test", find: "Alpha", matchCount: 2 });
+});
+
+test("Wiki Page replace blocks edits that break citation marker validation", () => {
+  const result = previewPageReplace("wiki_page:test", "Alpha detail.[^source]", ["source"], {
+    find: "[^source]",
+    replace: "",
+  });
+
+  assert.equal(result.ok, false);
+  assert.match(result.reason, /unused-graph-citation/);
+  assert.equal(
+    (result.data as { citationValidation: { issues: readonly unknown[] } }).citationValidation.issues.length,
+    1,
+  );
+});
+
+test("Graph Wiki lint reports empty uncited residue pages", () => {
+  const result = lintGraphWikiStatements([
+    { result: [{ id: "wiki_page:test", title: "Test", slug: "test", body: "" }] },
+    { result: [] },
+    { result: [] },
+    { result: [] },
+    { result: [] },
+  ]);
+
+  assert.equal(result.summary["empty-wiki-page"], 1);
+  assert.equal(result.summary["uncited-wiki-page"], 1);
+  assert.equal(result.summary["orphan-page"], 1);
+  assert.equal(result.issueCount, 3);
 });

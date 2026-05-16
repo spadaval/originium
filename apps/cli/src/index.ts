@@ -6,11 +6,20 @@ import {
   type SourceHeadingDraft,
   sourceDocumentRecordId,
   sourceHeadingRecordId,
+  toSlug,
   validatePageBodyCitationMarkers,
   wikiPageRecordId,
   wikiPageSlugFromTitle,
 } from "@originium/domain";
-import { createPdfSourceDocumentDraftFromFile, extractPdfHeadings, projectPdfChunk } from "@originium/pdf-ingest";
+import {
+  createPdfSourceDocumentDraftFromFile,
+  extractPdfHeadings,
+  nearestHeadingForPage,
+  projectPdfChunk,
+  projectPdfText,
+  type SourceHeadingProjection,
+  searchPdfText,
+} from "@originium/pdf-ingest";
 import {
   coreSchemaPath,
   describeSurrealTarget,
@@ -102,19 +111,22 @@ const routeGroups: Record<string, CommandHandler> = {
   link: routeLink,
   log: routeLog,
   page: routePage,
+  graph: routeGraph,
   retrieval: routeRetrieval,
   session: routeSession,
   source: routeSource,
+  workflow: routeWorkflow,
 };
 
 export async function runCli(argv: readonly string[] = process.argv.slice(2)): Promise<CliResult> {
-  const [group] = argv;
+  const routedArgv = withoutOutputFlags(argv);
+  const [group] = routedArgv;
 
   if (!group) {
     return usageFailure({
       command: "",
       operation: "cli.route",
-      input: argv.join(" "),
+      input: routedArgv.join(" "),
       reason: "Missing command group.",
       action: `Choose one of: ${Object.keys(routeGroups).join(", ")}.`,
     });
@@ -125,17 +137,18 @@ export async function runCli(argv: readonly string[] = process.argv.slice(2)): P
     return usageFailure({
       command: group,
       operation: "cli.route",
-      input: argv.join(" "),
+      input: routedArgv.join(" "),
       reason: `Unknown command group '${group}'.`,
       action: `Choose one of: ${Object.keys(routeGroups).join(", ")}.`,
     });
   }
 
-  return handler(argv);
+  return handler(routedArgv);
 }
 
 export async function main(argv: readonly string[] = process.argv.slice(2)): Promise<string> {
-  return JSON.stringify(await runCli(argv), null, 2);
+  const result = await runCli(argv);
+  return wantsJson(argv) ? JSON.stringify(result, null, 2) : renderCliResult(result);
 }
 
 async function routeDb(argv: readonly string[]): Promise<CliResult> {
@@ -219,9 +232,11 @@ async function routeSource(argv: readonly string[]): Promise<CliResult> {
       operation: "source.route",
       input: argv.join(" "),
       reason: "Missing source command.",
-      action: "Use one of: import-pdf, headings, chunk.",
+      action: "Use one of: import-pdf, headings, chunk, read, search, find, anchor.",
     });
   }
+
+  if (command === "anchor") return routeSourceAnchor(argv);
 
   if (command === "import-pdf") {
     const path = argv[2];
@@ -273,24 +288,11 @@ async function routeSource(argv: readonly string[]): Promise<CliResult> {
   if (command === "headings") {
     const path = argv[2];
     if (!path) return missingArgument("source headings", "source.headings", argv, "<pdf-path>");
-    const sourceId =
-      valueAfter(argv, "--source") ??
-      `source_document:${basename(path)
-        .replace(/\.[^.]+$/, "")
-        .toLowerCase()}`;
+    const sourceId = valueAfter(argv, "--source") ?? defaultSourceDocumentId(path);
     try {
       const headings = extractPdfHeadings(path, sourceId);
       const values = headings.map((heading) => {
-        const draft = {
-          sourceDocumentId: sourceId,
-          title: heading.title,
-          headingPath: heading.headingPath,
-          level: heading.level,
-          startPage: heading.startPage,
-          endPage: heading.endPage,
-          order: heading.order,
-          extractionMethod: heading.extractionMethod,
-        };
+        const draft = sourceHeadingDraftFromProjection(heading, sourceId);
         const id = sourceHeadingRecordId(draft);
         return `UPSERT ${id} SET source_document = ${sourceId}, title = "${escapeSurrealString(heading.title)}", heading_path = ${surrealArray(heading.headingPath)}, level = ${heading.level}, start_page = ${heading.startPage}, end_page = ${heading.endPage ?? "NONE"}, order = ${heading.order}, extraction_method = "${heading.extractionMethod}";`;
       });
@@ -310,7 +312,11 @@ async function routeSource(argv: readonly string[]): Promise<CliResult> {
         operation: "source.headings",
         input: argv,
         message: `Projected ${headings.length} Source Headings for ${sourceId}.`,
-        data: { sourceId, headings },
+        data: {
+          sourceId,
+          headingIdContract: "Use headings[].id as the persisted Source Heading ID for citation and link commands.",
+          headings: headings.map((heading) => cliSourceHeading(heading, sourceId)),
+        },
       });
     } catch (error) {
       return operationFailure(
@@ -328,40 +334,19 @@ async function routeSource(argv: readonly string[]): Promise<CliResult> {
     const headingId = valueAfter(argv, "--heading");
     if (!path) return missingArgument("source chunk", "source.chunk", argv, "<pdf-path>");
     if (!headingId) return missingArgument("source chunk", "source.chunk", argv, "--heading <heading-id>");
-    const sourceId = valueAfter(argv, "--source") ?? "source_document:fixture";
+    const sourceId = valueAfter(argv, "--source") ?? defaultSourceDocumentId(path);
     const maxTokens = Number.parseInt(valueAfter(argv, "--max-tokens") ?? "100000", 10);
-    const heading = extractPdfHeadings(path, sourceId).find((candidate) => {
-      const persistedId = sourceHeadingRecordId({
-        sourceDocumentId: sourceId,
-        title: candidate.title,
-        headingPath: candidate.headingPath,
-        level: candidate.level,
-        startPage: candidate.startPage,
-        endPage: candidate.endPage,
-        order: candidate.order,
-        extractionMethod: candidate.extractionMethod,
-      });
-      return candidate.id === headingId || persistedId === headingId || candidate.title === headingId;
-    });
+    const heading = findSourceHeading(extractPdfHeadings(path, sourceId), sourceId, headingId);
     if (!heading) {
       return operationFailure(
         "source chunk",
         "source.chunk",
         argv,
         `No Source Heading matched '${headingId}'.`,
-        "Run source headings first and pass a returned heading ID or title.",
+        `Run originium source headings ${path} --source ${sourceId} and pass data.headings[].id.`,
       );
     }
-    const persistedHeadingId = sourceHeadingRecordId({
-      sourceDocumentId: sourceId,
-      title: heading.title,
-      headingPath: heading.headingPath,
-      level: heading.level,
-      startPage: heading.startPage,
-      endPage: heading.endPage,
-      order: heading.order,
-      extractionMethod: heading.extractionMethod,
-    });
+    const persistedHeadingId = persistedSourceHeadingId(heading, sourceId);
     const chunk = projectPdfChunk(path, heading, { maxTokens });
     const chunkId = `ingestion_chunk:${persistedHeadingId.replace(/^source_heading:/, "")}_${maxTokens}`;
     const result = await executeSurrealQuery(
@@ -387,20 +372,208 @@ async function routeSource(argv: readonly string[]): Promise<CliResult> {
       operation: "source.chunk",
       input: argv,
       message: `Projected and recorded Ingestion Chunk ${chunkId} for ${persistedHeadingId} with estimated ${chunk.tokenEstimate} tokens.`,
-      data: { ...chunk, id: chunkId, result: result.result },
+      data: {
+        id: chunkId,
+        persistedSourceHeadingId: persistedHeadingId,
+        citationTarget: persistedHeadingId,
+        extractionHeadingId: chunk.headingId,
+        projectionHeadingId: chunk.headingId,
+        sourceDocumentId: chunk.sourceDocumentId,
+        pageRange: chunk.pageRange,
+        tokenEstimate: chunk.tokenEstimate,
+        extractionMethod: chunk.extractionMethod,
+        text: chunk.text,
+        result: result.result,
+      },
     });
   }
 
-  return unknownCommand("source", command, argv, "Use one of: import-pdf, headings, chunk.");
+  if (command === "read") return readSourceText(argv);
+  if (command === "search" || command === "find") return searchSourceText(argv, command);
+
+  return unknownCommand(
+    "source",
+    command,
+    argv,
+    "Use one of: import-pdf, headings, chunk, read, search, find, anchor.",
+  );
+}
+
+async function routeSourceAnchor(argv: readonly string[]): Promise<CliResult> {
+  const [, , command] = argv;
+  if (!command) return missingGroupCommand("source anchor", argv, "Use one of: create, read, search.");
+
+  if (command === "create") {
+    const title = valueAfter(argv, "--title");
+    const source = valueAfter(argv, "--source");
+    const heading = valueAfter(argv, "--heading");
+    const reason = valueAfter(argv, "--reason");
+    const locationHint = valueAfter(argv, "--location");
+    const pageRange = parsePageRangeArgument(argv);
+    if (pageRange && "ok" in pageRange) return pageRange;
+    const startPage = pageRange?.start;
+    const endPage = pageRange?.end;
+    const session = valueAfter(argv, "--session");
+    if (!title) return missingArgument("source anchor create", "source.anchor.create", argv, "--title <title>");
+    if (!source)
+      return missingArgument("source anchor create", "source.anchor.create", argv, "--source <source-document-id>");
+    if (!heading)
+      return missingArgument("source anchor create", "source.anchor.create", argv, "--heading <source-heading-id>");
+    if (!reason) return missingArgument("source anchor create", "source.anchor.create", argv, "--reason <reason>");
+
+    const anchorId = sourceAnchorRecordId(source, heading, title);
+    const query = `UPSERT ${anchorId} SET title = "${escapeSurrealString(title)}", source_document = ${source}, source_heading = ${heading}, start_page = ${startPage ?? "NONE"}, end_page = ${endPage ?? "NONE"}, location_hint = ${locationHint ? `"${escapeSurrealString(locationHint)}"` : "NONE"}, reason = "${escapeSurrealString(reason)}", created_session = ${session ?? "NONE"}, updated_at = time::now(); SELECT * FROM ${anchorId} FETCH source_heading;`;
+
+    return queryCommand(
+      "source anchor create",
+      "source.anchor.create",
+      argv,
+      query,
+      `Created Source Anchor ${anchorId} under ${heading}.`,
+      { id: anchorId },
+      {
+        kind: "write",
+        targetRecords: [anchorId, source, heading],
+        beforeQuery: `SELECT * FROM ${anchorId}`,
+        afterQuery: `SELECT * FROM ${anchorId}`,
+        sessionId: session,
+        relateEditedTargets: [anchorId],
+      },
+    );
+  }
+
+  if (command === "read") {
+    const id = argv[3] ?? valueAfter(argv, "--anchor");
+    if (!id) return missingArgument("source anchor read", "source.anchor.read", argv, "<source-anchor-id>");
+    return queryCommand(
+      "source anchor read",
+      "source.anchor.read",
+      argv,
+      `SELECT * FROM ${id} FETCH source_heading;`,
+      `Read Source Anchor ${id}.`,
+      {},
+      { kind: "read", targetRecords: [id] },
+    );
+  }
+
+  if (command === "search") {
+    const queryText = positionalArgs(argv, 3).join(" ").trim();
+    if (!queryText) return missingArgument("source anchor search", "source.anchor.search", argv, "<query>");
+    return queryCommand(
+      "source anchor search",
+      "source.anchor.search",
+      argv,
+      `SELECT * FROM source_anchor WHERE title CONTAINS "${escapeSurrealString(queryText)}" OR reason CONTAINS "${escapeSurrealString(queryText)}" OR location_hint CONTAINS "${escapeSurrealString(queryText)}" ORDER BY updated_at DESC FETCH source_heading;`,
+      `Searched Source Anchors for '${queryText}'.`,
+      { query: queryText },
+      { kind: "read", targetRecords: [`source_anchor:${queryText}`] },
+    );
+  }
+
+  return unknownCommand("source anchor", command, argv, "Use one of: create, read, search.");
+}
+
+function readSourceText(argv: readonly string[]): CliResult {
+  const path = argv[2];
+  if (!path) return missingArgument("source read", "source.read", argv, "<pdf-path>");
+  const sourceId = valueAfter(argv, "--source") ?? defaultSourceDocumentId(path);
+
+  try {
+    const headings = extractPdfHeadings(path, sourceId);
+    const selector = valueAfter(argv, "--heading") ?? valueAfter(argv, "--anchor");
+    const pageRange = selector
+      ? pageRangeForHeading(path, sourceId, headings, selector, argv)
+      : parsePageRangeArgument(argv);
+    if (!pageRange) {
+      return missingArgument(
+        "source read",
+        "source.read",
+        argv,
+        "--pages <start-end> or --heading <source-heading-id>",
+      );
+    }
+    if ("ok" in pageRange) return pageRange;
+
+    const projection = projectPdfText(path, {
+      sourceDocumentId: sourceId,
+      pageRange,
+      maxTokens: Number.parseInt(valueAfter(argv, "--max-tokens") ?? "4000", 10),
+    });
+    const nearestHeading = nearestHeadingForPage(headings, projection.pageRange.start);
+
+    return success({
+      command: "source read",
+      operation: "source.read",
+      input: argv,
+      message: `Read lossy Source Text projection for ${sourceId} pages ${projection.pageRange.start}-${projection.pageRange.end}.`,
+      data: {
+        ...projection,
+        sourceDocument: sourceId,
+        nearestHeading: nearestHeading ? cliSourceHeading(nearestHeading, sourceId) : undefined,
+      },
+    });
+  } catch (error) {
+    return operationFailure(
+      "source read",
+      "source.read",
+      argv,
+      errorReason(error),
+      "Verify the PDF path and page range, or run originium source headings <pdf-path> --source <source-document-id> to recover a valid heading ID.",
+    );
+  }
+}
+
+function searchSourceText(argv: readonly string[], command: "search" | "find"): CliResult {
+  const path = argv[2];
+  const query = argv[3] ?? valueAfter(argv, "--query");
+  if (!path) return missingArgument(`source ${command}`, `source.${command}`, argv, "<pdf-path>");
+  if (!query) return missingArgument(`source ${command}`, `source.${command}`, argv, "<query>");
+  const sourceId = valueAfter(argv, "--source") ?? defaultSourceDocumentId(path);
+
+  try {
+    const pageRange = parsePageRangeArgument(argv);
+    if (pageRange && "ok" in pageRange) return pageRange;
+    const headings = extractPdfHeadings(path, sourceId);
+    const hits = searchPdfText(path, headings, query, {
+      sourceDocumentId: sourceId,
+      pageRange,
+      limit: Number.parseInt(valueAfter(argv, "--limit") ?? "10", 10),
+    }).map((hit) => ({
+      sourceDocument: hit.sourceDocumentId,
+      pageRange: hit.pageRange,
+      snippet: hit.snippet,
+      nearestHeading: hit.nearestHeading ? cliSourceHeading(hit.nearestHeading, sourceId) : undefined,
+      provenance: hit.provenance,
+      warning: hit.warning,
+    }));
+
+    return success({
+      command: `source ${command}`,
+      operation: `source.${command}`,
+      input: argv,
+      message: `Found ${hits.length} lossy Source Text projection match(es) for '${query}' in ${sourceId}.`,
+      data: { sourceDocument: sourceId, query, hits },
+    });
+  } catch (error) {
+    return operationFailure(
+      `source ${command}`,
+      `source.${command}`,
+      argv,
+      errorReason(error),
+      "Verify the PDF path and query, or narrow the search with --pages <start-end>.",
+    );
+  }
 }
 
 async function routePage(argv: readonly string[]): Promise<CliResult> {
   const [, command] = argv;
-  if (!command) return missingGroupCommand("page", argv, "Use one of: create, read, update, search.");
+  if (!command)
+    return missingGroupCommand("page", argv, "Use one of: create, read, update, replace, patch, append, search.");
   if (command === "create" || command === "update") return writePage(argv, command);
+  if (command === "replace" || command === "patch" || command === "append") return editPage(argv, command);
   if (command === "read") return selectById("page read", "page.read", argv, argv[2], "Wiki Page ID");
   if (command === "search") return searchPages(argv);
-  return unknownCommand("page", command, argv, "Use one of: create, read, update, search.");
+  return unknownCommand("page", command, argv, "Use one of: create, read, update, replace, patch, append, search.");
 }
 
 async function routeCitation(argv: readonly string[]): Promise<CliResult> {
@@ -432,7 +605,16 @@ async function routeCitation(argv: readonly string[]): Promise<CliResult> {
       }),
       { queryId: `citation.add:${pageId}:${key}` },
     );
-    if (!result.ok) return fromSurrealFailure("citation add", argv, result.error);
+    if (!result.ok) {
+      const failure = fromSurrealFailure("citation add", argv, result.error);
+      return {
+        ...failure,
+        error: {
+          ...failure.error,
+          action: `Verify '${headingId}' is a persisted Source Heading ID. To recover one, run originium source headings <pdf-path> --source <source-document-id>; to search text first, run originium source search <pdf-path> "<query>" --source <source-document-id>.`,
+        },
+      };
+    }
     return success({
       command: "citation add",
       operation: "citation.add",
@@ -544,11 +726,11 @@ async function routeLink(argv: readonly string[]): Promise<CliResult> {
 
 async function routeSession(argv: readonly string[]): Promise<CliResult> {
   const [, command] = argv;
-  if (!command) return missingGroupCommand("session", argv, "Use one of: start, show.");
+  if (!command) return missingGroupCommand("session", argv, "Use one of: start, show, current, end.");
   if (command === "start") {
     const purpose = (valueAfter(argv, "--purpose") ?? argv.slice(2).join(" ")) || "Graph Wiki CLI session";
     const id = `agent_session:${randomUUID().replaceAll("-", "")}`;
-    return queryCommand(
+    const result = await queryCommand(
       "session start",
       "session.start",
       argv,
@@ -562,9 +744,36 @@ async function routeSession(argv: readonly string[]): Promise<CliResult> {
         sessionId: id,
       },
     );
+    if (result.ok) writeCurrentSession(id);
+    return result;
   }
   if (command === "show") return selectById("session show", "session.show", argv, argv[2], "Agent Session ID");
-  return unknownCommand("session", command, argv, "Use one of: start, show.");
+  if (command === "current") {
+    const sessionId = resolveSessionId(argv, { createImplicit: false });
+    return success({
+      command: "session current",
+      operation: "session.current",
+      input: argv,
+      message: sessionId ? `Current Agent Session: ${sessionId}.` : "No current Agent Session is set.",
+      data: {
+        id: sessionId,
+        source: sessionSource(argv),
+        currentSessionFile: currentSessionFile(),
+      },
+    });
+  }
+  if (command === "end" || command === "clear") {
+    const prior = readCurrentSession();
+    clearCurrentSession();
+    return success({
+      command: `session ${command}`,
+      operation: "session.end",
+      input: argv,
+      message: prior ? `Cleared current Agent Session ${prior}.` : "No current Agent Session was set.",
+      data: { cleared: prior, currentSessionFile: currentSessionFile() },
+    });
+  }
+  return unknownCommand("session", command, argv, "Use one of: start, show, current, end.");
 }
 
 async function routeLog(argv: readonly string[]): Promise<CliResult> {
@@ -584,11 +793,119 @@ async function routeLog(argv: readonly string[]): Promise<CliResult> {
   return unknownCommand("log", command, argv, "Use one of: show.");
 }
 
+async function routeGraph(argv: readonly string[]): Promise<CliResult> {
+  const [, command] = argv;
+  if (!command) return missingGroupCommand("graph", argv, "Use one of: lint.");
+  if (command !== "lint") return unknownCommand("graph", command, argv, "Use one of: lint.");
+
+  const result = await executeSurrealQuery(
+    readSurrealConfig(),
+    loggedQuery(
+      "graph lint",
+      "graph.lint",
+      argv,
+      [
+        "SELECT id, title, slug, body FROM wiki_page;",
+        "SELECT id, in, out, key, label, quote FROM cites;",
+        "SELECT id, title, source_document, source_heading, start_page, end_page, location_hint, reason FROM source_anchor;",
+        "SELECT id, title, heading_path, start_page, end_page FROM source_heading;",
+        "SELECT id, in, out, reason, label FROM manual_link;",
+      ].join("\n"),
+      { kind: "read", targetRecords: ["wiki_page", "cites", "source_anchor", "source_heading", "manual_link"] },
+    ),
+    { queryId: "graph.lint" },
+  );
+  if (!result.ok) return fromSurrealFailure("graph lint", argv, result.error);
+
+  const lint = lintGraphWikiStatements(result.result as Array<{ result?: unknown }>);
+  return success({
+    command: "graph lint",
+    operation: "graph.lint",
+    input: argv,
+    message:
+      lint.issueCount === 0
+        ? "Graph Wiki lint found no hygiene issues."
+        : `Graph Wiki lint found ${lint.issueCount} hygiene issue(s).`,
+    data: lint,
+  });
+}
+
 async function routeRetrieval(argv: readonly string[]): Promise<CliResult> {
   const [, command] = argv;
   if (!command) return missingGroupCommand("retrieval", argv, "Use one of: search.");
   if (command === "search") return searchPages(argv);
   return unknownCommand("retrieval", command, argv, "Use one of: search.");
+}
+
+async function routeWorkflow(argv: readonly string[]): Promise<CliResult> {
+  const [, command] = argv;
+  if (!command) return missingGroupCommand("workflow", argv, "Use one of: answer-context, page-upsert.");
+
+  if (command === "answer-context") {
+    const query = positionalArgs(argv, 2).join(" ").trim();
+    if (!query) return missingArgument("workflow answer-context", "workflow.answer-context", argv, "<query>");
+    const retrieval = await searchPages(["retrieval", "search", query, ...sessionArgsForChild(argv)]);
+    if (!retrieval.ok) return retrieval;
+    return success({
+      command: "workflow answer-context",
+      operation: "workflow.answer-context",
+      input: argv,
+      message: `Prepared answer context for '${query}'.`,
+      data: {
+        query,
+        retrieval: retrieval.data,
+      },
+    });
+  }
+
+  if (command === "page-upsert") {
+    const title = valueAfter(argv, "--title");
+    const body = valueAfter(argv, "--body") ?? "";
+    const heading = valueAfter(argv, "--heading");
+    const key = valueAfter(argv, "--key") ?? "source";
+    const label = valueAfter(argv, "--label") ?? key;
+    if (!title) return missingArgument("workflow page-upsert", "workflow.page-upsert", argv, "--title <title>");
+    if (!heading)
+      return missingArgument("workflow page-upsert", "workflow.page-upsert", argv, "--heading <source-heading-id>");
+    const page = await writePage(
+      ["page", "update", "--title", title, "--body", body, ...sessionArgsForChild(argv)],
+      "update",
+    );
+    if (!page.ok) return page;
+    const pageId = (page.data as { id?: string }).id;
+    if (!pageId) {
+      return operationFailure(
+        "workflow page-upsert",
+        "workflow.page-upsert",
+        argv,
+        `Page upsert for title '${title}' did not return a Wiki Page ID.`,
+        "Run page update directly and inspect the result.",
+      );
+    }
+    const citation = await routeCitation([
+      "citation",
+      "add",
+      "--page",
+      pageId,
+      "--heading",
+      heading,
+      "--key",
+      key,
+      "--label",
+      label,
+      ...sessionArgsForChild(argv),
+    ]);
+    if (!citation.ok) return citation;
+    return success({
+      command: "workflow page-upsert",
+      operation: "workflow.page-upsert",
+      input: argv,
+      message: `Upserted Wiki Page ${pageId} and Citation ${key}.`,
+      data: { page: page.data, citation: citation.data },
+    });
+  }
+
+  return unknownCommand("workflow", command, argv, "Use one of: answer-context, page-upsert.");
 }
 
 async function routeIngest(argv: readonly string[]): Promise<CliResult> {
@@ -826,6 +1143,286 @@ async function writePage(argv: readonly string[], command: "create" | "update"):
   );
 }
 
+async function editPage(argv: readonly string[], command: "replace" | "patch" | "append"): Promise<CliResult> {
+  const pageId =
+    valueAfter(argv, "--page") ??
+    (valueAfter(argv, "--title") ? wikiPageRecordId(valueAfter(argv, "--title") ?? "") : argv[2]);
+  if (!pageId) return missingArgument(`page ${command}`, `page.${command}`, argv, "--page <wiki-page-id>");
+
+  const pageResult = await executeSurrealQuery(
+    readSurrealConfig(),
+    loggedQuery(
+      `page ${command}`,
+      `page.${command}`,
+      argv,
+      `SELECT title, slug, body FROM ${pageId}; SELECT key FROM cites WHERE in = ${pageId};`,
+      { kind: "read", targetRecords: [pageId] },
+    ),
+    { queryId: `page.${command}:${pageId}:read` },
+  );
+  if (!pageResult.ok) return fromSurrealFailure(`page ${command}`, argv, pageResult.error);
+
+  const statements = pageResult.result as Array<{ result?: unknown }>;
+  const currentBody = pageBodyFromStatements(statements);
+  const pageExists = pageRecordFromStatements(statements) !== undefined;
+  if (!pageExists) {
+    return operationFailure(
+      `page ${command}`,
+      `page.${command}`,
+      argv,
+      `Wiki Page ${pageId} does not exist; SELECT returned no page record.`,
+      "Create the Wiki Page first, or pass the exact --page record ID returned by page search/read.",
+    );
+  }
+
+  const graphCitationKeys = citationKeysFromStatements(statements);
+  let edit: PageEditPreviewResult;
+  try {
+    edit =
+      command === "replace"
+        ? previewPageReplace(pageId, currentBody, graphCitationKeys, {
+            find: valueAfter(argv, "--find"),
+            replace: valueAfter(argv, "--replace") ?? "",
+          })
+        : command === "patch"
+          ? previewPagePatch(pageId, currentBody, graphCitationKeys, readBodyInput(argv, "--body", "--body-file"))
+          : previewPageAppend(
+              pageId,
+              currentBody,
+              graphCitationKeys,
+              readBodyInput(argv, "--body", "--body-file", "--append-file"),
+            );
+  } catch (error) {
+    return operationFailure(
+      `page ${command}`,
+      `page.${command}`,
+      argv,
+      `Could not read Wiki Page edit input for ${pageId}: ${errorReason(error)}`,
+      "Pass inline --body text or a readable body file path.",
+    );
+  }
+
+  if (!edit.ok) {
+    return operationFailure(`page ${command}`, `page.${command}`, argv, edit.reason, edit.action, edit.data);
+  }
+
+  const apply = argv.includes("--apply");
+  if (!apply) {
+    return success({
+      command: `page ${command}`,
+      operation: `page.${command}`,
+      input: argv,
+      message: `Previewed Wiki Page ${command} for ${pageId}; no data was mutated. Pass --apply to write it.`,
+      data: { ...edit.data, preview: true, applied: false },
+    });
+  }
+
+  const result = await executeSurrealQuery(
+    readSurrealConfig(),
+    loggedQuery(
+      `page ${command}`,
+      `page.${command}`,
+      argv,
+      `UPDATE ${pageId} SET body = "${escapeSurrealString(edit.nextBody)}", updated_at = time::now();`,
+      {
+        kind: "write",
+        targetRecords: [pageId],
+        beforeQuery: `SELECT body FROM ${pageId}`,
+        afterQuery: `SELECT body FROM ${pageId}`,
+        relateEditedTargets: [pageId],
+      },
+    ),
+    { queryId: `page.${command}:${pageId}:apply` },
+  );
+  if (!result.ok) return fromSurrealFailure(`page ${command}`, argv, result.error);
+
+  return success({
+    command: `page ${command}`,
+    operation: `page.${command}`,
+    input: argv,
+    message: `Applied Wiki Page ${command} to ${pageId}.`,
+    data: { ...edit.data, preview: false, applied: true, result: result.result },
+  });
+}
+
+type PageEditPreviewResult =
+  | {
+      readonly ok: true;
+      readonly nextBody: string;
+      readonly data: {
+        readonly pageId: string;
+        readonly changed: boolean;
+        readonly beforeLength: number;
+        readonly afterLength: number;
+        readonly beforeContext: string;
+        readonly afterContext: string;
+        readonly citationValidation: ReturnType<typeof validatePageBodyCitationMarkers>;
+        readonly matchCount?: number;
+      };
+    }
+  | {
+      readonly ok: false;
+      readonly reason: string;
+      readonly action: string;
+      readonly data?: unknown;
+    };
+
+export function previewPageReplace(
+  pageId: string,
+  currentBody: string,
+  graphCitationKeys: readonly string[],
+  input: { readonly find?: string; readonly replace: string },
+): PageEditPreviewResult {
+  if (!input.find) {
+    return {
+      ok: false,
+      reason: "Missing required find text for Wiki Page replace.",
+      action: "Pass --find <text> with the exact body text to replace.",
+    };
+  }
+
+  const matchCount = countPageEditOccurrences(currentBody, input.find);
+  if (matchCount === 0) {
+    return {
+      ok: false,
+      reason: `Find text was absent in ${pageId}: ${JSON.stringify(input.find)}.`,
+      action: "Run page read to inspect the current body, then retry with exact text from that Wiki Page.",
+      data: { pageId, find: input.find, matchCount },
+    };
+  }
+  if (matchCount > 1) {
+    return {
+      ok: false,
+      reason: `Find text was ambiguous in ${pageId}: ${matchCount} matches for ${JSON.stringify(input.find)}.`,
+      action: "Use a longer unique --find value that includes surrounding context.",
+      data: { pageId, find: input.find, matchCount },
+    };
+  }
+
+  const matchIndex = currentBody.indexOf(input.find);
+  const nextBody = `${currentBody.slice(0, matchIndex)}${input.replace}${currentBody.slice(matchIndex + input.find.length)}`;
+  return validatePageEditPreview(pageId, currentBody, nextBody, graphCitationKeys, {
+    matchIndex,
+    contextLength: Math.max(input.find.length, input.replace.length),
+    matchCount,
+  });
+}
+
+export function previewPagePatch(
+  pageId: string,
+  currentBody: string,
+  graphCitationKeys: readonly string[],
+  nextBody: string | undefined,
+): PageEditPreviewResult {
+  if (nextBody === undefined) {
+    return {
+      ok: false,
+      reason: "Missing required replacement body for Wiki Page patch.",
+      action: "Pass --body <text> or --body-file <path>.",
+    };
+  }
+
+  return validatePageEditPreview(pageId, currentBody, nextBody, graphCitationKeys, {
+    matchIndex: firstDifferenceIndex(currentBody, nextBody),
+    contextLength: 80,
+  });
+}
+
+export function previewPageAppend(
+  pageId: string,
+  currentBody: string,
+  graphCitationKeys: readonly string[],
+  appendedBody: string | undefined,
+): PageEditPreviewResult {
+  if (appendedBody === undefined) {
+    return {
+      ok: false,
+      reason: "Missing required appended body for Wiki Page append.",
+      action: "Pass --body <text>, --body-file <path>, or --append-file <path>.",
+    };
+  }
+
+  const separator = currentBody.length === 0 || currentBody.endsWith("\n") ? "" : "\n\n";
+  const nextBody = `${currentBody}${separator}${appendedBody}`;
+  return validatePageEditPreview(pageId, currentBody, nextBody, graphCitationKeys, {
+    matchIndex: currentBody.length,
+    contextLength: appendedBody.length,
+  });
+}
+
+function validatePageEditPreview(
+  pageId: string,
+  currentBody: string,
+  nextBody: string,
+  graphCitationKeys: readonly string[],
+  options: { readonly matchIndex: number; readonly contextLength: number; readonly matchCount?: number },
+): PageEditPreviewResult {
+  const citationValidation = validatePageBodyCitationMarkers({
+    wikiPageId: pageId,
+    pageBody: nextBody,
+    graphCitationKeys,
+  });
+  if (citationValidation.issues.length > 0) {
+    return {
+      ok: false,
+      reason: `Wiki Page edit would break citation marker validation for ${pageId}: ${citationValidation.issues.map((issue) => issue.message).join(" ")}`,
+      action:
+        "Keep Citation Markers aligned with graph Citation keys, or update Citations before applying the Page Body edit.",
+      data: { pageId, citationValidation },
+    };
+  }
+
+  const start = Math.max(0, options.matchIndex - 80);
+  const end = Math.min(currentBody.length, options.matchIndex + Math.max(options.contextLength, 80));
+  const nextEnd = Math.min(nextBody.length, options.matchIndex + Math.max(options.contextLength, 80));
+
+  return {
+    ok: true,
+    nextBody,
+    data: {
+      pageId,
+      changed: currentBody !== nextBody,
+      beforeLength: currentBody.length,
+      afterLength: nextBody.length,
+      beforeContext: currentBody.slice(start, end),
+      afterContext: nextBody.slice(start, nextEnd),
+      citationValidation,
+      ...(options.matchCount === undefined ? {} : { matchCount: options.matchCount }),
+    },
+  };
+}
+
+function readBodyInput(
+  argv: readonly string[],
+  inlineFlag: string,
+  fileFlag: string,
+  alternateFileFlag?: string,
+): string | undefined {
+  const inline = valueAfter(argv, inlineFlag);
+  if (inline !== undefined) return inline;
+  const file = valueAfter(argv, fileFlag) ?? (alternateFileFlag ? valueAfter(argv, alternateFileFlag) : undefined);
+  return file ? readFileSync(file, "utf8") : undefined;
+}
+
+function countPageEditOccurrences(body: string, needle: string): number {
+  if (needle.length === 0) return 0;
+  let count = 0;
+  let index = body.indexOf(needle);
+  while (index !== -1) {
+    count += 1;
+    index = body.indexOf(needle, index + needle.length);
+  }
+  return count;
+}
+
+function firstDifferenceIndex(left: string, right: string): number {
+  const length = Math.min(left.length, right.length);
+  for (let index = 0; index < length; index += 1) {
+    if (left[index] !== right[index]) return index;
+  }
+  return length;
+}
+
 async function searchPages(argv: readonly string[]): Promise<CliResult> {
   const queryText = positionalArgs(argv, 2).join(" ").trim();
   const command = argv[0] === "retrieval" ? "retrieval search" : "page search";
@@ -927,10 +1524,16 @@ function loggedQuery(
   options: QueryLogOptions | undefined,
 ): string {
   if (!options) return query;
+  if (options.kind === "read") return query;
 
-  const sessionId = options.sessionId ?? valueAfter(argv, "--session");
+  const providedSessionId = options.sessionId ?? valueAfter(argv, "--session");
+  const sessionId = providedSessionId ?? resolveSessionId(argv, { createImplicit: true });
   const targetRecords = options.targetRecords.length === 0 ? ["<unspecified>"] : options.targetRecords;
   const logId = `change_log:${randomUUID().replaceAll("-", "")}`;
+  const implicitSessionStatement =
+    sessionId && !providedSessionId && !process.env.ORIGINIUM_SESSION && !readCurrentSession()
+      ? `CREATE ${sessionId} SET purpose = "Implicit Graph Wiki CLI session", created_at = time::now();`
+      : "";
   const beforeStatement = options.beforeQuery
     ? `LET $originium_before = (${options.beforeQuery})[0];`
     : "LET $originium_before = NONE;";
@@ -945,6 +1548,7 @@ function loggedQuery(
       : "";
 
   return [
+    implicitSessionStatement,
     beforeStatement,
     query,
     afterStatement,
@@ -953,6 +1557,113 @@ function loggedQuery(
   ]
     .filter(Boolean)
     .join("\n");
+}
+
+function renderCliResult(result: CliResult): string {
+  if (!result.ok) {
+    return [
+      `ERROR ${result.command || result.error.operation}`,
+      `operation: ${result.error.operation}`,
+      `input: ${result.error.input}`,
+      `reason: ${result.error.reason}`,
+      `action: ${result.error.action}`,
+    ].join("\n");
+  }
+
+  const lines = [`OK ${result.command}`, result.message];
+  const details = humanDetails(result.data);
+  if (details.length > 0) lines.push(...details);
+  return lines.join("\n");
+}
+
+function humanDetails(data: unknown): readonly string[] {
+  if (!data || typeof data !== "object") return [];
+  const record = data as Record<string, unknown>;
+  const lines: string[] = [];
+  for (const key of ["id", "slug", "sourceId", "pageId", "headingId", "chunkId", "query"] as const) {
+    const value = record[key];
+    if (typeof value === "string") lines.push(`${key}: ${value}`);
+  }
+  if (Array.isArray(record.results)) {
+    lines.push(`results: ${record.results.length}`);
+    for (const result of record.results.slice(0, 5)) {
+      if (!result || typeof result !== "object") continue;
+      const item = result as { id?: unknown; title?: unknown; score?: unknown };
+      lines.push(`- ${String(item.id ?? "<unknown>")} ${String(item.title ?? "")} ${String(item.score ?? "")}`.trim());
+    }
+  }
+  if (Array.isArray(record.headings)) {
+    lines.push(`headings: ${record.headings.length}`);
+    for (const heading of record.headings.slice(0, 8)) {
+      if (!heading || typeof heading !== "object") continue;
+      const item = heading as {
+        id?: unknown;
+        persistedId?: unknown;
+        title?: unknown;
+        startPage?: unknown;
+        endPage?: unknown;
+      };
+      lines.push(
+        `- ${String(item.persistedId ?? item.id ?? "<unknown>")} ${String(item.title ?? "")} pages ${String(item.startPage ?? "?")}-${String(item.endPage ?? item.startPage ?? "?")}`,
+      );
+    }
+  }
+  return lines;
+}
+
+function wantsJson(argv: readonly string[]): boolean {
+  return argv.includes("--json");
+}
+
+function withoutOutputFlags(argv: readonly string[]): readonly string[] {
+  return argv.filter((arg) => arg !== "--json" && arg !== "--ndjson");
+}
+
+function resolveSessionId(argv: readonly string[], options: { readonly createImplicit: boolean }): string | undefined {
+  const explicit = valueAfter(argv, "--session");
+  if (explicit) return explicit;
+  if (process.env.ORIGINIUM_SESSION) return process.env.ORIGINIUM_SESSION;
+  const current = readCurrentSession();
+  if (current) return current;
+  return options.createImplicit ? `agent_session:${randomUUID().replaceAll("-", "")}` : undefined;
+}
+
+function sessionSource(argv: readonly string[]): string | undefined {
+  if (valueAfter(argv, "--session")) return "explicit";
+  if (process.env.ORIGINIUM_SESSION) return "env";
+  if (readCurrentSession()) return "current";
+  return undefined;
+}
+
+function sessionArgsForChild(argv: readonly string[]): readonly string[] {
+  const sessionId = resolveSessionId(argv, { createImplicit: false });
+  return sessionId ? ["--session", sessionId] : [];
+}
+
+function currentSessionFile(): string {
+  return join(process.cwd(), ".originium", "current-session");
+}
+
+function readCurrentSession(): string | undefined {
+  try {
+    const value = readFileSync(currentSessionFile(), "utf8").trim();
+    return value || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function writeCurrentSession(sessionId: string): void {
+  mkdirSync(dirname(currentSessionFile()), { recursive: true });
+  writeFileSync(currentSessionFile(), `${sessionId}\n`);
+}
+
+function clearCurrentSession(): void {
+  try {
+    unlinkSync(currentSessionFile());
+  } catch {
+    // The command is idempotent for operators clearing stale local state.
+  }
 }
 
 function pageBodyFromStatements(statements: readonly { readonly result?: unknown }[]): string {
@@ -967,6 +1678,20 @@ function pageBodyFromStatements(statements: readonly { readonly result?: unknown
   return "";
 }
 
+function pageRecordFromStatements(
+  statements: readonly { readonly result?: unknown }[],
+): Record<string, unknown> | undefined {
+  for (const statement of statements) {
+    if (!Array.isArray(statement.result)) continue;
+    const row = statement.result.find((candidate) => {
+      return candidate && typeof candidate === "object" && "body" in candidate;
+    });
+    if (row && typeof row === "object") return row as Record<string, unknown>;
+  }
+
+  return undefined;
+}
+
 function citationKeysFromStatements(statements: readonly { readonly result?: unknown }[]): readonly string[] {
   for (const statement of statements) {
     if (!Array.isArray(statement.result)) continue;
@@ -979,6 +1704,211 @@ function citationKeysFromStatements(statements: readonly { readonly result?: unk
   }
 
   return [];
+}
+
+type GraphLintIssue = {
+  readonly kind:
+    | "empty-wiki-page"
+    | "uncited-wiki-page"
+    | "citation-marker-mismatch"
+    | "unused-citation"
+    | "duplicate-ish-page"
+    | "orphan-page"
+    | "stub-wiki-page"
+    | "broad-citation-target"
+    | "weak-manual-link";
+  readonly severity: "error" | "warning";
+  readonly recordId: string;
+  readonly message: string;
+  readonly suggestion: string;
+  readonly details?: Record<string, unknown>;
+};
+
+export function lintGraphWikiStatements(statements: readonly { readonly result?: unknown }[]): {
+  readonly issueCount: number;
+  readonly issues: readonly GraphLintIssue[];
+  readonly summary: Record<string, number>;
+} {
+  const rowsByStatement = statements.map((statement) =>
+    Array.isArray(statement.result) ? statement.result.filter(isRecord) : [],
+  );
+  const pages = rowsByStatement[0] ?? [];
+  const citations = rowsByStatement[1] ?? [];
+  const anchors = rowsByStatement[2] ?? [];
+  const manualLinks = rowsByStatement[4] ?? [];
+  const issues: GraphLintIssue[] = [];
+  const citationsByPage = groupBy(citations, "in");
+  const manualLinksByEndpoint = new Map<string, number>();
+
+  for (const link of manualLinks) {
+    const from = stringField(link, "in");
+    const to = stringField(link, "out");
+    if (from) manualLinksByEndpoint.set(from, (manualLinksByEndpoint.get(from) ?? 0) + 1);
+    if (to) manualLinksByEndpoint.set(to, (manualLinksByEndpoint.get(to) ?? 0) + 1);
+    const reason = stringField(link, "reason");
+    if (!reason || hasWeakGraphManualLinkReason(reason)) {
+      const id = stringField(link, "id") || `${from}->manual_link->${to}`;
+      issues.push({
+        kind: "weak-manual-link",
+        severity: "warning",
+        recordId: id,
+        message: `Manual Link ${id} has a missing or vague reason.`,
+        suggestion: `Run link add --from ${from || "<from>"} --to ${to || "<to>"} --reason <specific relationship reason> to replace it with an actionable reason.`,
+        details: { from, to, reason },
+      });
+    }
+  }
+
+  const pagesByDuplicateKey = new Map<string, Record<string, unknown>[]>();
+  for (const page of pages) {
+    const id = stringField(page, "id");
+    const title = stringField(page, "title");
+    const slug = stringField(page, "slug");
+    const body = stringField(page, "body") ?? "";
+    if (!id) continue;
+
+    const pageCitations = citationsByPage.get(id) ?? [];
+    const pageCitationKeys = pageCitations.flatMap((citation) => {
+      const key = stringField(citation, "key");
+      return key ? [key] : [];
+    });
+    const validation = validatePageBodyCitationMarkers({
+      wikiPageId: id,
+      pageBody: body,
+      graphCitationKeys: pageCitationKeys,
+    });
+    for (const issue of validation.issues) {
+      issues.push({
+        kind: issue.kind === "unused-graph-citation" ? "unused-citation" : "citation-marker-mismatch",
+        severity: "error",
+        recordId: id,
+        message: issue.message,
+        suggestion:
+          issue.kind === "unused-graph-citation"
+            ? `Add Citation Marker [^${issue.graphCitationKey}] to ${id}, or remove the unused Citation relation.`
+            : `Add the missing Citation relation for ${id}, remove the stale marker, or use page replace/patch with --apply after previewing.`,
+        details: { validationIssue: issue },
+      });
+    }
+
+    if (body.trim().length === 0) {
+      issues.push({
+        kind: "empty-wiki-page",
+        severity: "error",
+        recordId: id,
+        message: `Wiki Page ${id} is empty.`,
+        suggestion: `Use page patch --page ${id} --body-file <path> --apply, or remove the residue through an explicit cleanup bead.`,
+      });
+    } else if (body.trim().length < 120) {
+      issues.push({
+        kind: "stub-wiki-page",
+        severity: "warning",
+        recordId: id,
+        message: `Wiki Page ${id} is very short (${body.trim().length} characters).`,
+        suggestion: `Expand ${id} with cited synthesis, or mark the page as intentional in a follow-up note.`,
+      });
+    }
+
+    if (pageCitations.length === 0) {
+      issues.push({
+        kind: "uncited-wiki-page",
+        severity: "warning",
+        recordId: id,
+        message: `Wiki Page ${id} has no graph Citations.`,
+        suggestion: `Run citation add --page ${id} --heading <source-heading-id> --key <marker-key> after adding a matching Citation Marker.`,
+      });
+    }
+
+    if (pageCitations.length === 0 && (manualLinksByEndpoint.get(id) ?? 0) === 0) {
+      issues.push({
+        kind: "orphan-page",
+        severity: "warning",
+        recordId: id,
+        message: `Wiki Page ${id} has no Citations or Manual Links.`,
+        suggestion: `Connect ${id} with citation add or link add, or clean up the orphan page explicitly.`,
+      });
+    }
+
+    const duplicateKey = toSlug(slug || title || id);
+    const duplicateSet = pagesByDuplicateKey.get(duplicateKey) ?? [];
+    duplicateSet.push(page);
+    pagesByDuplicateKey.set(duplicateKey, duplicateSet);
+  }
+
+  for (const [duplicateKey, duplicates] of pagesByDuplicateKey) {
+    if (duplicates.length < 2) continue;
+    const ids = duplicates.flatMap((page) => {
+      const id = stringField(page, "id");
+      return id ? [id] : [];
+    });
+    for (const id of ids) {
+      issues.push({
+        kind: "duplicate-ish-page",
+        severity: "warning",
+        recordId: id,
+        message: `Wiki Page ${id} appears duplicate-ish with slug/title key '${duplicateKey}'.`,
+        suggestion: `Compare duplicate-ish pages ${ids.join(", ")} and merge or rename intentionally.`,
+        details: { duplicateKey, ids },
+      });
+    }
+  }
+
+  const anchorsByHeading = groupBy(anchors, "source_heading");
+  for (const citation of citations) {
+    const heading = stringField(citation, "out");
+    const pageId = stringField(citation, "in");
+    if (!heading || !pageId) continue;
+    const headingAnchors = anchorsByHeading.get(heading) ?? [];
+    if (headingAnchors.length === 0) continue;
+    const key = stringField(citation, "key") ?? "<unknown>";
+    issues.push({
+      kind: "broad-citation-target",
+      severity: "warning",
+      recordId: `${pageId}:${key}`,
+      message: `Citation ${key} on ${pageId} targets broad Source Heading ${heading} even though ${headingAnchors.length} Source Anchor(s) exist below it.`,
+      suggestion:
+        "Prefer citing the most specific Source Anchor once Citation relations support Source Anchor targets, or record why the heading-level citation is intentional.",
+      details: {
+        pageId,
+        heading,
+        citationKey: key,
+        sourceAnchors: headingAnchors.map((anchor) => stringField(anchor, "id")).filter(Boolean),
+      },
+    });
+  }
+
+  const summary = issues.reduce<Record<string, number>>((accumulator, issue) => {
+    accumulator[issue.kind] = (accumulator[issue.kind] ?? 0) + 1;
+    return accumulator;
+  }, {});
+
+  return { issueCount: issues.length, issues, summary };
+}
+
+function groupBy(records: readonly Record<string, unknown>[], key: string): Map<string, Record<string, unknown>[]> {
+  const groups = new Map<string, Record<string, unknown>[]>();
+  for (const record of records) {
+    const value = stringField(record, key);
+    if (!value) continue;
+    const group = groups.get(value) ?? [];
+    group.push(record);
+    groups.set(value, group);
+  }
+  return groups;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object";
+}
+
+function stringField(record: Record<string, unknown>, key: string): string | undefined {
+  const value = record[key];
+  return typeof value === "string" ? value : undefined;
+}
+
+function hasWeakGraphManualLinkReason(reason: string): boolean {
+  const normalized = reason.trim().toLowerCase();
+  return normalized.length < 16 || /^(related|see also|link|manual|todo|tbd|context)$/.test(normalized);
 }
 
 async function fetchOllamaEmbedding(
@@ -1403,6 +2333,129 @@ function firstSourceHeading(data: unknown): SourceHeadingDraft | undefined {
   };
 }
 
+function defaultSourceDocumentId(path: string): string {
+  return `source_document:${basename(path)
+    .replace(/\.[^.]+$/, "")
+    .toLowerCase()}`;
+}
+
+function sourceHeadingDraftFromProjection(
+  heading: SourceHeadingProjection,
+  sourceDocumentId = heading.sourceDocumentId,
+): SourceHeadingDraft {
+  return {
+    sourceDocumentId,
+    title: heading.title,
+    headingPath: heading.headingPath,
+    level: heading.level,
+    startPage: heading.startPage,
+    endPage: heading.endPage,
+    order: heading.order,
+    extractionMethod: heading.extractionMethod,
+  };
+}
+
+function persistedSourceHeadingId(
+  heading: SourceHeadingProjection,
+  sourceDocumentId = heading.sourceDocumentId,
+): string {
+  return sourceHeadingRecordId(sourceHeadingDraftFromProjection(heading, sourceDocumentId));
+}
+
+function cliSourceHeading(
+  heading: SourceHeadingProjection,
+  sourceDocumentId = heading.sourceDocumentId,
+): Record<string, unknown> {
+  const persistedId = persistedSourceHeadingId(heading, sourceDocumentId);
+  return {
+    id: persistedId,
+    persistedSourceHeadingId: persistedId,
+    citationTarget: persistedId,
+    extractionHeadingId: heading.id,
+    projectionHeadingId: heading.id,
+    sourceDocumentId,
+    title: heading.title,
+    headingPath: heading.headingPath,
+    level: heading.level,
+    startPage: heading.startPage,
+    endPage: heading.endPage,
+    order: heading.order,
+    extractionMethod: heading.extractionMethod,
+  };
+}
+
+function findSourceHeading(
+  headings: readonly SourceHeadingProjection[],
+  sourceDocumentId: string,
+  selector: string,
+): SourceHeadingProjection | undefined {
+  return headings.find((candidate) => {
+    const persistedId = persistedSourceHeadingId(candidate, sourceDocumentId);
+    return (
+      candidate.id === selector ||
+      persistedId === selector ||
+      candidate.title === selector ||
+      candidate.headingPath.join(" / ") === selector
+    );
+  });
+}
+
+type PageRange = { readonly start: number; readonly end: number };
+
+function pageRangeForHeading(
+  path: string,
+  sourceDocumentId: string,
+  headings: readonly SourceHeadingProjection[],
+  selector: string,
+  argv: readonly string[],
+): PageRange | CliFailure {
+  const heading = findSourceHeading(headings, sourceDocumentId, selector);
+  if (!heading) {
+    return operationFailure(
+      "source read",
+      "source.read",
+      argv,
+      `No Source Heading matched '${selector}'.`,
+      `Run originium source headings ${path} --source ${sourceDocumentId} and pass data.headings[].id.`,
+    );
+  }
+  return { start: heading.startPage, end: heading.endPage ?? heading.startPage };
+}
+
+function parsePageRangeArgument(argv: readonly string[]): PageRange | CliFailure | undefined {
+  const pages = valueAfter(argv, "--pages") ?? valueAfter(argv, "--page-range");
+  if (pages) {
+    const match = pages.match(/^(\d+)(?:-(\d+))?$/);
+    if (!match) {
+      return operationFailure(
+        argv.slice(0, 2).join(" "),
+        `${argv[0]}.${argv[1]}`,
+        argv,
+        `Invalid page range '${pages}'.`,
+        "Pass a page range such as --pages 12-14.",
+      );
+    }
+    const start = Number.parseInt(match[1], 10);
+    const end = Number.parseInt(match[2] ?? match[1], 10);
+    if (end < start) {
+      return operationFailure(
+        argv.slice(0, 2).join(" "),
+        `${argv[0]}.${argv[1]}`,
+        argv,
+        `Invalid page range '${pages}' because the end page is before the start page.`,
+        "Pass a page range such as --pages 12-14.",
+      );
+    }
+    return { start, end };
+  }
+
+  const page = optionalIntegerAfter(argv, "--page");
+  if (page !== undefined) return { start: page, end: page };
+  const start = optionalIntegerAfter(argv, "--start-page") ?? optionalIntegerAfter(argv, "--from-page");
+  const end = optionalIntegerAfter(argv, "--end-page") ?? optionalIntegerAfter(argv, "--to-page") ?? start;
+  return start === undefined || end === undefined ? undefined : { start, end };
+}
+
 function isEnvironmentBlocked(reason: string): boolean {
   return /ECONNREFUSED|fetch failed|connection refused|not found|No such file|could not connect|unreachable|Unable to connect/i.test(
     reason,
@@ -1444,6 +2497,19 @@ function valueAfter(argv: readonly string[], flag: string): string | undefined {
   return index === -1 ? undefined : argv[index + 1];
 }
 
+function optionalIntegerAfter(argv: readonly string[], flag: string): number | undefined {
+  const value = valueAfter(argv, flag);
+  if (value === undefined) return undefined;
+  const parsed = Number.parseInt(value, 10);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function sourceAnchorRecordId(sourceDocumentId: string, headingId: string, title: string): string {
+  const sourcePart = toSurrealIdPart(toSlug(sourceDocumentId.replace(/^[^:]+:/, "")));
+  const headingPart = toSurrealIdPart(toSlug(headingId.replace(/^[^:]+:/, "")));
+  return `source_anchor:${sourcePart}_${headingPart}_${toSurrealIdPart(toSlug(title))}`;
+}
+
 function positionalArgs(argv: readonly string[], startIndex: number): readonly string[] {
   const values: string[] = [];
   for (let index = startIndex; index < argv.length; index += 1) {
@@ -1461,6 +2527,10 @@ function escapeSurrealString(input: string): string {
   return input.replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/\r?\n/g, "\\n");
 }
 
+function toSurrealIdPart(input: string): string {
+  return input.replace(/-/g, "_");
+}
+
 function surrealArray(values: readonly string[]): string {
   return `[${values.map((value) => `"${escapeSurrealString(value)}"`).join(", ")}]`;
 }
@@ -1471,6 +2541,6 @@ function errorReason(error: unknown): string {
 
 if (import.meta.main) {
   const result = await runCli();
-  console.log(JSON.stringify(result, null, 2));
+  console.log(wantsJson(process.argv.slice(2)) ? JSON.stringify(result, null, 2) : renderCliResult(result));
   process.exitCode = result.ok ? 0 : 1;
 }

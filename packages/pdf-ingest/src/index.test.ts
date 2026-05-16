@@ -4,9 +4,12 @@ import test from "node:test";
 import {
   estimateTokens,
   extractPdfHeadings,
+  nearestHeadingForPage,
   parsePdfInfo,
   parseTableOfContentsHeadings,
   projectPdfChunk,
+  projectPdfText,
+  searchPdfText,
 } from "./index";
 
 const fixturePath = "fixtures/source-documents/IA-Mining-DG.pdf";
@@ -59,6 +62,38 @@ test("projectPdfChunk returns bounded text and evidence metadata", () => {
   assert.equal(chunk.pageRange.start, heading.startPage);
   assert.ok(chunk.tokenEstimate <= 800);
   assert.match(chunk.text, /Autonomous|Mining/);
+});
+
+test("projectPdfText returns lossy projection provenance for IA Mining pages", () => {
+  const projection = projectPdfText(fixturePath, {
+    sourceDocumentId: "source_document:ia_mining_dg_fixture",
+    pageRange: { start: 1, end: 1 },
+    maxTokens: 800,
+  });
+
+  assert.equal(projection.sourceDocumentId, "source_document:ia_mining_dg_fixture");
+  assert.deepEqual(projection.pageRange, { start: 1, end: 1 });
+  assert.equal(projection.provenance.extractionMethod, "pdftotext-page-projection");
+  assert.equal(projection.provenance.lossy, true);
+  assert.match(projection.provenance.checksumSha256, /^[a-f0-9]{64}$/);
+  assert.match(projection.warning, /Lossy source text projection/);
+  assert.match(projection.text, /Autonomous|Mining/);
+});
+
+test("searchPdfText returns concise IA Mining snippets with nearest heading context", () => {
+  const headings = extractPdfHeadings(fixturePath, "source_document:ia_mining_dg_fixture");
+  const hits = searchPdfText(fixturePath, headings, "Cisco Ultra-Reliable Wireless Backhaul", {
+    sourceDocumentId: "source_document:ia_mining_dg_fixture",
+    pageRange: { start: 11, end: 20 },
+    limit: 3,
+  });
+
+  assert.ok(hits.length > 0);
+  assert.match(hits[0].snippet, /Cisco Ultra-Reliable Wireless Backhaul/);
+  assert.equal(hits[0].sourceDocumentId, "source_document:ia_mining_dg_fixture");
+  assert.ok(hits[0].pageRange.start >= 11);
+  assert.ok(hits[0].nearestHeading);
+  assert.equal(nearestHeadingForPage(headings, hits[0].pageRange.start)?.id, hits[0].nearestHeading?.id);
 });
 
 test("estimateTokens uses a stable rough word-based estimate", () => {

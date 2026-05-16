@@ -38,6 +38,18 @@ DEFINE TABLE IF NOT EXISTS agent_session SCHEMAFULL;
 DEFINE FIELD IF NOT EXISTS purpose ON agent_session TYPE string;
 DEFINE FIELD IF NOT EXISTS created_at ON agent_session TYPE datetime DEFAULT time::now();
 
+DEFINE TABLE IF NOT EXISTS source_anchor SCHEMAFULL;
+DEFINE FIELD IF NOT EXISTS title ON source_anchor TYPE string;
+DEFINE FIELD IF NOT EXISTS source_document ON source_anchor TYPE record<source_document>;
+DEFINE FIELD IF NOT EXISTS source_heading ON source_anchor TYPE record<source_heading>;
+DEFINE FIELD IF NOT EXISTS start_page ON source_anchor TYPE option<int>;
+DEFINE FIELD IF NOT EXISTS end_page ON source_anchor TYPE option<int>;
+DEFINE FIELD IF NOT EXISTS location_hint ON source_anchor TYPE option<string>;
+DEFINE FIELD IF NOT EXISTS reason ON source_anchor TYPE string;
+DEFINE FIELD IF NOT EXISTS created_session ON source_anchor TYPE option<record<agent_session>>;
+DEFINE FIELD IF NOT EXISTS created_at ON source_anchor TYPE datetime DEFAULT time::now();
+DEFINE FIELD IF NOT EXISTS updated_at ON source_anchor TYPE datetime DEFAULT time::now();
+
 DEFINE TABLE IF NOT EXISTS change_log SCHEMAFULL;
 DEFINE FIELD IF NOT EXISTS agent_session ON change_log TYPE option<record<agent_session>>;
 DEFINE FIELD IF NOT EXISTS command ON change_log TYPE string;

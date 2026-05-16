@@ -57,6 +57,38 @@ export type IngestionChunkProjection = {
   readonly text: string;
 };
 
+export type SourceTextProvenance = {
+  readonly extractionMethod: "pdftotext-page-projection";
+  readonly tool: "pdftotext";
+  readonly toolVersion?: string;
+  readonly lossy: true;
+  readonly checksumSha256: string;
+};
+
+export type SourceTextProjection = {
+  readonly sourceDocumentId: string;
+  readonly pageRange: {
+    readonly start: number;
+    readonly end: number;
+  };
+  readonly tokenEstimate: number;
+  readonly text: string;
+  readonly provenance: SourceTextProvenance;
+  readonly warning: string;
+};
+
+export type SourceTextSearchHit = {
+  readonly sourceDocumentId: string;
+  readonly pageRange: {
+    readonly start: number;
+    readonly end: number;
+  };
+  readonly snippet: string;
+  readonly nearestHeading?: SourceHeadingProjection;
+  readonly provenance: SourceTextProvenance;
+  readonly warning: string;
+};
+
 export function parsePdfInfo(output: string): PdfMetadata {
   const title = output.match(/^Title:\s*(.+)$/m)?.[1]?.trim();
   const pages = output.match(/^Pages:\s*(\d+)$/m)?.[1];
@@ -191,9 +223,80 @@ export function projectPdfChunk(
   }
 }
 
+export function projectPdfText(
+  path: string,
+  options: {
+    readonly sourceDocumentId: string;
+    readonly pageRange: { readonly start: number; readonly end: number };
+    readonly maxTokens?: number;
+  },
+): SourceTextProjection {
+  const pageRange = normalizePageRange(options.pageRange);
+  const text = readPdfText(path, pageRange, "pdf.source-text.read").trim();
+  const tokenEstimate = estimateTokens(text);
+  const maxTokens = options.maxTokens ?? 4_000;
+  const boundedText = tokenEstimate > maxTokens ? trimToEstimatedTokens(text, maxTokens) : text;
+
+  return {
+    sourceDocumentId: options.sourceDocumentId,
+    pageRange,
+    tokenEstimate: Math.min(tokenEstimate, maxTokens),
+    text: boundedText,
+    provenance: sourceTextProvenance(boundedText),
+    warning: sourceTextProjectionWarning,
+  };
+}
+
+export function searchPdfText(
+  path: string,
+  headings: readonly SourceHeadingProjection[],
+  query: string,
+  options: {
+    readonly sourceDocumentId: string;
+    readonly pageRange?: { readonly start: number; readonly end: number };
+    readonly limit?: number;
+    readonly snippetCharacters?: number;
+  },
+): readonly SourceTextSearchHit[] {
+  const normalizedQuery = query.trim();
+  if (!normalizedQuery) return [];
+
+  const metadata = readPdfMetadata(path);
+  const limit = options.limit ?? 10;
+  const snippetCharacters = options.snippetCharacters ?? 280;
+  const pageRange = normalizePageRange(options.pageRange ?? { start: 1, end: metadata.pageCount });
+  const hits: SourceTextSearchHit[] = [];
+
+  for (let page = pageRange.start; page <= pageRange.end && hits.length < limit; page += 1) {
+    const pageText = readPdfText(path, { start: page, end: page }, "pdf.source-text.search").trim();
+    const matchIndex = pageText.toLowerCase().indexOf(normalizedQuery.toLowerCase());
+    if (matchIndex === -1) continue;
+
+    hits.push({
+      sourceDocumentId: options.sourceDocumentId,
+      pageRange: { start: page, end: page },
+      snippet: snippetAround(pageText, matchIndex, normalizedQuery.length, snippetCharacters),
+      nearestHeading: nearestHeadingForPage(headings, page),
+      provenance: sourceTextProvenance(pageText),
+      warning: sourceTextProjectionWarning,
+    });
+  }
+
+  return hits;
+}
+
 export function estimateTokens(text: string): number {
   const words = text.trim().split(/\s+/).filter(Boolean).length;
   return Math.ceil(words * 1.35);
+}
+
+export function nearestHeadingForPage(
+  headings: readonly SourceHeadingProjection[],
+  page: number,
+): SourceHeadingProjection | undefined {
+  return headings
+    .filter((heading) => heading.startPage <= page && (heading.endPage === undefined || heading.endPage >= page))
+    .sort((left, right) => right.startPage - left.startPage || right.order - left.order)[0];
 }
 
 function nearestChapterTitle(headings: readonly SourceHeadingProjection[]): string {
@@ -219,6 +322,77 @@ function sourceHeadingId(
 function trimToEstimatedTokens(text: string, maxTokens: number): string {
   const maxWords = Math.floor(maxTokens / 1.35);
   return text.split(/\s+/).slice(0, maxWords).join(" ");
+}
+
+const sourceTextProjectionWarning =
+  "Lossy source text projection from PDF extraction; use the original Source Document for canonical wording, tables, figures, and layout.";
+
+function readPdfText(
+  path: string,
+  pageRange: { readonly start: number; readonly end: number },
+  operation: string,
+): string {
+  try {
+    return execFileSync("pdftotext", ["-f", String(pageRange.start), "-l", String(pageRange.end), path, "-"], {
+      encoding: "utf8",
+      maxBuffer: 20 * 1024 * 1024,
+    });
+  } catch (error) {
+    throw toolFailure(
+      operation,
+      `${path}#p${pageRange.start}-${pageRange.end}`,
+      error,
+      "Verify pdftotext can read the requested page range.",
+    );
+  }
+}
+
+function normalizePageRange(pageRange: { readonly start: number; readonly end: number }): {
+  readonly start: number;
+  readonly end: number;
+} {
+  if (
+    !Number.isInteger(pageRange.start) ||
+    !Number.isInteger(pageRange.end) ||
+    pageRange.start < 1 ||
+    pageRange.end < pageRange.start
+  ) {
+    throw new Error(
+      `operation=pdf.source-text.page-range input=${pageRange.start}-${pageRange.end} reason=invalid page range action=pass a page range such as --pages 12-14`,
+    );
+  }
+  return pageRange;
+}
+
+function snippetAround(text: string, matchIndex: number, queryLength: number, snippetCharacters: number): string {
+  const halfWindow = Math.floor(Math.max(snippetCharacters, queryLength) / 2);
+  const start = Math.max(0, matchIndex - halfWindow);
+  const end = Math.min(text.length, matchIndex + queryLength + halfWindow);
+  return `${start > 0 ? "... " : ""}${text.slice(start, end).replace(/\s+/g, " ").trim()}${end < text.length ? " ..." : ""}`;
+}
+
+function sourceTextProvenance(text: string): SourceTextProvenance {
+  return {
+    extractionMethod: "pdftotext-page-projection",
+    tool: "pdftotext",
+    toolVersion: pdfTextToolVersion(),
+    lossy: true,
+    checksumSha256: createHash("sha256").update(text).digest("hex"),
+  };
+}
+
+let cachedPdfTextToolVersion: string | undefined;
+
+function pdfTextToolVersion(): string | undefined {
+  if (cachedPdfTextToolVersion !== undefined) return cachedPdfTextToolVersion;
+  try {
+    const output = execFileSync("pdftotext", ["-v"], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+    cachedPdfTextToolVersion = output.trim().split(/\r?\n/)[0] || undefined;
+  } catch (error) {
+    const message = error instanceof Error ? error.message.split("\n")[0] : String(error);
+    cachedPdfTextToolVersion = message || undefined;
+  }
+  return cachedPdfTextToolVersion;
 }
 
 function toolFailure(operation: string, input: string, error: unknown, action: string): Error {

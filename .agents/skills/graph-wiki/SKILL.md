@@ -50,6 +50,12 @@ Documents provide evidence, but they are not the final compiled knowledge layer.
 **Source Heading**: a heading or chapter-like anchor extracted from a Source
 Document. Current Originium citations point to Source Headings.
 
+**Source Anchor**: an agent-maintained citation anchor below or beside a Source
+Heading. Use Source Anchors to record narrower body-section evidence without
+rewriting extracted Source Headings in place. Until Citation relations support
+Source Anchor targets, Graph lint reports heading-level citations as broad when
+more specific anchors exist.
+
 **Ingestion Chunk**: an agent-readable projection of one Source Heading or
 chapter-sized slice. Use it to process large documents without loading the whole
 document into context.
@@ -171,6 +177,9 @@ trusted source material.
      --session <session-id>
    ```
 
+   Use `data.headings[].id` as the persisted Source Heading ID for citations
+   and links. `extractionHeadingId` is only provenance for the text projection.
+
 3. Choose one Source Heading or chapter-sized anchor. Large documents should be
    processed heading by heading.
 
@@ -184,7 +193,45 @@ trusted source material.
      --session <session-id>
    ```
 
-5. If you need Chapter Ingestion context:
+   The chunk output makes `persistedSourceHeadingId` and `citationTarget`
+   prominent. Use that ID for `citation add`; treat `projectionHeadingId` as
+   extraction provenance only.
+
+5. If you need targeted source text without creating graph records:
+
+   ```bash
+   originium source read <pdf-path> \
+     --source <source-document-id> \
+     --heading <source-heading-id>
+
+   originium source search <pdf-path> "<query>" \
+     --source <source-document-id> \
+     --pages 12-18
+   ```
+
+   Source text read/search output is a lossy PDF text projection with page
+   range, nearest heading/anchor context, extraction provenance, and checksum.
+   Use the original Source Document for canonical wording, tables, figures, and
+   layout.
+
+6. If a Source Heading is too broad for a body-section citation, create a Source
+   Anchor instead of editing extracted heading records:
+
+   ```bash
+   originium source anchor create \
+     --title "<body section or evidence name>" \
+     --source <source-document-id> \
+     --heading <source-heading-id> \
+     --pages 12-14 \
+     --location "<short location hint>" \
+     --reason "<why this anchor is needed>" \
+     --session <session-id>
+   ```
+
+   Read or search anchors with `source anchor read <source-anchor-id>` and
+   `source anchor search "<query>"`.
+
+7. If you need Chapter Ingestion context:
 
    ```bash
    originium ingest chapter \
@@ -222,7 +269,8 @@ Recommended indexing loop:
 1. Start an Agent Session and list Source Headings for the Source Document.
 2. Choose a bounded chapter, section cluster, or theme to index.
 3. Read the relevant chunks with `source chunk`. For broad or noisy headings,
-   use adjacent headings or source text search to locate the real evidence.
+   use `source search` or `source read --pages <start-end>` to locate the real
+   evidence before synthesizing.
 4. Draft candidate Wiki Pages and search for existing pages before writing.
 5. Create or update pages with citation markers in the body.
 6. Add Citation relations whose keys exactly match the body markers.
@@ -231,9 +279,15 @@ Recommended indexing loop:
    "implements", "constrains", "contrasts with", "is configured by", or
    "provides evidence for". Do not add decorative or vague links.
 8. Validate citations for every page touched.
-9. Run retrieval searches for likely questions and inspect whether the intended
-   pages rank ahead of raw Source Headings.
-10. Inspect the session log and report records read, records changed, validated
+9. Run Graph lint and address or report hygiene issues:
+
+   ```bash
+   originium graph lint --session <session-id>
+   ```
+
+10. Run retrieval searches for likely questions and inspect whether the intended
+    pages rank ahead of raw Source Headings.
+11. Inspect the session log and report records read, records changed, validated
     pages, and known gaps.
 
 Quality bar for an indexing pass:
@@ -297,6 +351,24 @@ Then validate the page:
 ```bash
 originium citation validate <wiki-page-id> --session <session-id>
 ```
+
+For small corrections, prefer preview-first editing over rewriting the whole
+body:
+
+```bash
+originium page replace \
+  --page <wiki-page-id> \
+  --find "<exact current text>" \
+  --replace "<replacement text>" \
+  --session <session-id>
+
+originium page replace ... --apply
+originium page patch --page <wiki-page-id> --body-file <path> --apply
+originium page append --page <wiki-page-id> --body "<additional synthesis>" --apply
+```
+
+`page replace`, `page patch`, and `page append` preview by default and refuse to
+apply edits that make Citation Markers disagree with graph Citations.
 
 Interpret validation results literally:
 
@@ -364,10 +436,18 @@ originium page read <wiki-page-id> --session <session-id>
 originium citation list <wiki-page-id> --session <session-id>
 originium citation validate <wiki-page-id> --session <session-id>
 originium link list --record <record-id> --session <session-id>
+originium graph lint --session <session-id>
 ```
 
 Use the Change Log to understand what was read and changed. Prefer compensating
 CLI edits over direct database edits so the repair is also logged.
+
+Run `graph lint` before and after cleanup or indexing passes. It reports empty
+and uncited Wiki Pages, Citation Marker/Citation mismatches, unused Citations,
+duplicate-ish and orphan pages, broad heading-level citation targets when Source
+Anchors exist, and Manual Links with missing or vague reasons. Treat the output
+as a repair queue; destructive cleanup should be explicit and logged rather than
+done through direct database edits.
 
 Typical repairs:
 
