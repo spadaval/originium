@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { copyFileSync, existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import {
+  type SourceHeadingDraft,
   sourceDocumentRecordId,
   sourceHeadingRecordId,
   validatePageBodyCitationMarkers,
@@ -524,10 +525,18 @@ async function routeLink(argv: readonly string[]): Promise<CliResult> {
   if (command === "list") {
     const record = valueAfter(argv, "--record") ?? argv[2];
     const where = record ? `WHERE in = ${record} OR out = ${record}` : "";
-    return queryCommand("link list", "link.list", argv, `SELECT * FROM manual_link ${where};`, "Listed Manual Links.", {}, {
-      kind: "read",
-      targetRecords: record ? [record] : ["manual_link"],
-    });
+    return queryCommand(
+      "link list",
+      "link.list",
+      argv,
+      `SELECT * FROM manual_link ${where};`,
+      "Listed Manual Links.",
+      {},
+      {
+        kind: "read",
+        targetRecords: record ? [record] : ["manual_link"],
+      },
+    );
   }
 
   return unknownCommand("link", command, argv, "Use one of: add, list.");
@@ -675,31 +684,101 @@ async function routeAcceptance(argv: readonly string[]): Promise<CliResult> {
   const [, command] = argv;
   if (command !== "poc") return unknownCommand("acceptance", command ?? "", argv, "Use: acceptance poc <pdf-path>.");
   const path = argv[2] ?? "fixtures/source-documents/IA-Mining-DG.pdf";
-  const stages = [
-    acceptanceStage("db-status", await routeDb(["db", "status"])),
-    acceptanceStage("db-doctor", await routeDb(["db", "doctor"])),
-    acceptanceStage("schema", await routeDb(["db", "apply-schema"])),
-    acceptanceStage("source-import", await routeSource(["source", "import-pdf", path])),
-    acceptanceStage(
-      "heading-projection",
-      await routeSource(["source", "headings", path, "--source", "source_document:ia_mining_dg_fixture"]),
-    ),
-    {
-      name: "wiki-authoring",
-      state: "deferred",
-      reason: "Deferred until Wiki Page, Citation, Manual Link, and Change Log CLI workflows are complete.",
-    },
-    {
-      name: "graph-retrieval",
-      state: "deferred",
-      reason: "Deferred until Graph Retrieval and Chapter Ingestion CLI workflows are complete.",
-    },
-    {
-      name: "surrealist-inspection",
-      state: "not-applicable",
-      reason: "Not applicable to the automated CLI harness; Surrealist inspection is validated by the manual inspection beads.",
-    },
-  ] satisfies AcceptanceStage[];
+  const stages: AcceptanceStage[] = [];
+
+  stages.push(acceptanceStage("db-status", await routeDb(["db", "status"])));
+  stages.push(acceptanceStage("db-doctor", await routeDb(["db", "doctor"])));
+  stages.push(acceptanceStage("schema", await routeDb(["db", "apply-schema"])));
+
+  const importResult = await routeSource(["source", "import-pdf", path]);
+  stages.push(acceptanceStage("source-import", importResult));
+  const sourceId = importResult.ok ? (importResult.data as { id?: string }).id : undefined;
+
+  const headingsResult = await routeSource([
+    "source",
+    "headings",
+    path,
+    "--source",
+    sourceId ?? "source_document:fixture",
+  ]);
+  stages.push(acceptanceStage("heading-projection", headingsResult));
+  const heading = headingsResult.ok ? firstSourceHeading(headingsResult.data) : undefined;
+  const headingId = heading ? sourceHeadingRecordId(heading) : undefined;
+
+  if (!sourceId || !heading || !headingId) {
+    stages.push(
+      blockedStage(
+        "session-start",
+        "Blocked because Source Document import or Source Heading projection did not produce IDs.",
+      ),
+    );
+    stages.push(
+      blockedStage(
+        "chapter-ingestion",
+        "Blocked because Source Document import or Source Heading projection did not produce IDs.",
+      ),
+    );
+    stages.push(blockedStage("citation-validation", "Blocked because Chapter Ingestion did not run."));
+    stages.push(blockedStage("graph-retrieval", "Blocked because Chapter Ingestion did not run."));
+    stages.push(blockedStage("change-log", "Blocked because no Agent Session was created."));
+  } else {
+    const sessionResult = await routeSession(["session", "start", "--purpose", `POC acceptance for ${path}`]);
+    stages.push(acceptanceStage("session-start", sessionResult));
+    const sessionId = sessionResult.ok ? (sessionResult.data as { id?: string }).id : undefined;
+
+    if (!sessionId) {
+      stages.push(blockedStage("chapter-ingestion", "Blocked because Agent Session creation did not produce an ID."));
+      stages.push(blockedStage("citation-validation", "Blocked because Chapter Ingestion did not run."));
+      stages.push(blockedStage("graph-retrieval", "Blocked because Chapter Ingestion did not run."));
+      stages.push(blockedStage("change-log", "Blocked because no Agent Session was created."));
+    } else {
+      const pageTitle = "POC Mining Deployment";
+      const pageId = wikiPageRecordId(pageTitle);
+      stages.push(
+        acceptanceStage(
+          "chapter-ingestion",
+          await routeIngest([
+            "ingest",
+            "chapter",
+            "--source",
+            sourceId,
+            "--heading",
+            headingId,
+            "--title",
+            pageTitle,
+            "--body",
+            `${heading.title} synthesized for POC acceptance.[^source]`,
+            "--key",
+            "source",
+            "--label",
+            heading.title,
+            "--session",
+            sessionId,
+          ]),
+        ),
+      );
+      stages.push(
+        acceptanceStage(
+          "citation-validation",
+          await routeCitation(["citation", "validate", pageId, "--session", sessionId]),
+        ),
+      );
+      stages.push(
+        acceptanceStage(
+          "graph-retrieval",
+          await routeRetrieval(["retrieval", "search", heading.title, "POC", "acceptance", "--session", sessionId]),
+        ),
+      );
+      stages.push(acceptanceStage("change-log", await routeLog(["log", "show", "--session", sessionId])));
+    }
+  }
+
+  stages.push({
+    name: "surrealist-inspection",
+    state: "not-applicable",
+    reason:
+      "Not applicable to the automated CLI harness; Surrealist inspection is validated by the manual inspection beads.",
+  });
   const blockingStage = stages.find((stage) => stage.state === "fail" || stage.state === "blocked");
   const data = { stages, overallState: blockingStage?.state ?? "pass" };
 
@@ -748,7 +827,7 @@ async function writePage(argv: readonly string[], command: "create" | "update"):
 }
 
 async function searchPages(argv: readonly string[]): Promise<CliResult> {
-  const queryText = argv.slice(2).join(" ").trim();
+  const queryText = positionalArgs(argv, 2).join(" ").trim();
   const command = argv[0] === "retrieval" ? "retrieval search" : "page search";
   const operation = argv[0] === "retrieval" ? "retrieval.search" : "page.search";
   if (!queryText) return missingArgument(command, operation, argv, "<query>");
@@ -773,7 +852,7 @@ async function searchPages(argv: readonly string[]): Promise<CliResult> {
   const candidates = retrievalCandidatesFromStatements(result.result as Array<{ result?: unknown }>);
   let ranked: readonly RankedRetrievalCandidate[];
   try {
-    ranked = await rankRetrievalCandidates(candidates, queryText, queryEmbedding.embedding, queryEmbedding.config);
+    ranked = await rankRetrievalCandidates(candidates, queryText, queryEmbedding.embedding);
   } catch (error) {
     return operationFailure(
       command,
@@ -807,9 +886,13 @@ async function queryCommand(
   data: Record<string, unknown> = {},
   logOptions?: QueryLogOptions,
 ): Promise<CliResult> {
-  const result = await executeSurrealQuery(readSurrealConfig(), loggedQuery(command, operation, argv, query, logOptions), {
-    queryId: `${operation}:${argv.join(" ")}`,
-  });
+  const result = await executeSurrealQuery(
+    readSurrealConfig(),
+    loggedQuery(command, operation, argv, query, logOptions),
+    {
+      queryId: `${operation}:${argv.join(" ")}`,
+    },
+  );
   if (!result.ok) return fromSurrealFailure(command, argv, result.error);
   return success({ command, operation, input: argv, message, data: { ...data, result: result.result } });
 }
@@ -822,10 +905,18 @@ async function selectById(
   label: string,
 ): Promise<CliResult> {
   if (!id) return missingArgument(command, operation, argv, `<${label}>`);
-  return queryCommand(command, operation, argv, `SELECT * FROM ${id};`, `Read ${label} ${id}.`, {}, {
-    kind: "read",
-    targetRecords: [id],
-  });
+  return queryCommand(
+    command,
+    operation,
+    argv,
+    `SELECT * FROM ${id};`,
+    `Read ${label} ${id}.`,
+    {},
+    {
+      kind: "read",
+      targetRecords: [id],
+    },
+  );
 }
 
 function loggedQuery(
@@ -895,7 +986,10 @@ async function fetchOllamaEmbedding(
   command: string,
   operation: string,
   argv: readonly string[],
-): Promise<{ readonly ok: true; readonly embedding: readonly number[]; readonly config: OllamaEmbeddingConfig } | { readonly ok: false; readonly failure: CliFailure }> {
+): Promise<
+  | { readonly ok: true; readonly embedding: readonly number[]; readonly config: OllamaEmbeddingConfig }
+  | { readonly ok: false; readonly failure: CliFailure }
+> {
   const config = readOllamaEmbeddingConfig();
   const endpoint = new URL("/api/embeddings", config.url).toString();
 
@@ -956,7 +1050,10 @@ function readOllamaEmbeddingConfig(env: NodeJS.ProcessEnv = process.env): Ollama
   };
 }
 
-function parseOllamaEmbedding(body: { readonly embedding?: unknown; readonly embeddings?: unknown }): readonly number[] | undefined {
+function parseOllamaEmbedding(body: {
+  readonly embedding?: unknown;
+  readonly embeddings?: unknown;
+}): readonly number[] | undefined {
   if (isNumberVector(body.embedding)) return body.embedding;
   if (Array.isArray(body.embeddings) && isNumberVector(body.embeddings[0])) return body.embeddings[0];
   return undefined;
@@ -966,7 +1063,9 @@ function isNumberVector(value: unknown): value is readonly number[] {
   return Array.isArray(value) && value.length > 0 && value.every((entry) => typeof entry === "number");
 }
 
-function retrievalCandidatesFromStatements(statements: readonly { readonly result?: unknown }[]): readonly RetrievalCandidate[] {
+function retrievalCandidatesFromStatements(
+  statements: readonly { readonly result?: unknown }[],
+): readonly RetrievalCandidate[] {
   const candidates: RetrievalCandidate[] = [];
   const rows = statements.flatMap((statement) => (Array.isArray(statement.result) ? statement.result : []));
   const sourceHeadingsById = new Map<string, Record<string, unknown>>();
@@ -1020,7 +1119,6 @@ async function rankRetrievalCandidates(
   candidates: readonly RetrievalCandidate[],
   queryText: string,
   queryEmbedding: readonly number[],
-  config: OllamaEmbeddingConfig,
 ): Promise<readonly RankedRetrievalCandidate[]> {
   const ranked: RankedRetrievalCandidate[] = [];
 
@@ -1268,6 +1366,43 @@ function acceptanceStage(name: string, result: CliResult): AcceptanceStage {
   };
 }
 
+function blockedStage(name: string, reason: string): AcceptanceStage {
+  return {
+    name,
+    state: "blocked",
+    reason,
+  };
+}
+
+function firstSourceHeading(data: unknown): SourceHeadingDraft | undefined {
+  const headings = (data as { headings?: unknown }).headings;
+  if (!Array.isArray(headings)) return undefined;
+  const heading = headings[0] as Partial<SourceHeadingDraft> | undefined;
+  if (
+    !heading ||
+    typeof heading.sourceDocumentId !== "string" ||
+    typeof heading.title !== "string" ||
+    !Array.isArray(heading.headingPath) ||
+    typeof heading.level !== "number" ||
+    typeof heading.startPage !== "number" ||
+    typeof heading.order !== "number" ||
+    typeof heading.extractionMethod !== "string"
+  ) {
+    return undefined;
+  }
+
+  return {
+    sourceDocumentId: heading.sourceDocumentId,
+    title: heading.title,
+    headingPath: heading.headingPath.filter((entry): entry is string => typeof entry === "string"),
+    level: heading.level,
+    startPage: heading.startPage,
+    endPage: typeof heading.endPage === "number" ? heading.endPage : undefined,
+    order: heading.order,
+    extractionMethod: heading.extractionMethod as SourceHeadingDraft["extractionMethod"],
+  };
+}
+
 function isEnvironmentBlocked(reason: string): boolean {
   return /ECONNREFUSED|fetch failed|connection refused|not found|No such file|could not connect|unreachable|Unable to connect/i.test(
     reason,
@@ -1307,6 +1442,19 @@ function unknownCommand(group: string, command: string, argv: readonly string[],
 function valueAfter(argv: readonly string[], flag: string): string | undefined {
   const index = argv.indexOf(flag);
   return index === -1 ? undefined : argv[index + 1];
+}
+
+function positionalArgs(argv: readonly string[], startIndex: number): readonly string[] {
+  const values: string[] = [];
+  for (let index = startIndex; index < argv.length; index += 1) {
+    const value = argv[index];
+    if (value.startsWith("--")) {
+      index += 1;
+      continue;
+    }
+    values.push(value);
+  }
+  return values;
 }
 
 function escapeSurrealString(input: string): string {

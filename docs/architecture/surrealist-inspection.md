@@ -78,7 +78,7 @@ Inspect these schemafull tables for the POC:
 - `change_log`: durable operation log entries.
 - `cites`: Citation relation from Wiki Page to Source Heading.
 - `manual_link`: explicit semantic links requested by a user or agent.
-- `edited_in`: relation from Change Log to Agent Session.
+- `edited_in`: relation from changed records to Agent Session.
 
 Surrealist shows raw graph/database state. It will not render Originium-specific
 agent Projections, citation validation summaries, or final CLI output.
@@ -89,11 +89,17 @@ Paste these queries into Surrealist's query view. Replace example record IDs
 with IDs from the inspected fixture state.
 
 ```sql
-LET $source = source_document:ia_mining_dg_fixture;
-LET $heading = source_heading:ia_mining_dg_fixture_1_1_chapter_1_autonomous_and_tele_remote_operations_in_open_pit_mining;
-LET $page = wiki_page:curwb_deployment;
-LET $session = agent_session:fixture_session;
+LET $source = source_document:curwb_deployment_for_autonomous_operations_in_open_pit_mining_66dd4ae65769;
+LET $heading = source_heading:curwb_deployment_for_autonomous_operations_in_open_pit_mining_66dd4ae65769_chapter_1_autonomous_and_tele_remote_operations_in_open_pit_mining_p1_o1;
+LET $chunk = ingestion_chunk:curwb_deployment_for_autonomous_operations_in_open_pit_mining_66dd4ae65769_chapter_1_autonomous_and_tele_remote_operations_in_open_pit_mining_p1_o1_100000;
+LET $page = wiki_page:poc_mining_deployment;
+LET $session = agent_session:replace_with_acceptance_session;
 ```
+
+The fixture acceptance command creates those Source Document, Source Heading,
+Ingestion Chunk, and Wiki Page IDs. Replace `$session` with the Agent Session
+ID printed by `originium acceptance poc fixtures/source-documents/IA-Mining-DG.pdf`
+or by `originium log show --session <session-id>`.
 
 ## Source Documents
 
@@ -115,6 +121,12 @@ SELECT id, title, heading_path, level, start_page, end_page, order, extraction_m
 FROM source_heading
 WHERE source_document = $source
 ORDER BY order ASC;
+```
+
+Inspect the Chapter Ingestion chunk created for the first POC chapter:
+
+```sql
+SELECT * FROM $chunk;
 ```
 
 ## Source Headings
@@ -201,6 +213,16 @@ SELECT
 FROM $page;
 ```
 
+Inspect the Graph Retrieval candidate surface that should show the POC Wiki
+Page with cited Source Heading evidence:
+
+```sql
+SELECT id, title, slug, body, updated_at, ->cites->source_heading AS cited_evidence
+FROM wiki_page
+ORDER BY updated_at DESC
+LIMIT 20;
+```
+
 Inspect inbound evidence and manual links around a Source Heading:
 
 ```sql
@@ -247,7 +269,7 @@ ORDER BY created_at ASC;
 Inspect `edited_in` relations:
 
 ```sql
-SELECT id, in AS change_log, out AS agent_session, created_at
+SELECT id, in AS changed_record, out AS agent_session, created_at
 FROM edited_in
 WHERE out = $session
 ORDER BY created_at ASC;

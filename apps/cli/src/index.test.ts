@@ -96,8 +96,11 @@ test("bundled acceptance harness reports blocked stages with nonzero exit", () =
       ["schema", "blocked"],
       ["source-import", "blocked"],
       ["heading-projection", "blocked"],
-      ["wiki-authoring", "deferred"],
-      ["graph-retrieval", "deferred"],
+      ["session-start", "blocked"],
+      ["chapter-ingestion", "blocked"],
+      ["citation-validation", "blocked"],
+      ["graph-retrieval", "blocked"],
+      ["change-log", "blocked"],
       ["surrealist-inspection", "not-applicable"],
     ],
   );
