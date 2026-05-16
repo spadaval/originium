@@ -48,6 +48,14 @@ _Avoid_: event store, revision history
 A bounded unit of agent work whose Graph Wiki mutations can be reviewed through the Change Log.
 _Avoid_: run, transaction, checkpoint
 
+**Agent Workspace**:
+A web app workspace centered on one unrestricted Agent Session, with chat, activity, and Graph Wiki projections visible together.
+_Avoid_: agent mode, approval flow
+
+**Agent Activity Log**:
+A human-facing projection of an Agent Session's persisted operation and activity records.
+_Avoid_: approval queue, separate audit log
+
 **Chapter Ingestion**:
 The workflow that processes one chapter or major Source Heading at a time while preserving cross-references to other Source Headings and Wiki Pages.
 _Avoid_: whole-document ingestion, chunking
@@ -64,6 +72,10 @@ _Avoid_: automatic link, inferred edge
 A query process that combines text or vector relevance with graph connectivity to find authoritative Wiki Pages or Source Headings.
 _Avoid_: RAG, similarity search
 
+**Source Document Page**:
+A web app view for listing Source Documents and reading a selected Source Document alongside its graph-derived metadata.
+_Avoid_: file browser, document editor
+
 ## Relationships
 
 - A **Graph Wiki** contains many **Source Documents** and many **Wiki Pages**.
@@ -74,11 +86,14 @@ _Avoid_: RAG, similarity search
 - A **Page Body** may contain Citation Markers, but Citation targets live in graph relations.
 - A **Projection** is derived from graph state and is not the canonical source of truth.
 - An **Agent Session** writes one or more **Change Log** entries.
+- An **Agent Workspace** is centered on one **Agent Session**.
+- An **Agent Activity Log** is derived from persisted **Agent Session** activity and Change Log records.
 - A **Change Log** entry describes one mutation to Graph Wiki state.
 - **Chapter Ingestion** creates or updates Wiki Pages one chapter or major Source Heading at a time.
 - **Chapter Ingestion** uses **Ingestion Chunks** sized to a practical agent context budget.
 - A **Manual Link** may connect Wiki Pages, Source Headings, or other graph records.
 - **Graph Retrieval** ranks graph records using both relevance and graph authority.
+- A **Source Document Page** shows many **Source Documents** and can render the selected Source Document as a human reading Projection.
 
 ## Example Dialogue
 
@@ -96,3 +111,4 @@ _Avoid_: RAG, similarity search
 - Source text is not copied into Wiki Pages or durable wiki records. Resolved: Source Documents stay in file buckets, Source Headings store navigational metadata, and ingestion reads source text from the file when needed.
 - Explicit contradiction modeling is important but deferred until after the first proof of concept.
 - Agent write controls are intentionally deferred. For the first proof of concept, agents may mutate Graph Wiki state directly, and the **Change Log** is the mitigation mechanism for inspecting and undoing bad agent actions.
+- "log" can mean mutation history, runtime activity, or approval history. Resolved: the **Change Log** remains mutation history, while the **Agent Activity Log** is a human-facing projection of persisted session activity and is not an approval queue.

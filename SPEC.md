@@ -392,6 +392,36 @@ own app for user-type interaction, editing, richer projections, and embedded
 agent chat, while Surrealist remains useful for DB-management tasks and manual
 validation.
 
+## Web App Direction
+
+The Originium web app should be an Agent Workspace rather than a traditional
+document-management UI. The core interaction is chat with an unrestricted agent
+that can mutate Graph Wiki state through the same CLI/package/database semantics
+used by the POC. The app should not introduce approval workflows for agent
+actions in the first version.
+
+The main workspace should show:
+
+- agent chat as the primary interaction surface
+- a persisted Agent Activity Log derived from the existing Agent Session and
+  Change Log model, enhanced through CLI/database logging rather than a parallel
+  web-only audit path
+- a graph view for Graph Wiki records and relations
+- a Wiki Page viewer with basic Page Body editing and citation validation, but
+  no direct graph editing
+
+The web app should also include a dedicated Source Document Page. That page
+should list imported Source Documents, show import/extraction status and
+Source Heading metadata, and embed a PDF viewer for PDF Source Documents when
+the stored file can be served safely from the backend.
+
+The first web app agent runtime should couple directly to Codex app-server. Do
+not add an agent-runtime abstraction before there is a concrete second runtime.
+The backend should own the Codex app-server process/protocol boundary, database
+access, Source Document file access, and CLI/RPC calls. The browser should talk
+to the Originium backend rather than directly to SurrealDB, local files, or the
+agent process.
+
 ## Technology Direction
 
 Preferred stack:
@@ -402,6 +432,7 @@ Preferred stack:
 - TanStack Start for the later Originium app
 - SurrealDB for graph, document, and file storage
 - Ollama for initial local embedding generation
+- Codex app-server for the first embedded web agent runtime
 - Surqlize or a similar type-safe SurrealDB query layer if it supports the schema and graph relation needs cleanly
 - LibPDF or a similar TypeScript PDF parser for initial PDF extraction
 
@@ -418,8 +449,7 @@ Surqlize is a promising candidate because its upstream repository describes type
 - OCR for scanned PDFs
 - Full structured page/block model
 - Claim-level fact graph
-- Originium-owned human-facing app with editing, richer projections, and
-  embedded agent chat
+- Human approval gates for agent actions
 - Pi or Codex plugin packaging for reusable agent operating system
 
 ## External References
