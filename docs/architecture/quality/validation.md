@@ -46,7 +46,8 @@ Do not silently skip validation.
 | Integration test        | Behavior that crosses packages or runtime boundaries, persistence, lifecycle, artifact creation, schema application, migration, or workflow semantics. |
 | Bundled CLI test        | Agent-facing command behavior. Prefer running `apps/cli/dist/originium` so tests prove the surface agents will actually use.                           |
 | Scripted validation     | Behavior spanning SurrealDB, file buckets, Ollama, PDF fixtures, or local runtime startup that can be made repeatable without becoming a normal suite. |
-| Browser validation      | UI viewer behavior: navigation, rendering, empty states, failure states, citation panels, graph neighborhoods, and layout.                             |
+| Browser validation      | Originium-owned web app behavior after the deferred app exists: navigation, rendering, empty states, failure states, user workflows, and layout.       |
+| Surrealist walkthrough  | POC database inspection through Surrealist: connection setup, table/record inspection, relation traversal, graph views, and manual query evidence.     |
 | One-off walkthrough     | Exploratory, credential-dependent, live-provider-dependent, expensive, or unstable scenarios. File follow-up work to automate repeatable parts.        |
 | Static/type/build proof | Internal refactors with no visible product surface change. Prove preservation, removed-contract cleanup, and target ownership.                         |
 

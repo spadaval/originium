@@ -17,7 +17,7 @@ Originium stores canonical Graph Wiki state in SurrealDB and exposes projections
 | SurrealDB access | `packages/surreal`    | Database configuration, schema file references, and future query helpers. |
 | PDF ingestion    | `packages/pdf-ingest` | Source Document import and Chapter Ingestion boundaries.                  |
 | CLI              | `apps/cli`            | Local database commands, schema application, and ingestion entry points.  |
-| Web              | `apps/web`            | Future human-facing Graph Wiki projection.                                |
+| Web              | `apps/web`            | Deferred human-facing Graph Wiki app and projection.                      |
 | Schema           | `schema`              | Checked-in SurrealQL definitions.                                         |
 
 ## Runtime Summary
@@ -26,7 +26,27 @@ Originium stores canonical Graph Wiki state in SurrealDB and exposes projections
 2. The PDF binary is stored through SurrealDB file bucket support when configured.
 3. Ingestion reads source text from the stored Source Document and processes one Source Heading or Ingestion Chunk at a time.
 4. Agents write Wiki Pages, Citations, Manual Links, Agent Sessions, and Change Logs into SurrealDB.
-5. CLI and web surfaces render Projections from graph state.
+5. During the POC, the CLI renders agent-facing Projections and Surrealist is
+   used for database-management inspection and manual validation.
+6. After the POC, `apps/web` can add user-facing interaction, editing, richer
+   Projections, and embedded agent chat.
+
+## External Tools
+
+Surrealist is the POC database-management and manual inspection surface. Do not
+vendor Surrealist source code into this repository. Downloaded desktop release
+artifacts may live in the ignored repo-local tool cache:
+
+```text
+.originium/tools/surrealist/<version>/
+```
+
+Current local cache target:
+
+- Release: `surrealist-v3.8.5`
+- macOS arm64 asset: `Surrealist_3.8.5_aarch64.dmg`
+- SHA-256:
+  `07112ecba22409717ddcce1ba744c9631add7bc07805773543dd5222ffdd3b81`
 
 ## Dependency Direction
 
@@ -36,4 +56,5 @@ Application boundaries may depend on packages. Shared packages should keep depen
 - `packages/surreal` may depend on `packages/domain`.
 - `packages/pdf-ingest` may depend on `packages/domain` and `packages/surreal`.
 - `apps/cli` may depend on all package boundaries.
-- `apps/web` should consume public package exports only.
+- `apps/web` should consume public package exports only when the deferred app
+  work starts.

@@ -45,7 +45,10 @@
 - `packages/pdf-ingest` owns PDF metadata, heading extraction, and chunk
   projection.
 - `apps/cli` owns agent-facing command composition and bundled CLI behavior.
-- `apps/web` owns human-facing inspection UI.
+- `apps/web` is deferred until after the POC and will own human-facing
+  interaction, editing, projections, and embedded agent chat when introduced.
+- Surrealist is the POC DB-management and manual validation surface; do not
+  vendor its source code into this repository.
 - Schema definitions live in `schema/*.surql`; TypeScript code should not hide
   canonical schema changes in ad hoc strings when checked-in SurrealQL is the
   better source of truth.

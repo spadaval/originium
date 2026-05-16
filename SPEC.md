@@ -22,7 +22,7 @@ The first proof of concept should prove that a large PDF can be imported, proces
 
 The initial stress fixture is:
 
-- `~/Downloads/IA-Mining-DG.pdf`
+- `fixtures/source-documents/IA-Mining-DG.pdf`
 - PDF title: `CURWB Deployment for Autonomous Operations in Open-Pit Mining`
 - Size: about 27 MB
 - Pages: 174
@@ -331,10 +331,13 @@ Initial TypeScript package/app shape:
 - `packages/surreal`: SurrealDB connection, schema application, table/relation access, file bucket helpers, retrieval queries, and logging wrappers.
 - `packages/pdf-ingest`: PDF metadata, heading extraction, page-range extraction, and token-budgeted chunk projection.
 - `apps/cli`: agent-facing CLI commands composed from domain, SurrealDB, and PDF ingestion packages.
-- `apps/web`: viewer UI for Source Documents, Source Headings, Wiki Pages, Citations, graph neighborhoods, Agent Sessions, and Change Logs.
+- `apps/web`: deferred human-facing Graph Wiki app for user workflows, editing,
+  agent chat, and richer Graph Wiki projections.
 - `.agents/skills/graph-wiki`: repo-local agent instructions for using the CLI, preserving citation markers, and respecting the Graph Wiki model.
 
-The UI should not own ingestion or database mutation semantics. The CLI and future workers should use the same package seams.
+The Originium app is deferred until after the first POC. It should not own
+ingestion or database mutation semantics when introduced. The CLI and future
+workers should use the same package seams.
 
 ## Chapter Ingestion Workflow
 
@@ -355,7 +358,7 @@ The workflow must support repeated passes over the same Source Document. Later c
 
 ## First Acceptance Test
 
-The first end-to-end proof should run against `~/Downloads/IA-Mining-DG.pdf` and prove the smallest useful loop:
+The first end-to-end proof should run against `fixtures/source-documents/IA-Mining-DG.pdf` and prove the smallest useful loop:
 
 1. Start or connect to a correctly configured SurrealDB instance.
 2. Apply schema.
@@ -372,11 +375,14 @@ The first end-to-end proof should run against `~/Downloads/IA-Mining-DG.pdf` and
 
 This test should fail with concrete operation names and identifiers when any step is unavailable, including missing SurrealDB file support, missing PDF extraction support, missing Ollama model, or citation mismatch.
 
-## UI
+## Inspection
 
-The first UI is primarily for viewing and inspection.
+For the POC, use Surrealist as an external database-management and manual
+validation surface rather than building the Originium app. Do not vendor the
+Surrealist source code. Manage downloaded desktop release artifacts in the
+repo-local ignored tool cache when needed.
 
-Needed views:
+POC inspection should prove a human can inspect:
 
 - Source Document list
 - Source Heading outline for a Source Document
@@ -385,7 +391,12 @@ Needed views:
 - Graph neighborhood for a record
 - Agent Session and Change Log viewer
 
-Editing can remain CLI-first during the POC.
+Surrealist will expose these through tables, records, graph relations, and
+saved/manual SurrealQL queries rather than Originium-specific screens. Editing
+remains CLI-first during the POC. Longer term, Originium should still have its
+own app for user-type interaction, editing, richer projections, and embedded
+agent chat, while Surrealist remains useful for DB-management tasks and manual
+validation.
 
 ## Technology Direction
 
@@ -393,7 +404,8 @@ Preferred stack:
 
 - TypeScript
 - Effect for typed runtime boundaries and errors
-- TanStack Start for the UI
+- Surrealist desktop release for POC database inspection
+- TanStack Start for the later Originium app
 - SurrealDB for graph, document, and file storage
 - Ollama for initial local embedding generation
 - Surqlize or a similar type-safe SurrealDB query layer if it supports the schema and graph relation needs cleanly
@@ -412,6 +424,8 @@ Surqlize is a promising candidate because its upstream repository describes type
 - OCR for scanned PDFs
 - Full structured page/block model
 - Claim-level fact graph
+- Originium-owned human-facing app with editing, richer projections, and
+  embedded agent chat
 - Pi or Codex plugin packaging for reusable agent operating system
 
 ## External References
