@@ -37,17 +37,23 @@ owned slices with clear dependencies.
 
 ## Issue Types
 
-Originium uses the built-in Beads types plus one configured custom type:
+Originium uses the built-in Beads types plus configured custom types:
 
 - `validation`: scenario proof for product, operator, integration, browser, or
   behavior-preservation workflows. Validation beads should recommend
   `validate-behavior`, depend on the implementation they prove, and include the
   scenario, procedure, required evidence, pass criteria, and failure
   classification in the description.
+- `closeout`: final integrated proof, cleanup, and handoff for an epic or
+  phase. Closeout beads should recommend `breaking-migration` and
+  `validate-behavior` when scenario proof is required, depend on the work they
+  close, and classify every parent validation criterion as passed, deferred,
+  blocked, or not applicable.
 
 Use implementation types such as `task` or `feature` for building behavior.
 Use `validation` when the bead exists to prove behavior rather than implement
-it.
+it. Use `closeout` when the bead exists to integrate, verify, clean up, and
+handoff an epic or phase.
 
 ## Tracker Sync
 
