@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import type { SurrealFetch } from "@originium/surreal";
 import {
+  listAgentActivity,
   listSourceDocuments,
   readGraphNeighborhood,
   readSourceHeadings,
@@ -55,6 +56,42 @@ test("lists Source Documents through the backend without returning credentials o
   assert.equal(result.data[0]?.title, "IA Mining DG");
   assert.equal("file" in (result.data[0] ?? {}), false);
   assert.doesNotMatch(JSON.stringify(result), /do-not-leak|root:do-not-leak/);
+});
+
+test("lists Agent Activity by Agent Session without reading Change Log", async () => {
+  const queries: string[] = [];
+  const fetchImpl: SurrealFetch = async (_url, init) => {
+    queries.push(String(init?.body));
+    return new Response(
+      JSON.stringify([
+        {
+          status: "OK",
+          result: [
+            {
+              id: "agent_activity:message",
+              agent_session: "agent_session:test",
+              source: "cli",
+              kind: "message",
+              status: "completed",
+              summary: "Agent said hello",
+              operation: "activity.test",
+              target_records: ["wiki_page:test"],
+              metadata: { role: "assistant" },
+            },
+          ],
+        },
+      ]),
+      { status: 200 },
+    );
+  };
+
+  const result = await listAgentActivity({ sessionId: "agent_session:test" }, { fetch: fetchImpl });
+
+  assert.equal(result.ok, true);
+  assert.equal(result.operation, "web.graph.agent_activity.list");
+  assert.match(queries[0] ?? "", /FROM agent_activity WHERE agent_session = agent_session:test/);
+  assert.doesNotMatch(queries[0] ?? "", /change_log/);
+  assert.equal(result.data[0]?.kind, "message");
 });
 
 test("reads Source Headings for a selected Source Document in outline order", async () => {

@@ -66,6 +66,27 @@ type QueryLogOptions = {
   readonly relateEditedTargets?: readonly string[];
 };
 
+const agentActivitySources = ["codex_app_server", "cli", "web"] as const;
+const agentActivityKinds = ["message", "command", "tool", "file_change", "graph_mutation", "status", "error"] as const;
+const agentActivityStatuses = ["started", "streaming", "completed", "failed"] as const;
+
+export type AgentActivitySource = (typeof agentActivitySources)[number];
+export type AgentActivityKind = (typeof agentActivityKinds)[number];
+export type AgentActivityStatus = (typeof agentActivityStatuses)[number];
+
+export type AgentActivityDraft = {
+  readonly sessionId: string;
+  readonly createSession: boolean;
+  readonly source: AgentActivitySource;
+  readonly kind: AgentActivityKind;
+  readonly status: AgentActivityStatus;
+  readonly summary: string;
+  readonly operation?: string;
+  readonly targetRecords: readonly string[];
+  readonly metadata?: Record<string, unknown>;
+  readonly id?: string;
+};
+
 type AcceptanceStageState = "pass" | "fail" | "blocked" | "deferred" | "not-applicable";
 
 type AcceptanceStage = {
@@ -105,6 +126,7 @@ type OllamaEmbeddingConfig = {
 
 const routeGroups: Record<string, CommandHandler> = {
   acceptance: routeAcceptance,
+  activity: routeActivity,
   citation: routeCitation,
   db: routeDb,
   ingest: routeIngest,
@@ -791,6 +813,59 @@ async function routeLog(argv: readonly string[]): Promise<CliResult> {
     );
   }
   return unknownCommand("log", command, argv, "Use one of: show.");
+}
+
+async function routeActivity(argv: readonly string[]): Promise<CliResult> {
+  const [, command] = argv;
+  if (!command) return missingGroupCommand("activity", argv, "Use one of: record, list, show.");
+
+  if (command === "record") {
+    const draft = agentActivityDraftFromArgv(argv);
+    if ("ok" in draft) return draft;
+
+    const result = await executeSurrealQuery(readSurrealConfig(), buildAgentActivityRecordQuery(draft), {
+      queryId: `activity.record:${draft.sessionId}:${draft.kind}`,
+    });
+    if (!result.ok) return fromSurrealFailure("activity record", argv, result.error);
+
+    return success({
+      command: "activity record",
+      operation: "activity.record",
+      input: argv,
+      message: `Recorded Agent Activity ${draft.id}.`,
+      data: {
+        id: draft.id,
+        sessionId: draft.sessionId,
+        source: draft.source,
+        kind: draft.kind,
+        status: draft.status,
+        result: result.result,
+      },
+    });
+  }
+
+  if (command === "list") {
+    const sessionId = valueAfter(argv, "--session") ?? resolveSessionId(argv, { createImplicit: false });
+    const query = buildAgentActivityListQuery(sessionId);
+    return queryCommand(
+      "activity list",
+      "activity.list",
+      argv,
+      query,
+      sessionId ? `Listed Agent Activity records for ${sessionId}.` : "Listed Agent Activity records.",
+      { sessionId },
+      {
+        kind: "read",
+        targetRecords: sessionId ? [sessionId] : ["agent_activity"],
+      },
+    );
+  }
+
+  if (command === "show") {
+    return selectById("activity show", "activity.show", argv, argv[2], "Agent Activity ID");
+  }
+
+  return unknownCommand("activity", command, argv, "Use one of: record, list, show.");
 }
 
 async function routeGraph(argv: readonly string[]): Promise<CliResult> {
@@ -1514,6 +1589,91 @@ async function selectById(
       targetRecords: [id],
     },
   );
+}
+
+export function buildAgentActivityRecordQuery(draft: AgentActivityDraft): string {
+  const activityId = draft.id ?? `agent_activity:${randomUUID().replaceAll("-", "")}`;
+  const metadata = draft.metadata === undefined ? "NONE" : JSON.stringify(draft.metadata);
+  return [
+    draft.createSession
+      ? `CREATE ${draft.sessionId} SET purpose = "Implicit Agent Activity CLI session", created_at = time::now();`
+      : "",
+    `CREATE ${activityId} SET agent_session = ${draft.sessionId}, source = "${draft.source}", kind = "${draft.kind}", status = "${draft.status}", summary = "${escapeSurrealString(draft.summary)}", operation = ${draft.operation === undefined ? "NONE" : `"${escapeSurrealString(draft.operation)}"`}, target_records = ${surrealArray(draft.targetRecords)}, metadata = ${metadata}, created_at = time::now();`,
+    `SELECT id, agent_session, source, kind, status, summary, operation, target_records, metadata, created_at FROM ${activityId};`,
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
+export function buildAgentActivityListQuery(sessionId?: string): string {
+  const where = sessionId ? ` WHERE agent_session = ${sessionId}` : "";
+  return `SELECT id, agent_session, source, kind, status, summary, operation, target_records, metadata, created_at FROM agent_activity${where} ORDER BY created_at ASC;`;
+}
+
+function agentActivityDraftFromArgv(argv: readonly string[]): AgentActivityDraft | CliFailure {
+  const sessionId = resolveSessionId(argv, { createImplicit: true });
+  const source = valueAfter(argv, "--source") ?? "cli";
+  const kind = valueAfter(argv, "--kind");
+  const status = valueAfter(argv, "--status") ?? defaultAgentActivityStatus(kind);
+  const summary = valueAfter(argv, "--summary") ?? positionalArgs(argv, 2).join(" ");
+  const operation = valueAfter(argv, "--operation");
+  const targetRecords = valuesAfter(argv, "--target");
+  const metadataJson = valueAfter(argv, "--metadata-json");
+  const metadata = metadataJson === undefined ? undefined : parseMetadataJson(metadataJson);
+
+  if (!sessionId) return missingArgument("activity record", "activity.record", argv, "<Agent Session ID>");
+  if (!isAgentActivitySource(source)) {
+    return operationFailure(
+      "activity record",
+      "activity.record",
+      argv,
+      `Invalid Agent Activity source '${source}'.`,
+      `Use one of: ${agentActivitySources.join(", ")}.`,
+    );
+  }
+  if (!isAgentActivityKind(kind)) {
+    return operationFailure(
+      "activity record",
+      "activity.record",
+      argv,
+      kind ? `Invalid Agent Activity kind '${kind}'.` : "Missing Agent Activity kind.",
+      `Pass --kind with one of: ${agentActivityKinds.join(", ")}.`,
+    );
+  }
+  if (!isAgentActivityStatus(status)) {
+    return operationFailure(
+      "activity record",
+      "activity.record",
+      argv,
+      `Invalid Agent Activity status '${status}'.`,
+      `Pass --status with one of: ${agentActivityStatuses.join(", ")}.`,
+    );
+  }
+  if (!summary.trim()) return missingArgument("activity record", "activity.record", argv, "--summary <summary>");
+  if (metadata instanceof Error) {
+    return operationFailure(
+      "activity record",
+      "activity.record",
+      argv,
+      `Invalid --metadata-json value: ${metadata.message}.`,
+      "Pass a JSON object such as --metadata-json '{\"exitCode\":1}'.",
+    );
+  }
+
+  const providedSessionId = valueAfter(argv, "--session") ?? process.env.ORIGINIUM_SESSION ?? readCurrentSession();
+  const id = `agent_activity:${randomUUID().replaceAll("-", "")}`;
+  return {
+    id,
+    sessionId,
+    createSession: !providedSessionId,
+    source,
+    kind,
+    status,
+    summary,
+    operation,
+    targetRecords,
+    metadata,
+  };
 }
 
 function loggedQuery(
@@ -2497,6 +2657,14 @@ function valueAfter(argv: readonly string[], flag: string): string | undefined {
   return index === -1 ? undefined : argv[index + 1];
 }
 
+function valuesAfter(argv: readonly string[], flag: string): readonly string[] {
+  const values: string[] = [];
+  for (let index = 0; index < argv.length; index += 1) {
+    if (argv[index] === flag && argv[index + 1] !== undefined) values.push(argv[index + 1]);
+  }
+  return values;
+}
+
 function optionalIntegerAfter(argv: readonly string[], flag: string): number | undefined {
   const value = valueAfter(argv, flag);
   if (value === undefined) return undefined;
@@ -2533,6 +2701,34 @@ function toSurrealIdPart(input: string): string {
 
 function surrealArray(values: readonly string[]): string {
   return `[${values.map((value) => `"${escapeSurrealString(value)}"`).join(", ")}]`;
+}
+
+function defaultAgentActivityStatus(kind: string | undefined): AgentActivityStatus {
+  return kind === "error" ? "failed" : "completed";
+}
+
+function isAgentActivitySource(value: string): value is AgentActivitySource {
+  return agentActivitySources.includes(value as AgentActivitySource);
+}
+
+function isAgentActivityKind(value: string | undefined): value is AgentActivityKind {
+  return value !== undefined && agentActivityKinds.includes(value as AgentActivityKind);
+}
+
+function isAgentActivityStatus(value: string): value is AgentActivityStatus {
+  return agentActivityStatuses.includes(value as AgentActivityStatus);
+}
+
+function parseMetadataJson(value: string): Record<string, unknown> | Error {
+  try {
+    const parsed = JSON.parse(value);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return new Error("expected a JSON object");
+    }
+    return parsed as Record<string, unknown>;
+  } catch (error) {
+    return new Error(errorReason(error));
+  }
 }
 
 function errorReason(error: unknown): string {

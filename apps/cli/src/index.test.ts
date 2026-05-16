@@ -2,7 +2,12 @@ import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
-import { lintGraphWikiStatements, previewPageReplace } from "./index";
+import {
+  buildAgentActivityListQuery,
+  buildAgentActivityRecordQuery,
+  lintGraphWikiStatements,
+  previewPageReplace,
+} from "./index";
 
 const bundledCli = fileURLToPath(new URL("../dist/originium", import.meta.url));
 const repoRoot = fileURLToPath(new URL("../../..", import.meta.url));
@@ -107,6 +112,77 @@ test("bundled CLI reports session current from ORIGINIUM_SESSION without databas
   assert.equal(output.operation, "session.current");
   assert.equal(output.data.id, "agent_session:test_env_override");
   assert.equal(output.data.source, "env");
+});
+
+test("Agent Activity record query persists message, status, and error events without Change Log entries", () => {
+  const base = {
+    sessionId: "agent_session:test",
+    createSession: false,
+    source: "cli" as const,
+    operation: "activity.test",
+    targetRecords: ["wiki_page:test"],
+  };
+
+  const message = buildAgentActivityRecordQuery({
+    ...base,
+    id: "agent_activity:message",
+    kind: "message",
+    status: "completed",
+    summary: "Agent said hello",
+    metadata: { role: "assistant" },
+  });
+  const status = buildAgentActivityRecordQuery({
+    ...base,
+    id: "agent_activity:status",
+    kind: "status",
+    status: "started",
+    summary: "Agent started work",
+  });
+  const error = buildAgentActivityRecordQuery({
+    ...base,
+    id: "agent_activity:error",
+    kind: "error",
+    status: "failed",
+    summary: "Tool failed",
+    metadata: { reason: "connection refused" },
+  });
+
+  for (const query of [message, status, error]) {
+    assert.match(query, /CREATE agent_activity:/);
+    assert.match(query, /agent_session = agent_session:test/);
+    assert.match(query, /source = "cli"/);
+    assert.match(query, /operation = "activity\.test"/);
+    assert.match(query, /target_records = \["wiki_page:test"\]/);
+    assert.doesNotMatch(query, /change_log/);
+  }
+  assert.match(message, /kind = "message"/);
+  assert.match(message, /metadata = \{"role":"assistant"\}/);
+  assert.match(status, /kind = "status"/);
+  assert.match(status, /metadata = NONE/);
+  assert.match(error, /kind = "error"/);
+  assert.match(error, /status = "failed"/);
+});
+
+test("Agent Activity list query reads records by Agent Session", () => {
+  assert.equal(
+    buildAgentActivityListQuery("agent_session:test"),
+    "SELECT id, agent_session, source, kind, status, summary, operation, target_records, metadata, created_at FROM agent_activity WHERE agent_session = agent_session:test ORDER BY created_at ASC;",
+  );
+});
+
+test("bundled activity record reports concrete validation failures before database access", () => {
+  const result = spawnSync(bundledCli, ["activity", "record", "--summary", "Missing kind", "--json"], {
+    encoding: "utf8",
+  });
+
+  assert.equal(result.status, 1);
+  const output = JSON.parse(result.stdout);
+  assert.equal(output.ok, false);
+  assert.equal(output.command, "activity record");
+  assert.equal(output.error.operation, "activity.record");
+  assert.equal(output.error.input, "activity record --summary Missing kind");
+  assert.equal(output.error.reason, "Missing Agent Activity kind.");
+  assert.match(output.error.action, /Pass --kind with one of:/);
 });
 
 test("bundled acceptance harness reports blocked stages with nonzero exit", () => {

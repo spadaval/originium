@@ -160,8 +160,16 @@ export type ChangeLogRecord = {
   readonly created_at?: string;
 };
 
-export type AgentActivityRecord = Record<string, unknown> & {
-  readonly id?: string;
+export type AgentActivityRecord = {
+  readonly id: string;
+  readonly agent_session: string;
+  readonly source: "codex_app_server" | "cli" | "web";
+  readonly kind: "message" | "command" | "tool" | "file_change" | "graph_mutation" | "status" | "error";
+  readonly status: "started" | "streaming" | "completed" | "failed";
+  readonly summary: string;
+  readonly operation?: string;
+  readonly target_records: readonly string[];
+  readonly metadata?: unknown;
   readonly created_at?: string;
 };
 
@@ -462,7 +470,7 @@ export async function listAgentActivity(
   const where = input.sessionId ? ` WHERE agent_session = ${recordId(input.sessionId, "agent_session")}` : "";
   return queryRows(
     operation,
-    `SELECT * FROM agent_activity${where} ORDER BY created_at DESC;`,
+    `SELECT id, agent_session, source, kind, status, summary, operation, target_records, metadata, created_at FROM agent_activity${where} ORDER BY created_at DESC;`,
     compactInput(input, { table: "agent_activity" }),
     dependencies,
     "agent_activity",
@@ -476,7 +484,7 @@ export async function readAgentActivity(
   const operation = "web.graph.agent_activity.read";
   return querySingle(
     operation,
-    `SELECT * FROM ${recordId(id, "agent_activity")};`,
+    `SELECT id, agent_session, source, kind, status, summary, operation, target_records, metadata, created_at FROM ${recordId(id, "agent_activity")};`,
     { id },
     dependencies,
     "agent_activity",

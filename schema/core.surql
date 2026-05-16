@@ -61,6 +61,18 @@ DEFINE FIELD IF NOT EXISTS before ON change_log TYPE option<object> FLEXIBLE;
 DEFINE FIELD IF NOT EXISTS after ON change_log TYPE option<object> FLEXIBLE;
 DEFINE FIELD IF NOT EXISTS created_at ON change_log TYPE datetime DEFAULT time::now();
 
+DEFINE TABLE IF NOT EXISTS agent_activity SCHEMAFULL;
+DEFINE FIELD IF NOT EXISTS agent_session ON agent_activity TYPE record<agent_session>;
+DEFINE FIELD IF NOT EXISTS source ON agent_activity TYPE string ASSERT $value IN ["codex_app_server", "cli", "web"];
+DEFINE FIELD IF NOT EXISTS kind ON agent_activity TYPE string ASSERT $value IN ["message", "command", "tool", "file_change", "graph_mutation", "status", "error"];
+DEFINE FIELD IF NOT EXISTS status ON agent_activity TYPE string ASSERT $value IN ["started", "streaming", "completed", "failed"];
+DEFINE FIELD IF NOT EXISTS summary ON agent_activity TYPE string;
+DEFINE FIELD IF NOT EXISTS operation ON agent_activity TYPE option<string>;
+DEFINE FIELD IF NOT EXISTS target_records ON agent_activity TYPE array<string>;
+DEFINE FIELD IF NOT EXISTS metadata ON agent_activity TYPE option<object> FLEXIBLE;
+DEFINE FIELD IF NOT EXISTS created_at ON agent_activity TYPE datetime DEFAULT time::now();
+DEFINE INDEX IF NOT EXISTS agent_activity_session_created_at ON agent_activity FIELDS agent_session, created_at;
+
 DEFINE TABLE IF NOT EXISTS cites TYPE RELATION IN wiki_page OUT source_heading SCHEMAFULL;
 DEFINE FIELD IF NOT EXISTS key ON cites TYPE string;
 DEFINE FIELD IF NOT EXISTS label ON cites TYPE string;
