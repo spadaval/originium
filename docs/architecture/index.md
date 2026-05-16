@@ -52,6 +52,14 @@ management, local file-bucket paths, shell/CLI execution, and an owned
 app-server process boundary. The frontend may run in a browser, but it is only
 trusted to talk to the Originium backend served from that same deployment.
 
+The web backend owns the concrete Codex app-server boundary. It uses the
+configured Codex app-server URL for `/readyz` reachability checks, derives the
+WebSocket JSON-RPC protocol endpoint from that URL, and can start a local
+`codex app-server --listen ws://host:port` process from
+`ORIGINIUM_CODEX_APP_SERVER_BIND` when no reachable app-server is already
+attached. Streamed Codex protocol notifications are persisted as Agent Activity
+records, not Change Log entries.
+
 Before SurrealDB can split to another host, Originium needs an explicit remote
 database operating contract: reachable `ORIGINIUM_SURREAL_URL`, non-default
 credentials, namespace/database provisioning, file-bucket storage that is not a

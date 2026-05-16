@@ -7,6 +7,7 @@ import {
   readGraphNeighborhood,
   readSourceHeadings,
   readWikiPage,
+  recordAgentActivity,
   saveWikiPageBody,
 } from "./graph-wiki.ts";
 
@@ -92,6 +93,57 @@ test("lists Agent Activity by Agent Session without reading Change Log", async (
   assert.match(queries[0] ?? "", /FROM agent_activity WHERE agent_session = agent_session:test/);
   assert.doesNotMatch(queries[0] ?? "", /change_log/);
   assert.equal(result.data[0]?.kind, "message");
+});
+
+test("records Agent Activity without writing Change Log", async () => {
+  const queries: string[] = [];
+  const fetchImpl: SurrealFetch = async (_url, init) => {
+    queries.push(String(init?.body));
+    return new Response(
+      JSON.stringify([
+        {
+          status: "OK",
+          result: [
+            {
+              id: "agent_activity:codex_stream",
+              agent_session: "agent_session:test",
+              source: "codex_app_server",
+              kind: "message",
+              status: "streaming",
+              summary: "Codex assistant streamed hello",
+              operation: "item/agentMessage/delta",
+              target_records: ["agent_session:test"],
+              metadata: { threadId: "thread-1", delta: "hello" },
+            },
+          ],
+        },
+      ]),
+      { status: 200 },
+    );
+  };
+
+  const result = await recordAgentActivity(
+    {
+      id: "agent_activity:codex_stream",
+      sessionId: "agent_session:test",
+      source: "codex_app_server",
+      kind: "message",
+      status: "streaming",
+      summary: "Codex assistant streamed hello",
+      operation: "item/agentMessage/delta",
+      targetRecords: ["agent_session:test"],
+      metadata: { threadId: "thread-1", delta: "hello" },
+    },
+    { fetch: fetchImpl },
+  );
+
+  assert.equal(result.ok, true);
+  assert.equal(result.operation, "web.graph.agent_activity.record");
+  assert.match(queries[0] ?? "", /CREATE agent_activity:codex_stream SET agent_session = agent_session:test/);
+  assert.match(queries[0] ?? "", /source = "codex_app_server"/);
+  assert.match(queries[0] ?? "", /operation = "item\/agentMessage\/delta"/);
+  assert.doesNotMatch(queries[0] ?? "", /change_log/);
+  assert.equal(result.data?.kind, "message");
 });
 
 test("reads Source Headings for a selected Source Document in outline order", async () => {

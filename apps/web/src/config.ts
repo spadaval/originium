@@ -114,7 +114,7 @@ function parseListenTarget(value: string, name: string): ListenTarget {
 function parseUrl(value: string, name: string): string {
   try {
     const url = new URL(value);
-    if (url.protocol !== "http:" && url.protocol !== "https:") {
+    if (!["http:", "https:", "ws:", "wss:"].includes(url.protocol)) {
       throw new Error(`unsupported protocol ${url.protocol}`);
     }
     return url.toString().replace(/\/$/, "");
@@ -123,7 +123,7 @@ function parseUrl(value: string, name: string): string {
       name,
       value,
       reason: error instanceof Error ? error.message : String(error),
-      action: `Set ${name} to the Codex app-server HTTP endpoint, for example http://127.0.0.1:3001.`,
+      action: `Set ${name} to the Codex app-server endpoint, for example http://127.0.0.1:3001 or ws://127.0.0.1:3001.`,
     });
   }
 }

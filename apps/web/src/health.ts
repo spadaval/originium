@@ -7,6 +7,7 @@ import {
   sourceDocumentBucketSurql,
 } from "@originium/surreal";
 import type { WebRuntimeConfig } from "./config.ts";
+import { codexAppServerProtocolUrl, codexAppServerReadyzUrl } from "./server/codex-app-server.ts";
 
 export type WebRuntimeHealthStatus = "ok" | "degraded" | "failed";
 
@@ -143,14 +144,18 @@ async function checkCodexAppServer(
   dependencies: WebRuntimeHealthDependencies,
 ): Promise<WebRuntimeHealthCheck> {
   const operation = "web.runtime.health.codex-app-server";
+  const readyzUrl = codexAppServerReadyzUrl(config.codexAppServer);
+  const protocolUrl = codexAppServerProtocolUrl(config.codexAppServer);
   const input = {
     url: config.codexAppServer.url,
+    protocolUrl,
+    readyzUrl,
     listen: `${config.codexAppServer.listen.host}:${config.codexAppServer.listen.port}`,
   };
   const fetchImpl = dependencies.fetch ?? fetch;
 
   try {
-    const response = await fetchImpl(config.codexAppServer.url, {
+    const response = await fetchImpl(readyzUrl, {
       method: "GET",
       headers: { Accept: "application/json, text/plain, */*" },
     });
@@ -159,9 +164,9 @@ async function checkCodexAppServer(
       return failedCheck({
         name: "codex-app-server",
         operation,
-        target: config.codexAppServer.url,
+        target: readyzUrl,
         input,
-        reason: `Codex app-server HTTP request failed with status ${response.status} ${response.statusText}`.trim(),
+        reason: `Codex app-server readyz request failed with status ${response.status} ${response.statusText}`.trim(),
         action:
           "Inspect the Codex app-server logs, restart it on the configured bind address, or set ORIGINIUM_CODEX_APP_SERVER_URL to the reachable endpoint.",
       });
@@ -171,19 +176,19 @@ async function checkCodexAppServer(
       name: "codex-app-server",
       status: "ok",
       operation,
-      target: config.codexAppServer.url,
+      target: readyzUrl,
       input,
-      message: `Codex app-server responded with HTTP ${response.status}.`,
+      message: `Codex app-server readyz responded with HTTP ${response.status}; protocol endpoint is ${protocolUrl}.`,
     };
   } catch (error) {
     return failedCheck({
       name: "codex-app-server",
       operation,
-      target: config.codexAppServer.url,
+      target: readyzUrl,
       input,
       reason: errorReason(error),
       action:
-        "Start the Codex app-server on the configured bind address or set ORIGINIUM_CODEX_APP_SERVER_URL to the reachable HTTP endpoint.",
+        "Start the Codex app-server on the configured bind address or set ORIGINIUM_CODEX_APP_SERVER_URL to the reachable WebSocket or HTTP endpoint.",
     });
   }
 }
