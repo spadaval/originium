@@ -33,6 +33,7 @@ type CliSuccess = {
 type CliFailure = {
   readonly ok: false;
   readonly command: string;
+  readonly data?: unknown;
   readonly error: {
     readonly kind: "usage_error" | "operation_failure";
     readonly operation: string;
@@ -45,6 +46,24 @@ type CliFailure = {
 export type CliResult = CliSuccess | CliFailure;
 
 type CommandHandler = (argv: readonly string[]) => Promise<CliResult> | CliResult;
+
+type QueryLogOptions = {
+  readonly kind: "read" | "write";
+  readonly targetRecords: readonly string[];
+  readonly beforeQuery?: string;
+  readonly afterQuery?: string;
+  readonly sessionId?: string;
+  readonly relateEditedTargets?: readonly string[];
+};
+
+type AcceptanceStageState = "pass" | "fail" | "blocked" | "deferred" | "not-applicable";
+
+type AcceptanceStage = {
+  readonly name: string;
+  readonly state: AcceptanceStageState;
+  readonly reason: string;
+  readonly result?: CliResult;
+};
 
 const routeGroups: Record<string, CommandHandler> = {
   acceptance: routeAcceptance,
@@ -192,7 +211,17 @@ async function routeSource(argv: readonly string[]): Promise<CliResult> {
         `UPSERT ${id} SET title = "${escapeSurrealString(draft.title)}", kind = "pdf", file = { bucket: "${sourceDocumentBucketName}", key: "/${escapeSurrealString(fileKey)}", pointer: "f\\"${escapeSurrealString(filePointer)}\\"" }, sha256 = "${draft.sha256}", mime_type = "${draft.mimeType}", page_count = ${draft.pageCount ?? "NONE"}, source_uri = "${escapeSurrealString(draft.sourceUri ?? path)}", extraction_status = "imported", updated_at = time::now();`,
         `SELECT * FROM ${id};`,
       ].join("\n");
-      const result = await executeSurrealQuery(config, query, { queryId: `source.import-pdf:${path}` });
+      const result = await executeSurrealQuery(
+        config,
+        loggedQuery("source import-pdf", "source.import-pdf", argv, query, {
+          kind: "write",
+          targetRecords: [id],
+          beforeQuery: `SELECT * FROM ${id}`,
+          afterQuery: `SELECT * FROM ${id}`,
+          relateEditedTargets: [id],
+        }),
+        { queryId: `source.import-pdf:${path}` },
+      );
       if (!result.ok) return fromSurrealFailure("source import-pdf", argv, result.error);
       return success({
         command: "source import-pdf",
@@ -236,7 +265,16 @@ async function routeSource(argv: readonly string[]): Promise<CliResult> {
         const id = sourceHeadingRecordId(draft);
         return `UPSERT ${id} SET source_document = ${sourceId}, title = "${escapeSurrealString(heading.title)}", heading_path = ${surrealArray(heading.headingPath)}, level = ${heading.level}, start_page = ${heading.startPage}, end_page = ${heading.endPage ?? "NONE"}, order = ${heading.order}, extraction_method = "${heading.extractionMethod}";`;
       });
-      const result = await executeSurrealQuery(config, values.join("\n"), { queryId: `source.headings:${sourceId}` });
+      const result = await executeSurrealQuery(
+        config,
+        loggedQuery("source headings", "source.headings", argv, values.join("\n"), {
+          kind: "write",
+          targetRecords: [sourceId],
+          afterQuery: `SELECT * FROM source_heading WHERE source_document = ${sourceId} ORDER BY order ASC`,
+          relateEditedTargets: [sourceId],
+        }),
+        { queryId: `source.headings:${sourceId}` },
+      );
       if (!result.ok) return fromSurrealFailure("source headings", argv, result.error);
       return success({
         command: "source headings",
@@ -299,7 +337,19 @@ async function routeSource(argv: readonly string[]): Promise<CliResult> {
     const chunkId = `ingestion_chunk:${persistedHeadingId.replace(/^source_heading:/, "")}_${maxTokens}`;
     const result = await executeSurrealQuery(
       readSurrealConfig(),
-      `UPSERT ${chunkId} SET source_document = ${sourceId}, source_heading = ${persistedHeadingId}, start_page = ${chunk.pageRange.start}, end_page = ${chunk.pageRange.end}, token_estimate = ${chunk.tokenEstimate}, extraction_method = "${chunk.extractionMethod}", created_at = time::now(); SELECT * FROM ${chunkId};`,
+      loggedQuery(
+        "source chunk",
+        "source.chunk",
+        argv,
+        `UPSERT ${chunkId} SET source_document = ${sourceId}, source_heading = ${persistedHeadingId}, start_page = ${chunk.pageRange.start}, end_page = ${chunk.pageRange.end}, token_estimate = ${chunk.tokenEstimate}, extraction_method = "${chunk.extractionMethod}", created_at = time::now(); SELECT * FROM ${chunkId};`,
+        {
+          kind: "write",
+          targetRecords: [chunkId, persistedHeadingId],
+          beforeQuery: `SELECT * FROM ${chunkId}`,
+          afterQuery: `SELECT * FROM ${chunkId}`,
+          relateEditedTargets: [chunkId],
+        },
+      ),
       { queryId: `source.chunk:${persistedHeadingId}` },
     );
     if (!result.ok) return fromSurrealFailure("source chunk", argv, result.error);
@@ -339,8 +389,20 @@ async function routeCitation(argv: readonly string[]): Promise<CliResult> {
     if (!headingId) return missingArgument("citation add", "citation.add", argv, "--heading <source-heading-id>");
     if (!key) return missingArgument("citation add", "citation.add", argv, "--key <citation-key>");
 
+    const relationTarget = `${pageId}->cites->${headingId}:${key}`;
+    const relationQuery = `SELECT * FROM cites WHERE in = ${pageId} AND key = "${escapeSurrealString(key)}"`;
     const query = `RELATE ${pageId}->cites->${headingId} SET key = "${escapeSurrealString(key)}", label = "${escapeSurrealString(label ?? key)}", quote = ${quote ? `"${escapeSurrealString(quote)}"` : "NONE"}, created_at = time::now();`;
-    const result = await executeSurrealQuery(config, query, { queryId: `citation.add:${pageId}:${key}` });
+    const result = await executeSurrealQuery(
+      config,
+      loggedQuery("citation add", "citation.add", argv, query, {
+        kind: "write",
+        targetRecords: [relationTarget, pageId, headingId],
+        beforeQuery: relationQuery,
+        afterQuery: relationQuery,
+        relateEditedTargets: [pageId],
+      }),
+      { queryId: `citation.add:${pageId}:${key}` },
+    );
     if (!result.ok) return fromSurrealFailure("citation add", argv, result.error);
     return success({
       command: "citation add",
@@ -360,6 +422,8 @@ async function routeCitation(argv: readonly string[]): Promise<CliResult> {
       argv,
       `SELECT *, out.* AS source_heading FROM cites WHERE in = ${pageId};`,
       `Listed Citations for ${pageId}.`,
+      {},
+      { kind: "read", targetRecords: [pageId] },
     );
   }
 
@@ -368,17 +432,21 @@ async function routeCitation(argv: readonly string[]): Promise<CliResult> {
     if (!pageId) return missingArgument("citation validate", "citation.validate", argv, "<wiki-page-id>");
     const pageResult = await executeSurrealQuery(
       config,
-      `SELECT body FROM ${pageId}; SELECT key FROM cites WHERE in = ${pageId};`,
+      loggedQuery(
+        "citation validate",
+        "citation.validate",
+        argv,
+        `SELECT body FROM ${pageId}; SELECT key FROM cites WHERE in = ${pageId};`,
+        { kind: "read", targetRecords: [pageId] },
+      ),
       {
         queryId: `citation.validate:${pageId}`,
       },
     );
     if (!pageResult.ok) return fromSurrealFailure("citation validate", argv, pageResult.error);
     const statements = pageResult.result as Array<{ result?: unknown }>;
-    const body = (((statements[0]?.result as unknown[])?.[0] as { body?: string } | undefined)?.body ?? "") as string;
-    const keys = ((statements[1]?.result as Array<{ key?: string }> | undefined) ?? []).flatMap((row) =>
-      row.key ? [row.key] : [],
-    );
+    const body = pageBodyFromStatements(statements);
+    const keys = citationKeysFromStatements(statements);
     const validation = validatePageBodyCitationMarkers({ wikiPageId: pageId, pageBody: body, graphCitationKeys: keys });
     return success({
       command: "citation validate",
@@ -415,13 +483,23 @@ async function routeLink(argv: readonly string[]): Promise<CliResult> {
       argv,
       `RELATE ${from}->manual_link->${to} SET reason = "${escapeSurrealString(reason)}", label = ${label ? `"${escapeSurrealString(label)}"` : "NONE"}, created_session = ${session ?? "NONE"}, created_at = time::now();`,
       `Added Manual Link from ${from} to ${to}.`,
+      {},
+      {
+        kind: "write",
+        targetRecords: [`${from}->manual_link->${to}`, from, to],
+        relateEditedTargets: [from],
+        sessionId: session,
+      },
     );
   }
 
   if (command === "list") {
     const record = valueAfter(argv, "--record") ?? argv[2];
     const where = record ? `WHERE in = ${record} OR out = ${record}` : "";
-    return queryCommand("link list", "link.list", argv, `SELECT * FROM manual_link ${where};`, "Listed Manual Links.");
+    return queryCommand("link list", "link.list", argv, `SELECT * FROM manual_link ${where};`, "Listed Manual Links.", {}, {
+      kind: "read",
+      targetRecords: record ? [record] : ["manual_link"],
+    });
   }
 
   return unknownCommand("link", command, argv, "Use one of: add, list.");
@@ -440,6 +518,12 @@ async function routeSession(argv: readonly string[]): Promise<CliResult> {
       `CREATE ${id} SET purpose = "${escapeSurrealString(purpose)}", created_at = time::now();`,
       `Started Agent Session ${id}.`,
       { id, purpose },
+      {
+        kind: "write",
+        targetRecords: [id],
+        afterQuery: `SELECT * FROM ${id}`,
+        sessionId: id,
+      },
     );
   }
   if (command === "show") return selectById("session show", "session.show", argv, argv[2], "Agent Session ID");
@@ -484,6 +568,8 @@ async function routeIngest(argv: readonly string[]): Promise<CliResult> {
     argv,
     `SELECT * FROM ${source}; SELECT * FROM ${heading}; SELECT * FROM wiki_page ORDER BY updated_at DESC LIMIT 10;`,
     `Prepared Chapter Ingestion context for ${heading}.`,
+    {},
+    { kind: "read", targetRecords: [source, heading, "wiki_page"] },
   );
 }
 
@@ -492,22 +578,50 @@ async function routeAcceptance(argv: readonly string[]): Promise<CliResult> {
   if (command !== "poc") return unknownCommand("acceptance", command ?? "", argv, "Use: acceptance poc <pdf-path>.");
   const path = argv[2] ?? "fixtures/source-documents/IA-Mining-DG.pdf";
   const stages = [
-    { name: "db-status", result: await routeDb(["db", "status"]) },
-    { name: "db-doctor", result: await routeDb(["db", "doctor"]) },
-    { name: "schema", result: await routeDb(["db", "apply-schema"]) },
-    { name: "source-import", result: await routeSource(["source", "import-pdf", path]) },
+    acceptanceStage("db-status", await routeDb(["db", "status"])),
+    acceptanceStage("db-doctor", await routeDb(["db", "doctor"])),
+    acceptanceStage("schema", await routeDb(["db", "apply-schema"])),
+    acceptanceStage("source-import", await routeSource(["source", "import-pdf", path])),
+    acceptanceStage(
+      "heading-projection",
+      await routeSource(["source", "headings", path, "--source", "source_document:ia_mining_dg_fixture"]),
+    ),
     {
-      name: "heading-projection",
-      result: await routeSource(["source", "headings", path, "--source", "source_document:ia_mining_dg_fixture"]),
+      name: "wiki-authoring",
+      state: "deferred",
+      reason: "Deferred until Wiki Page, Citation, Manual Link, and Change Log CLI workflows are complete.",
     },
-  ];
-  const failed = stages.find((stage) => !stage.result.ok);
+    {
+      name: "graph-retrieval",
+      state: "deferred",
+      reason: "Deferred until Graph Retrieval and Chapter Ingestion CLI workflows are complete.",
+    },
+    {
+      name: "surrealist-inspection",
+      state: "not-applicable",
+      reason: "Not applicable to the automated CLI harness; Surrealist inspection is validated by the manual inspection beads.",
+    },
+  ] satisfies AcceptanceStage[];
+  const blockingStage = stages.find((stage) => stage.state === "fail" || stage.state === "blocked");
+  const data = { stages, overallState: blockingStage?.state ?? "pass" };
+
+  if (blockingStage) {
+    return operationFailure(
+      "acceptance poc",
+      "acceptance.poc",
+      argv,
+      `POC acceptance ${blockingStage.state} at stage '${blockingStage.name}': ${blockingStage.reason}`,
+      "Resolve the stage failure or record the environment blocker before relying on POC acceptance proof.",
+      data,
+    );
+  }
+
   return success({
     command: "acceptance poc",
     operation: "acceptance.poc",
     input: argv,
-    message: failed ? `POC acceptance blocked at stage ${failed.name}.` : "POC acceptance core stages passed.",
-    data: { stages },
+    message: "POC acceptance stages passed or were explicitly deferred/not-applicable.",
+    data,
   });
 }
 
@@ -525,6 +639,13 @@ async function writePage(argv: readonly string[], command: "create" | "update"):
     query,
     `${command === "create" ? "Created" : "Updated"} Wiki Page ${id}.`,
     { id, slug },
+    {
+      kind: "write",
+      targetRecords: [id],
+      beforeQuery: `SELECT * FROM ${id}`,
+      afterQuery: `SELECT * FROM ${id}`,
+      relateEditedTargets: [id],
+    },
   );
 }
 
@@ -538,6 +659,8 @@ async function searchPages(argv: readonly string[]): Promise<CliResult> {
     argv,
     `SELECT *, (string::lowercase(title).contains("${term}") OR string::lowercase(body).contains("${term}")) AS matched FROM wiki_page WHERE string::lowercase(title).contains("${term}") OR string::lowercase(body).contains("${term}") ORDER BY updated_at DESC LIMIT 10;`,
     `Searched Wiki Pages for '${queryText}'.`,
+    {},
+    { kind: "read", targetRecords: [`page.search:${queryText}`] },
   );
 }
 
@@ -548,8 +671,11 @@ async function queryCommand(
   query: string,
   message: string,
   data: Record<string, unknown> = {},
+  logOptions?: QueryLogOptions,
 ): Promise<CliResult> {
-  const result = await executeSurrealQuery(readSurrealConfig(), query, { queryId: `${operation}:${argv.join(" ")}` });
+  const result = await executeSurrealQuery(readSurrealConfig(), loggedQuery(command, operation, argv, query, logOptions), {
+    queryId: `${operation}:${argv.join(" ")}`,
+  });
   if (!result.ok) return fromSurrealFailure(command, argv, result.error);
   return success({ command, operation, input: argv, message, data: { ...data, result: result.result } });
 }
@@ -562,7 +688,72 @@ async function selectById(
   label: string,
 ): Promise<CliResult> {
   if (!id) return missingArgument(command, operation, argv, `<${label}>`);
-  return queryCommand(command, operation, argv, `SELECT * FROM ${id};`, `Read ${label} ${id}.`);
+  return queryCommand(command, operation, argv, `SELECT * FROM ${id};`, `Read ${label} ${id}.`, {}, {
+    kind: "read",
+    targetRecords: [id],
+  });
+}
+
+function loggedQuery(
+  command: string,
+  operation: string,
+  argv: readonly string[],
+  query: string,
+  options: QueryLogOptions | undefined,
+): string {
+  if (!options) return query;
+
+  const sessionId = options.sessionId ?? valueAfter(argv, "--session");
+  const targetRecords = options.targetRecords.length === 0 ? ["<unspecified>"] : options.targetRecords;
+  const logId = `change_log:${randomUUID().replaceAll("-", "")}`;
+  const beforeStatement = options.beforeQuery
+    ? `LET $originium_before = (${options.beforeQuery})[0];`
+    : "LET $originium_before = NONE;";
+  const afterStatement = options.afterQuery
+    ? `LET $originium_after = (${options.afterQuery})[0];`
+    : "LET $originium_after = NONE;";
+  const editedRelations =
+    options.kind === "write" && sessionId
+      ? (options.relateEditedTargets ?? targetRecords)
+          .map((target) => `RELATE ${target}->edited_in->${sessionId} SET created_at = time::now();`)
+          .join("\n")
+      : "";
+
+  return [
+    beforeStatement,
+    query,
+    afterStatement,
+    `CREATE ${logId} SET agent_session = ${sessionId ?? "NONE"}, command = "${escapeSurrealString(command)}", operation = "${escapeSurrealString(operation)}", target = "${escapeSurrealString(targetRecords.join(", "))}", target_records = ${surrealArray(targetRecords)}, summary = "${escapeSurrealString(`${options.kind} ${command}`)}", before = $originium_before, after = $originium_after, created_at = time::now();`,
+    editedRelations,
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
+function pageBodyFromStatements(statements: readonly { readonly result?: unknown }[]): string {
+  for (const statement of statements) {
+    if (!Array.isArray(statement.result)) continue;
+    const row = statement.result.find((candidate) => {
+      return candidate && typeof candidate === "object" && "body" in candidate;
+    }) as { body?: unknown } | undefined;
+    if (typeof row?.body === "string") return row.body;
+  }
+
+  return "";
+}
+
+function citationKeysFromStatements(statements: readonly { readonly result?: unknown }[]): readonly string[] {
+  for (const statement of statements) {
+    if (!Array.isArray(statement.result)) continue;
+    const keys = statement.result.flatMap((row) => {
+      if (!row || typeof row !== "object" || !("key" in row)) return [];
+      const key = (row as { key?: unknown }).key;
+      return typeof key === "string" ? [key] : [];
+    });
+    if (keys.length > 0) return keys;
+  }
+
+  return [];
 }
 
 function startDb(argv: readonly string[], config: SurrealConfig): CliResult {
@@ -688,10 +879,12 @@ function operationFailure(
   argv: readonly string[],
   reason: string,
   action: string,
+  data?: unknown,
 ): CliFailure {
   return {
     ok: false,
     command,
+    ...(data === undefined ? {} : { data }),
     error: {
       kind: "operation_failure",
       operation,
@@ -700,6 +893,30 @@ function operationFailure(
       action,
     },
   };
+}
+
+function acceptanceStage(name: string, result: CliResult): AcceptanceStage {
+  if (result.ok) {
+    return {
+      name,
+      state: "pass",
+      reason: result.message,
+      result,
+    };
+  }
+
+  return {
+    name,
+    state: isEnvironmentBlocked(result.error.reason) ? "blocked" : "fail",
+    reason: result.error.reason,
+    result,
+  };
+}
+
+function isEnvironmentBlocked(reason: string): boolean {
+  return /ECONNREFUSED|fetch failed|connection refused|not found|No such file|could not connect|unreachable|Unable to connect/i.test(
+    reason,
+  );
 }
 
 function missingGroupCommand(group: string, argv: readonly string[], action: string): CliFailure {

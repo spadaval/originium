@@ -71,3 +71,34 @@ test("bundled CLI reports structured unknown subgroup failures", () => {
   assert.equal(output.error.operation, "source.route");
   assert.match(output.error.reason, /Unknown source command 'bogus'/);
 });
+
+test("bundled acceptance harness reports blocked stages with nonzero exit", () => {
+  const result = spawnSync(bundledCli, ["acceptance", "poc", "fixtures/source-documents/IA-Mining-DG.pdf"], {
+    encoding: "utf8",
+    env: {
+      ...process.env,
+      ORIGINIUM_SURREAL_URL: "http://127.0.0.1:1",
+    },
+  });
+
+  assert.equal(result.status, 1);
+  const output = JSON.parse(result.stdout);
+  assert.equal(output.ok, false);
+  assert.equal(output.command, "acceptance poc");
+  assert.equal(output.error.operation, "acceptance.poc");
+  assert.match(output.error.reason, /POC acceptance blocked at stage 'db-doctor'/);
+  assert.equal(output.data.overallState, "blocked");
+  assert.deepEqual(
+    output.data.stages.map((stage: { name: string; state: string }) => [stage.name, stage.state]),
+    [
+      ["db-status", "pass"],
+      ["db-doctor", "blocked"],
+      ["schema", "blocked"],
+      ["source-import", "blocked"],
+      ["heading-projection", "blocked"],
+      ["wiki-authoring", "deferred"],
+      ["graph-retrieval", "deferred"],
+      ["surrealist-inspection", "not-applicable"],
+    ],
+  );
+});
