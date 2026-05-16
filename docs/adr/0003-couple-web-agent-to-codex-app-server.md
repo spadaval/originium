@@ -11,7 +11,12 @@ agent, with concrete incompatibilities to abstract over.
 **Consequences**
 
 - The backend owns the Codex app-server process and protocol boundary.
+- The first deployment keeps the web backend, Codex app-server, CLI execution,
+  and SurrealDB on the same trusted host.
 - The browser talks to the Originium backend, not directly to Codex app-server,
   SurrealDB, local files, or the CLI.
 - Codex app-server protocol changes may require direct Originium web/backend
   changes; this is accepted to keep the first implementation simpler.
+- Splitting agent workers from the backend waits for durable job/session state,
+  workspace ownership, Agent Activity stream persistence, cancellation/retry
+  behavior, and explicit credential handling.

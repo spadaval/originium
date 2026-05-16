@@ -32,6 +32,42 @@ Originium stores canonical Graph Wiki state in SurrealDB and exposes projections
 6. After the POC, `apps/web` can add user-facing interaction, editing, richer
    Projections, and embedded agent chat.
 
+## Single-Host Topology
+
+The current runtime is host-direct. It does not use containers, a process
+supervisor, or a remote service boundary.
+
+| Component        | Runs today                          | Configuration                                                                                                                                                                                                                                                                               |
+| ---------------- | ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| SurrealDB        | Local process on the developer host | `ORIGINIUM_SURREAL_BIN`, `ORIGINIUM_SURREAL_BIND`, `ORIGINIUM_SURREAL_DATA_DIR`, `ORIGINIUM_SURREAL_BUCKET_DIR`, `ORIGINIUM_SURREAL_PID_FILE`, `ORIGINIUM_SURREAL_URL`, `ORIGINIUM_SURREAL_NAMESPACE`, `ORIGINIUM_SURREAL_DATABASE`, `ORIGINIUM_SURREAL_USER`, `ORIGINIUM_SURREAL_PASSWORD` |
+| CLI              | Developer shell on the same host    | SurrealDB variables above, `ORIGINIUM_SESSION`, `ORIGINIUM_OLLAMA_URL`, `ORIGINIUM_OLLAMA_EMBED_MODEL`                                                                                                                                                                                      |
+| Codex app-server | Same host as the future web backend | Not yet codified in Originium env; the backend will own this process/protocol boundary.                                                                                                                                                                                                     |
+| Web backend      | `apps/web` server process on host   | No app-specific env contract yet; it will inherit SurrealDB variables when server functions start owning database access.                                                                                                                                                                   |
+| Web frontend     | Browser served by `apps/web`        | No frontend env contract yet; it must call the Originium backend, not SurrealDB, local files, the CLI, or Codex app-server.                                                                                                                                                                 |
+
+For now, SurrealDB, the CLI, the future web backend, and Codex app-server must
+remain co-located on one trusted host because the system relies on local process
+management, local file-bucket paths, shell/CLI execution, and an owned
+app-server process boundary. The frontend may run in a browser, but it is only
+trusted to talk to the Originium backend served from that same deployment.
+
+Before SurrealDB can split to another host, Originium needs an explicit remote
+database operating contract: reachable `ORIGINIUM_SURREAL_URL`, non-default
+credentials, namespace/database provisioning, file-bucket storage that is not a
+local developer path, migration/schema application rules, and validation that
+PDF streaming works without exposing bucket paths.
+
+Before the frontend can split from the backend, the backend API must provide all
+browser-visible capabilities: Graph Wiki projections, PDF streaming, citation
+validation, chat/activity streaming, authentication and origin policy. The
+browser still must not receive direct SurrealDB credentials or Codex app-server
+access.
+
+Before agent workers can split from the web backend, agent work needs a durable
+job/session protocol, explicit workspace and filesystem ownership, streamed
+Agent Activity persistence, cancellation/retry behavior, and a credential model.
+Until then, the backend owns Codex app-server and CLI/RPC execution directly.
+
 ## External Tools
 
 Surrealist is the POC database-management and manual inspection surface. Do not

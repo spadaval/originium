@@ -60,6 +60,21 @@ originium db apply-schema
 
 `db start` should use a pinned/configured SurrealDB binary from `ORIGINIUM_SURREAL_BIN` or `PATH`, a project-owned data directory, required file-bucket allowlist settings, namespace/database configuration, and explicit auth. Later releases may auto-download a pinned SurrealDB binary into a tool cache, but the POC should not vendor server binaries inside the CLI app.
 
+The current deployment topology is host-direct. SurrealDB runs as a local
+process on the developer host; the CLI runs from that host shell and connects to
+that database unless `ORIGINIUM_SURREAL_URL` points elsewhere. This topology is
+configured by `ORIGINIUM_SURREAL_BIN`, `ORIGINIUM_SURREAL_BIND`,
+`ORIGINIUM_SURREAL_DATA_DIR`, `ORIGINIUM_SURREAL_BUCKET_DIR`,
+`ORIGINIUM_SURREAL_PID_FILE`, `ORIGINIUM_SURREAL_URL`,
+`ORIGINIUM_SURREAL_NAMESPACE`, `ORIGINIUM_SURREAL_DATABASE`,
+`ORIGINIUM_SURREAL_USER`, `ORIGINIUM_SURREAL_PASSWORD`, `ORIGINIUM_SESSION`,
+`ORIGINIUM_OLLAMA_URL`, and `ORIGINIUM_OLLAMA_EMBED_MODEL`.
+
+Splitting SurrealDB from the host-direct deployment requires a remote operating
+contract first: non-default credentials, provisioned namespace/database, schema
+application rules, non-local file-bucket storage, and backend PDF streaming that
+does not expose bucket paths.
+
 ## Schema Management
 
 Use schemafull SurrealDB tables for core records and relations:
@@ -460,6 +475,20 @@ to the Originium backend rather than directly to SurrealDB, local files, or the
 agent process. `apps/web` should become a TanStack Start app, with server
 functions owning SurrealDB access, backend PDF streaming, and Codex app-server
 process control.
+
+For the single-host foundation, the web backend, Codex app-server, SurrealDB,
+and CLI execution remain co-located on the same trusted host. The web frontend
+is served by `apps/web` and has no direct runtime contract with SurrealDB, local
+files, the CLI, or Codex app-server. Originium does not yet define web-specific
+backend, frontend, or Codex app-server environment variables; until that
+contract exists, those components inherit the host SurrealDB configuration and
+backend-owned process environment.
+
+Splitting the frontend from the backend requires a complete backend API for
+Graph Wiki projections, PDF streaming, citation validation, chat/activity
+streaming, authentication, and origin policy. Splitting agent workers from the
+backend requires durable job/session state, workspace ownership, Agent Activity
+stream persistence, cancellation/retry semantics, and credential handling.
 
 One Codex app-server thread should map to one Originium Agent Session. Store the
 Codex thread identifier on the Agent Session or related runtime metadata so the
