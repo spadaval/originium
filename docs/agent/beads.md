@@ -58,11 +58,11 @@ Custom types:
   `validate-behavior` when scenario proof is required, depend on the work they
   close, and classify every parent validation criterion as passed, deferred,
   blocked, or not applicable.
-Use implementation types such as `task` or `feature` for building behavior.
-Use `validation` when the bead exists to prove behavior rather than implement
-it. Use `closeout` when the bead exists to integrate, verify, clean up, and
-handoff an epic or phase. Use the built-in `milestone` type to mark a durable
-product or delivery state after its proving work is complete.
+  Use implementation types such as `task` or `feature` for building behavior.
+  Use `validation` when the bead exists to prove behavior rather than implement
+  it. Use `closeout` when the bead exists to integrate, verify, clean up, and
+  handoff an epic or phase. Use the built-in `milestone` type to mark a durable
+  product or delivery state after its proving work is complete.
 
 ## Tracker Sync
 
