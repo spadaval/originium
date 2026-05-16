@@ -102,3 +102,23 @@ test("bundled acceptance harness reports blocked stages with nonzero exit", () =
     ],
   );
 });
+
+test("bundled page search reports concrete Ollama embedding failures", () => {
+  const result = spawnSync(bundledCli, ["page", "search", "mining"], {
+    encoding: "utf8",
+    env: {
+      ...process.env,
+      ORIGINIUM_OLLAMA_URL: "http://127.0.0.1:1",
+      ORIGINIUM_OLLAMA_EMBED_MODEL: "missing-embed-model",
+    },
+  });
+
+  assert.equal(result.status, 1);
+  const output = JSON.parse(result.stdout);
+  assert.equal(output.ok, false);
+  assert.equal(output.command, "page search");
+  assert.equal(output.error.operation, "page.search");
+  assert.match(output.error.reason, /Ollama embedding request failed/);
+  assert.match(output.error.reason, /missing-embed-model/);
+  assert.match(output.error.action, /ollama pull missing-embed-model/);
+});

@@ -65,6 +65,34 @@ type AcceptanceStage = {
   readonly result?: CliResult;
 };
 
+type RetrievalCandidate = {
+  readonly kind: "wiki_page" | "source_heading";
+  readonly id: string;
+  readonly title: string;
+  readonly text: string;
+  readonly citedEvidence: readonly Record<string, unknown>[];
+  readonly metadata: Record<string, unknown>;
+};
+
+type RankedRetrievalCandidate = {
+  readonly kind: RetrievalCandidate["kind"];
+  readonly id: string;
+  readonly title: string;
+  readonly score: number;
+  readonly signals: {
+    readonly lexical: number;
+    readonly vector: number;
+    readonly graphAuthority: number;
+  };
+  readonly citedEvidence: readonly Record<string, unknown>[];
+  readonly metadata: Record<string, unknown>;
+};
+
+type OllamaEmbeddingConfig = {
+  readonly url: string;
+  readonly model: string;
+};
+
 const routeGroups: Record<string, CommandHandler> = {
   acceptance: routeAcceptance,
   citation: routeCitation,
@@ -562,15 +590,85 @@ async function routeIngest(argv: readonly string[]): Promise<CliResult> {
   const heading = valueAfter(argv, "--heading");
   if (!source) return missingArgument("ingest chapter", "ingest.chapter", argv, "--source <source-document-id>");
   if (!heading) return missingArgument("ingest chapter", "ingest.chapter", argv, "--heading <source-heading-id>");
-  return queryCommand(
-    "ingest chapter",
-    "ingest.chapter",
-    argv,
-    `SELECT * FROM ${source}; SELECT * FROM ${heading}; SELECT * FROM wiki_page ORDER BY updated_at DESC LIMIT 10;`,
-    `Prepared Chapter Ingestion context for ${heading}.`,
-    {},
-    { kind: "read", targetRecords: [source, heading, "wiki_page"] },
+  const maxTokens = Number.parseInt(valueAfter(argv, "--max-tokens") ?? "100000", 10);
+  const chunkId = `ingestion_chunk:${heading.replace(/^source_heading:/, "")}_${maxTokens}`;
+  const title = valueAfter(argv, "--title");
+  const citationKey = valueAfter(argv, "--key") ?? "source";
+  const body =
+    valueAfter(argv, "--body") ?? (title ? `${title} synthesis from Chapter Ingestion.[^${citationKey}]` : undefined);
+  const pageId = title ? wikiPageRecordId(title) : undefined;
+  const pageSlug = title ? wikiPageSlugFromTitle(title) : undefined;
+  const label = valueAfter(argv, "--label") ?? citationKey;
+  const quote = valueAfter(argv, "--quote");
+  const linkTo = valueAfter(argv, "--link-to");
+  const linkReason = valueAfter(argv, "--link-reason");
+  const session = valueAfter(argv, "--session");
+  const validation =
+    pageId && body
+      ? validatePageBodyCitationMarkers({ wikiPageId: pageId, pageBody: body, graphCitationKeys: [citationKey] })
+      : undefined;
+  if (validation && validation.issues.length > 0) {
+    return operationFailure(
+      "ingest chapter",
+      "ingest.chapter",
+      argv,
+      `Chapter Ingestion citation validation failed for ${pageId}: ${validation.issues.map((issue) => issue.message).join(" ")}`,
+      "Use a Page Body with a Citation Marker matching --key, or change --key to match the Page Body.",
+    );
+  }
+
+  const pageStatements =
+    title && body && pageId && pageSlug
+      ? [
+          `UPSERT ${pageId} SET title = "${escapeSurrealString(title)}", slug = "${pageSlug}", body = "${escapeSurrealString(body)}", updated_at = time::now();`,
+          `DELETE cites WHERE in = ${pageId} AND key = "${escapeSurrealString(citationKey)}";`,
+          `RELATE ${pageId}->cites->${heading} SET key = "${escapeSurrealString(citationKey)}", label = "${escapeSurrealString(label)}", quote = ${quote ? `"${escapeSurrealString(quote)}"` : "NONE"}, created_at = time::now();`,
+          ...(linkTo && linkReason
+            ? [
+                `RELATE ${pageId}->manual_link->${linkTo} SET reason = "${escapeSurrealString(linkReason)}", label = NONE, created_session = ${session ?? "NONE"}, created_at = time::now();`,
+              ]
+            : []),
+        ]
+      : [];
+  const query = [
+    `LET $originium_heading = (SELECT * FROM ${heading})[0];`,
+    `UPSERT ${chunkId} SET source_document = ${source}, source_heading = ${heading}, start_page = $originium_heading.start_page ?? 0, end_page = $originium_heading.end_page ?? $originium_heading.start_page ?? 0, token_estimate = ${maxTokens}, extraction_method = "chapter-ingestion", created_at = time::now();`,
+    ...pageStatements,
+    `SELECT * FROM ${source};`,
+    `SELECT * FROM ${heading};`,
+    `SELECT * FROM ${chunkId};`,
+    `SELECT id, title, slug, body, updated_at, ->cites->source_heading AS cited_evidence FROM wiki_page ORDER BY updated_at DESC LIMIT 10;`,
+  ].join("\n");
+  const result = await executeSurrealQuery(
+    readSurrealConfig(),
+    loggedQuery("ingest chapter", "ingest.chapter", argv, query, {
+      kind: "write",
+      targetRecords: [source, heading, chunkId, ...(pageId ? [pageId] : [])],
+      beforeQuery: `SELECT * FROM ${chunkId}`,
+      afterQuery: `SELECT * FROM ${chunkId}`,
+      sessionId: session,
+      relateEditedTargets: [chunkId, ...(pageId ? [pageId] : [])],
+    }),
+    { queryId: `ingest.chapter:${heading}` },
   );
+  if (!result.ok) return fromSurrealFailure("ingest chapter", argv, result.error);
+  return success({
+    command: "ingest chapter",
+    operation: "ingest.chapter",
+    input: argv,
+    message: pageId
+      ? `Prepared Chapter Ingestion context for ${heading} and updated Wiki Page ${pageId}.`
+      : `Prepared Chapter Ingestion context for ${heading}.`,
+    data: {
+      source,
+      heading,
+      chunkId,
+      pageId,
+      citationKey: pageId ? citationKey : undefined,
+      citationValidation: validation,
+      result: result.result,
+    },
+  });
 }
 
 async function routeAcceptance(argv: readonly string[]): Promise<CliResult> {
@@ -651,17 +749,53 @@ async function writePage(argv: readonly string[], command: "create" | "update"):
 
 async function searchPages(argv: readonly string[]): Promise<CliResult> {
   const queryText = argv.slice(2).join(" ").trim();
-  if (!queryText) return missingArgument("page search", "page.search", argv, "<query>");
-  const term = escapeSurrealString(queryText.toLowerCase());
-  return queryCommand(
-    "page search",
-    "page.search",
-    argv,
-    `SELECT *, (string::lowercase(title).contains("${term}") OR string::lowercase(body).contains("${term}")) AS matched FROM wiki_page WHERE string::lowercase(title).contains("${term}") OR string::lowercase(body).contains("${term}") ORDER BY updated_at DESC LIMIT 10;`,
-    `Searched Wiki Pages for '${queryText}'.`,
-    {},
-    { kind: "read", targetRecords: [`page.search:${queryText}`] },
+  const command = argv[0] === "retrieval" ? "retrieval search" : "page search";
+  const operation = argv[0] === "retrieval" ? "retrieval.search" : "page.search";
+  if (!queryText) return missingArgument(command, operation, argv, "<query>");
+
+  const queryEmbedding = await fetchOllamaEmbedding(queryText, command, operation, argv);
+  if (!queryEmbedding.ok) return queryEmbedding.failure;
+
+  const result = await executeSurrealQuery(
+    readSurrealConfig(),
+    loggedQuery(
+      command,
+      operation,
+      argv,
+      "SELECT id, title, slug, body, ->cites->source_heading AS cited_evidence FROM wiki_page; SELECT id, title, heading_path, start_page, end_page FROM source_heading;",
+      { kind: "read", targetRecords: [`${operation}:${queryText}`] },
+    ),
+    { queryId: `${operation}:${queryText}` },
   );
+
+  if (!result.ok) return fromSurrealFailure(command, argv, result.error);
+
+  const candidates = retrievalCandidatesFromStatements(result.result as Array<{ result?: unknown }>);
+  let ranked: readonly RankedRetrievalCandidate[];
+  try {
+    ranked = await rankRetrievalCandidates(candidates, queryText, queryEmbedding.embedding, queryEmbedding.config);
+  } catch (error) {
+    return operationFailure(
+      command,
+      operation,
+      argv,
+      errorReason(error),
+      `Start Ollama and pull the embedding model with: ollama pull ${queryEmbedding.config.model}`,
+    );
+  }
+
+  return success({
+    command,
+    operation,
+    input: argv,
+    message: `Graph Retrieval ranked ${ranked.length} candidate(s) for '${queryText}' using ${queryEmbedding.config.model}.`,
+    data: {
+      query: queryText,
+      embedding: queryEmbedding.config,
+      results: ranked.slice(0, 10),
+      result: result.result,
+    },
+  });
 }
 
 async function queryCommand(
@@ -754,6 +888,227 @@ function citationKeysFromStatements(statements: readonly { readonly result?: unk
   }
 
   return [];
+}
+
+async function fetchOllamaEmbedding(
+  text: string,
+  command: string,
+  operation: string,
+  argv: readonly string[],
+): Promise<{ readonly ok: true; readonly embedding: readonly number[]; readonly config: OllamaEmbeddingConfig } | { readonly ok: false; readonly failure: CliFailure }> {
+  const config = readOllamaEmbeddingConfig();
+  const endpoint = new URL("/api/embeddings", config.url).toString();
+
+  try {
+    const response = await fetch(endpoint, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ model: config.model, prompt: text }),
+    });
+
+    if (!response.ok) {
+      return {
+        ok: false,
+        failure: operationFailure(
+          command,
+          operation,
+          argv,
+          `Ollama embedding request failed for model '${config.model}' at ${endpoint}: ${response.status} ${response.statusText} ${await response.text()}`.trim(),
+          `Start Ollama and pull the embedding model with: ollama pull ${config.model}`,
+        ),
+      };
+    }
+
+    const body = (await response.json()) as { embedding?: unknown; embeddings?: unknown };
+    const embedding = parseOllamaEmbedding(body);
+    if (!embedding) {
+      return {
+        ok: false,
+        failure: operationFailure(
+          command,
+          operation,
+          argv,
+          `Ollama embedding response for model '${config.model}' at ${endpoint} did not include a numeric embedding vector.`,
+          "Inspect the Ollama response shape or configure ORIGINIUM_OLLAMA_EMBED_MODEL to a local embedding model.",
+        ),
+      };
+    }
+
+    return { ok: true, embedding, config };
+  } catch (error) {
+    return {
+      ok: false,
+      failure: operationFailure(
+        command,
+        operation,
+        argv,
+        `Ollama embedding request failed for model '${config.model}' at ${endpoint}: ${errorReason(error)}`,
+        `Start Ollama and pull the embedding model with: ollama pull ${config.model}`,
+      ),
+    };
+  }
+}
+
+function readOllamaEmbeddingConfig(env: NodeJS.ProcessEnv = process.env): OllamaEmbeddingConfig {
+  return {
+    url: env.ORIGINIUM_OLLAMA_URL ?? "http://127.0.0.1:11434",
+    model: env.ORIGINIUM_OLLAMA_EMBED_MODEL ?? "nomic-embed-text",
+  };
+}
+
+function parseOllamaEmbedding(body: { readonly embedding?: unknown; readonly embeddings?: unknown }): readonly number[] | undefined {
+  if (isNumberVector(body.embedding)) return body.embedding;
+  if (Array.isArray(body.embeddings) && isNumberVector(body.embeddings[0])) return body.embeddings[0];
+  return undefined;
+}
+
+function isNumberVector(value: unknown): value is readonly number[] {
+  return Array.isArray(value) && value.length > 0 && value.every((entry) => typeof entry === "number");
+}
+
+function retrievalCandidatesFromStatements(statements: readonly { readonly result?: unknown }[]): readonly RetrievalCandidate[] {
+  const candidates: RetrievalCandidate[] = [];
+  const rows = statements.flatMap((statement) => (Array.isArray(statement.result) ? statement.result : []));
+  const sourceHeadingsById = new Map<string, Record<string, unknown>>();
+
+  for (const row of rows) {
+    if (!row || typeof row !== "object") continue;
+    const record = row as Record<string, unknown>;
+    const id = typeof record.id === "string" ? record.id : "";
+    if (id && Array.isArray(record.heading_path)) sourceHeadingsById.set(id, sourceHeadingEvidence(record));
+  }
+
+  for (const row of rows) {
+    if (!row || typeof row !== "object") continue;
+    const record = row as Record<string, unknown>;
+    const id = typeof record.id === "string" ? record.id : "";
+    const title = typeof record.title === "string" ? record.title : "";
+    if (!id || !title) continue;
+
+    if (typeof record.body === "string") {
+      candidates.push({
+        kind: "wiki_page",
+        id,
+        title,
+        text: `${title}\n${record.body}`,
+        citedEvidence: citationEvidence(record.cited_evidence, sourceHeadingsById),
+        metadata: { slug: record.slug },
+      });
+      continue;
+    }
+
+    if (Array.isArray(record.heading_path)) {
+      candidates.push({
+        kind: "source_heading",
+        id,
+        title,
+        text: `${title}\n${record.heading_path.join(" ")}`,
+        citedEvidence: [],
+        metadata: {
+          headingPath: record.heading_path,
+          startPage: record.start_page,
+          endPage: record.end_page,
+        },
+      });
+    }
+  }
+
+  return candidates;
+}
+
+async function rankRetrievalCandidates(
+  candidates: readonly RetrievalCandidate[],
+  queryText: string,
+  queryEmbedding: readonly number[],
+  config: OllamaEmbeddingConfig,
+): Promise<readonly RankedRetrievalCandidate[]> {
+  const ranked: RankedRetrievalCandidate[] = [];
+
+  for (const candidate of candidates) {
+    const candidateEmbedding = await fetchOllamaEmbedding(candidate.text, "retrieval rank", "retrieval.rank", [
+      "retrieval",
+      "rank",
+      candidate.id,
+    ]);
+    if (!candidateEmbedding.ok) throw new Error(candidateEmbedding.failure.error.reason);
+
+    const lexical = lexicalScore(queryText, candidate.text);
+    const vector = cosineSimilarity(queryEmbedding, candidateEmbedding.embedding);
+    const graphAuthority =
+      (candidate.kind === "wiki_page" ? 0.35 : -0.1) + Math.min(candidate.citedEvidence.length, 3) * 0.15;
+    const score = vector * 0.55 + lexical * 0.3 + graphAuthority;
+
+    ranked.push({
+      kind: candidate.kind,
+      id: candidate.id,
+      title: candidate.title,
+      score: Number(score.toFixed(6)),
+      signals: {
+        lexical: Number(lexical.toFixed(6)),
+        vector: Number(vector.toFixed(6)),
+        graphAuthority: Number(graphAuthority.toFixed(6)),
+      },
+      citedEvidence: candidate.citedEvidence,
+      metadata: candidate.metadata,
+    });
+  }
+
+  return ranked.sort((left, right) => right.score - left.score);
+}
+
+function citationEvidence(
+  value: unknown,
+  sourceHeadingsById: ReadonlyMap<string, Record<string, unknown>>,
+): readonly Record<string, unknown>[] {
+  if (!Array.isArray(value)) return [];
+
+  return value.flatMap((entry): Record<string, unknown>[] => {
+    if (typeof entry === "string") return [sourceHeadingsById.get(entry) ?? { id: entry }];
+    return entry && typeof entry === "object" ? [entry as Record<string, unknown>] : [];
+  });
+}
+
+function sourceHeadingEvidence(record: Record<string, unknown>): Record<string, unknown> {
+  return {
+    id: record.id,
+    title: record.title,
+    headingPath: record.heading_path,
+    startPage: record.start_page,
+    endPage: record.end_page,
+  };
+}
+
+function lexicalScore(queryText: string, candidateText: string): number {
+  const queryTokens = tokenSet(queryText);
+  if (queryTokens.size === 0) return 0;
+  const candidateTokens = tokenSet(candidateText);
+  const matches = [...queryTokens].filter((token) => candidateTokens.has(token)).length;
+  return matches / queryTokens.size;
+}
+
+function tokenSet(text: string): Set<string> {
+  return new Set(
+    text
+      .toLowerCase()
+      .split(/[^a-z0-9]+/g)
+      .filter((token) => token.length > 1),
+  );
+}
+
+function cosineSimilarity(left: readonly number[], right: readonly number[]): number {
+  const length = Math.min(left.length, right.length);
+  if (length === 0) return 0;
+
+  let dot = 0;
+  let leftMagnitude = 0;
+  let rightMagnitude = 0;
+  for (let index = 0; index < length; index += 1) {
+    dot += left[index] * right[index];
+    leftMagnitude += left[index] ** 2;
+    rightMagnitude += right[index] ** 2;
+  }
+
+  return leftMagnitude === 0 || rightMagnitude === 0 ? 0 : dot / Math.sqrt(leftMagnitude * rightMagnitude);
 }
 
 function startDb(argv: readonly string[], config: SurrealConfig): CliResult {
