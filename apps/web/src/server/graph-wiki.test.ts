@@ -1,7 +1,90 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { SurrealFetch } from "@originium/surreal";
-import { readWikiPage, saveWikiPageBody } from "./graph-wiki.ts";
+import { listSourceDocuments, readSourceHeadings, readWikiPage, saveWikiPageBody } from "./graph-wiki.ts";
+
+test("lists Source Documents through the backend without returning credentials or file bucket paths", async () => {
+  const queries: string[] = [];
+  const fetchImpl: SurrealFetch = async (_url, init) => {
+    queries.push(String(init?.body));
+    return new Response(
+      JSON.stringify([
+        { status: "OK", result: null },
+        {
+          status: "OK",
+          result: [
+            {
+              id: "source_document:ia_mining",
+              title: "IA Mining DG",
+              kind: "pdf",
+              sha256: "abc123",
+              mime_type: "application/pdf",
+              page_count: 12,
+              source_uri: "file:///imports/IA Mining DG.pdf",
+              extraction_status: "completed",
+            },
+          ],
+        },
+      ]),
+      { status: 200 },
+    );
+  };
+
+  const result = await listSourceDocuments({
+    env: {
+      ORIGINIUM_SURREAL_DATABASE: "graph",
+      ORIGINIUM_SURREAL_NAMESPACE: "wiki",
+      ORIGINIUM_SURREAL_PASSWORD: "do-not-leak",
+      ORIGINIUM_SURREAL_URL: "http://root:do-not-leak@127.0.0.1:8000",
+      ORIGINIUM_SURREAL_USER: "root",
+    },
+    fetch: fetchImpl,
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(result.operation, "web.graph.source_document.list");
+  assert.match(queries[0] ?? "", /DEFINE BUCKET IF NOT EXISTS source_documents/);
+  assert.match(queries[0] ?? "", /SELECT id, title, kind, sha256, mime_type, page_count, source_uri/);
+  assert.doesNotMatch(queries[0] ?? "", /file FROM source_document/);
+  assert.equal(result.data[0]?.title, "IA Mining DG");
+  assert.equal("file" in (result.data[0] ?? {}), false);
+  assert.doesNotMatch(JSON.stringify(result), /do-not-leak|root:do-not-leak/);
+});
+
+test("reads Source Headings for a selected Source Document in outline order", async () => {
+  const queries: string[] = [];
+  const fetchImpl: SurrealFetch = async (_url, init) => {
+    queries.push(String(init?.body));
+    return new Response(
+      JSON.stringify([
+        {
+          status: "OK",
+          result: [
+            {
+              id: "source_heading:ia_mining_1",
+              source_document: "source_document:ia_mining",
+              title: "Introduction",
+              heading_path: ["Introduction"],
+              level: 1,
+              start_page: 1,
+              end_page: 3,
+              order: 1,
+              extraction_method: "pdf-outline",
+            },
+          ],
+        },
+      ]),
+      { status: 200 },
+    );
+  };
+
+  const result = await readSourceHeadings("source_document:ia_mining", { fetch: fetchImpl });
+
+  assert.equal(result.ok, true);
+  assert.match(queries[0] ?? "", /WHERE source_document = source_document:ia_mining ORDER BY order ASC/);
+  assert.equal(result.data[0]?.title, "Introduction");
+  assert.deepEqual(result.data[0]?.heading_path, ["Introduction"]);
+});
 
 test("reads Wiki Pages through the backend without returning SurrealDB credentials", async () => {
   const fetchImpl: SurrealFetch = async () =>

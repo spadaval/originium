@@ -596,6 +596,15 @@ dd {
   text-align: left;
 }
 
+.source-row:hover {
+  background: oklch(95.5% 0.008 86);
+}
+
+.source-row-selected {
+  border-color: oklch(66% 0.07 168);
+  background: oklch(91.5% 0.028 168);
+}
+
 .row-status {
   border-radius: 999px;
   background: oklch(92% 0.012 86);
@@ -604,6 +613,68 @@ dd {
   font-size: 0.74rem;
   font-weight: 700;
   padding: 4px 7px;
+}
+
+.row-status.ok {
+  background: oklch(91% 0.035 168);
+  color: oklch(30% 0.065 168);
+}
+
+.row-status.warning {
+  background: oklch(93% 0.032 58);
+  color: oklch(38% 0.07 48);
+}
+
+.source-metadata dd {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.heading-list {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.heading-list li {
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+  border: 1px solid oklch(88% 0.009 86);
+  border-radius: 8px;
+  padding: 10px;
+}
+
+.heading-list strong,
+.heading-list small {
+  display: block;
+}
+
+.heading-list strong {
+  overflow-wrap: anywhere;
+  color: oklch(28% 0.018 86);
+  font-size: 0.88rem;
+}
+
+.heading-list small {
+  margin-top: 3px;
+  color: oklch(46% 0.018 86);
+  font-size: 0.78rem;
+}
+
+.heading-level {
+  display: inline-flex;
+  justify-content: center;
+  border-radius: 999px;
+  background: oklch(92% 0.012 86);
+  color: oklch(39% 0.018 86);
+  font-size: 0.72rem;
+  font-weight: 760;
+  padding: 3px 6px;
 }
 
 .pdf-frame {
