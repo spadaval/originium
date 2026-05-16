@@ -21,8 +21,11 @@ export const Route = createRootRoute({
       },
       { title: "Originium" },
     ],
+    links: [{ rel: "icon", href: "data:," }],
   }),
   component: RootComponent,
+  pendingComponent: ShellPending,
+  errorComponent: ShellError,
 });
 
 function RootComponent() {
@@ -52,12 +55,35 @@ function RootComponent() {
               </Link>
             ))}
           </nav>
+          <div className="sidebar-status">
+            <span className="state-dot idle" aria-hidden="true" />
+            <span>Web shell</span>
+          </div>
         </aside>
         <main className="main-surface">
           <Outlet />
         </main>
       </div>
     </RootDocument>
+  );
+}
+
+function ShellPending() {
+  return (
+    <div className="state-panel" role="status" aria-live="polite">
+      <div className="skeleton-line wide" />
+      <div className="skeleton-line" />
+      <div className="skeleton-block" />
+    </div>
+  );
+}
+
+function ShellError() {
+  return (
+    <div className="state-panel error-state" role="alert">
+      <strong>Route failed to render</strong>
+      <p>Reload the route. If it fails again, check the Vite server log for the concrete route error.</p>
+    </div>
   );
 }
 

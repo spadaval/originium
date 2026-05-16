@@ -9,48 +9,56 @@ function OverviewRoute() {
     <section className="route-stack" aria-labelledby="overview-title">
       <header className="page-header">
         <div>
-          <p className="eyebrow">Web shell</p>
-          <h1 id="overview-title">Originium workspace</h1>
+          <p className="eyebrow">Overview</p>
+          <h1 id="overview-title">Graph Wiki operations</h1>
         </div>
-        <span className="status-pill">Scaffold</span>
+        <span className="status-pill neutral">Shell ready</span>
       </header>
 
-      <div className="overview-grid">
-        <section className="panel">
-          <h2>Session surface</h2>
-          <p>
-            Open the agent workspace route for the first split view: session activity, page context, and graph
-            placeholders.
-          </p>
+      <div className="overview-actions">
+        <section className="panel action-panel">
+          <div>
+            <h2>Agent Workspace</h2>
+            <p>Session, activity, Wiki Page, and graph lanes.</p>
+          </div>
           <Link to="/workspace" className="button-link">
             Open workspace
           </Link>
         </section>
-        <section className="panel">
-          <h2>Source review</h2>
-          <p>
-            Open the source route for imported document inventory, extraction status, and the future PDF reading lane.
-          </p>
+        <section className="panel action-panel">
+          <div>
+            <h2>Source Documents</h2>
+            <p>Inventory, Source Headings, metadata, and PDF lane.</p>
+          </div>
           <Link to="/sources" className="button-link secondary">
             View sources
           </Link>
         </section>
       </div>
 
-      <section className="panel wide-panel">
-        <h2>Host boundary</h2>
-        <dl className="boundary-list">
+      <section className="panel system-panel" aria-labelledby="system-heading">
+        <div className="panel-heading">
+          <h2 id="system-heading">Runtime lanes</h2>
+          <span className="quiet-label">Local app</span>
+        </div>
+        <dl className="status-list compact">
           <div>
-            <dt>Browser</dt>
-            <dd>Talks to the Originium web backend served by this app.</dd>
+            <dt>Workspace route</dt>
+            <dd>
+              <span className="state-dot idle" aria-hidden="true" /> Waiting for Agent Session backend.
+            </dd>
           </div>
           <div>
-            <dt>Backend</dt>
-            <dd>Owns SurrealDB, Codex app-server, CLI, and source PDF access.</dd>
+            <dt>Sources route</dt>
+            <dd>
+              <span className="state-dot idle" aria-hidden="true" /> Waiting for Source Document data.
+            </dd>
           </div>
           <div>
-            <dt>Routes</dt>
-            <dd>Workspace and source shells are ready for the next backend slices.</dd>
+            <dt>API health</dt>
+            <dd>
+              <span className="state-dot ok" aria-hidden="true" /> Available at /api/health.
+            </dd>
           </div>
         </dl>
       </section>
