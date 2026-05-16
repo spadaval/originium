@@ -19,7 +19,7 @@
       "bin": {
         "originium": "./dist/originium",
       },
-      "dependencies": {
+      "devDependencies": {
         "@originium/domain": "workspace:*",
         "@originium/pdf-ingest": "workspace:*",
         "@originium/surreal": "workspace:*",
@@ -30,6 +30,7 @@
       "version": "0.1.0",
       "dependencies": {
         "@originium/domain": "workspace:*",
+        "@originium/surreal": "workspace:*",
       },
     },
     "packages/domain": {

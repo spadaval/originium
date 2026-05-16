@@ -10,6 +10,7 @@
     "test": "bun test"
   },
   "dependencies": {
-    "@originium/domain": "workspace:*"
+    "@originium/domain": "workspace:*",
+    "@originium/surreal": "workspace:*"
   }
 }

@@ -479,10 +479,16 @@ process control.
 For the single-host foundation, the web backend, Codex app-server, SurrealDB,
 and CLI execution remain co-located on the same trusted host. The web frontend
 is served by `apps/web` and has no direct runtime contract with SurrealDB, local
-files, the CLI, or Codex app-server. Originium does not yet define web-specific
-backend, frontend, or Codex app-server environment variables; until that
-contract exists, those components inherit the host SurrealDB configuration and
-backend-owned process environment.
+files, the CLI, or Codex app-server. The host-direct web backend contract is
+owned by `apps/web`: it reads SurrealDB variables through `packages/surreal`,
+listens on `ORIGINIUM_WEB_BACKEND_BIND`, reaches Codex app-server through
+`ORIGINIUM_CODEX_APP_SERVER_BIND` and `ORIGINIUM_CODEX_APP_SERVER_URL`, shells
+to the CLI at `ORIGINIUM_CLI_PATH`, and serves PDF Source Documents through
+`ORIGINIUM_WEB_SOURCE_PDFS_ENABLED`,
+`ORIGINIUM_WEB_SOURCE_PDF_ROUTE_PREFIX`, and
+`ORIGINIUM_WEB_SOURCE_PDF_BUCKET_DIR`. The PDF bucket path defaults to the
+SurrealDB bucket directory so host-direct storage remains one local operating
+contract unless explicitly overridden.
 
 Splitting the frontend from the backend requires a complete backend API for
 Graph Wiki projections, PDF streaming, citation validation, chat/activity
