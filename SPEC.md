@@ -69,6 +69,7 @@ Use schemafull SurrealDB tables for core records and relations:
 - `wiki_page`
 - `agent_session`
 - `change_log`
+- `agent_activity`
 - `cites`
 - `manual_link`
 - `edited_in`
@@ -280,6 +281,30 @@ The first undo workflow is agent-assisted:
 
 Automated rollback is not required for the POC.
 
+## Agent Activity
+
+Agent Activity records are persisted runtime events for an Agent Session. They
+are separate from Change Log entries because Change Logs describe Graph Wiki
+mutations, while Agent Activity records describe what the embedded agent is
+doing around those mutations.
+
+Initial Agent Activity fields:
+
+- `agent_session`
+- `source`: `codex_app_server | cli | web`
+- `kind`: `message | command | tool | file_change | graph_mutation | status | error`
+- `status`: `started | streaming | completed | failed`
+- `summary`
+- `operation`
+- `target_records`
+- `metadata`
+- `created_at`
+
+The Agent Activity Log in the web app should render Agent Activity records and
+Change Log entries together as one session timeline. The database should keep
+the records distinct so mutation history remains useful for inspection and
+undo.
+
 ## CLI
 
 The CLI is the primary agent interface.
@@ -404,16 +429,26 @@ The main workspace should show:
 
 - agent chat as the primary interaction surface
 - a persisted Agent Activity Log derived from the existing Agent Session and
-  Change Log model, enhanced through CLI/database logging rather than a parallel
-  web-only audit path
+  Change Log model, with non-mutating runtime events stored as Agent Activity
+  records rather than a parallel web-only audit path
 - a graph view for Graph Wiki records and relations
 - a Wiki Page viewer with basic Page Body editing and citation validation, but
   no direct graph editing
 
+Initial routes:
+
+- `/workspace`: two-pane Agent Workspace with chat and activity on the left,
+  and graph/page tabs on the right.
+- `/sources`: Source Document Page with Source Document list, import/extraction
+  status, Source Heading outline, and embedded PDF viewer for PDF Source
+  Documents.
+
 The web app should also include a dedicated Source Document Page. That page
 should list imported Source Documents, show import/extraction status and
 Source Heading metadata, and embed a PDF viewer for PDF Source Documents when
-the stored file can be served safely from the backend.
+the stored file can be served safely from the backend. The browser should load
+PDFs through an Originium backend endpoint, not by talking directly to SurrealDB
+file buckets or local bucket paths.
 
 The first web app agent runtime should couple directly to Codex app-server. Do
 not add an agent-runtime abstraction before there is a concrete second runtime.
@@ -421,6 +456,10 @@ The backend should own the Codex app-server process/protocol boundary, database
 access, Source Document file access, and CLI/RPC calls. The browser should talk
 to the Originium backend rather than directly to SurrealDB, local files, or the
 agent process.
+
+Basic Wiki Page editing belongs in the Page viewer. It should update only the
+Page Body, preserve graph-owned Citations and Manual Links, and run citation
+validation after save.
 
 ## Technology Direction
 
