@@ -263,9 +263,19 @@ async function routeSource(argv: readonly string[]): Promise<CliResult> {
     if (!headingId) return missingArgument("source chunk", "source.chunk", argv, "--heading <heading-id>");
     const sourceId = valueAfter(argv, "--source") ?? "source_document:fixture";
     const maxTokens = Number.parseInt(valueAfter(argv, "--max-tokens") ?? "100000", 10);
-    const heading = extractPdfHeadings(path, sourceId).find(
-      (candidate) => candidate.id === headingId || candidate.title === headingId,
-    );
+    const heading = extractPdfHeadings(path, sourceId).find((candidate) => {
+      const persistedId = sourceHeadingRecordId({
+        sourceDocumentId: sourceId,
+        title: candidate.title,
+        headingPath: candidate.headingPath,
+        level: candidate.level,
+        startPage: candidate.startPage,
+        endPage: candidate.endPage,
+        order: candidate.order,
+        extractionMethod: candidate.extractionMethod,
+      });
+      return candidate.id === headingId || persistedId === headingId || candidate.title === headingId;
+    });
     if (!heading) {
       return operationFailure(
         "source chunk",
@@ -275,13 +285,30 @@ async function routeSource(argv: readonly string[]): Promise<CliResult> {
         "Run source headings first and pass a returned heading ID or title.",
       );
     }
+    const persistedHeadingId = sourceHeadingRecordId({
+      sourceDocumentId: sourceId,
+      title: heading.title,
+      headingPath: heading.headingPath,
+      level: heading.level,
+      startPage: heading.startPage,
+      endPage: heading.endPage,
+      order: heading.order,
+      extractionMethod: heading.extractionMethod,
+    });
     const chunk = projectPdfChunk(path, heading, { maxTokens });
+    const chunkId = `ingestion_chunk:${persistedHeadingId.replace(/^source_heading:/, "")}_${maxTokens}`;
+    const result = await executeSurrealQuery(
+      readSurrealConfig(),
+      `UPSERT ${chunkId} SET source_document = ${sourceId}, source_heading = ${persistedHeadingId}, start_page = ${chunk.pageRange.start}, end_page = ${chunk.pageRange.end}, token_estimate = ${chunk.tokenEstimate}, extraction_method = "${chunk.extractionMethod}", created_at = time::now(); SELECT * FROM ${chunkId};`,
+      { queryId: `source.chunk:${persistedHeadingId}` },
+    );
+    if (!result.ok) return fromSurrealFailure("source chunk", argv, result.error);
     return success({
       command: "source chunk",
       operation: "source.chunk",
       input: argv,
-      message: `Projected Ingestion Chunk for ${heading.id} with estimated ${chunk.tokenEstimate} tokens.`,
-      data: chunk,
+      message: `Projected and recorded Ingestion Chunk ${chunkId} for ${persistedHeadingId} with estimated ${chunk.tokenEstimate} tokens.`,
+      data: { ...chunk, id: chunkId, result: result.result },
     });
   }
 
