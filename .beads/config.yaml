@@ -54,6 +54,6 @@
 # - github.repo
 
 dolt.shared-server: true
-types.custom: validation,closeout
+types.custom: validation,closeout,milestone
 
 sync.remote: "git+ssh://git@github.com/spadaval/originium.git"
