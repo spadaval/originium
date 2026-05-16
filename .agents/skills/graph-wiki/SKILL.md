@@ -196,6 +196,62 @@ trusted source material.
 Do not copy raw PDF body text into Wiki Pages or durable wiki records. Use
 Source Documents and Ingestion Chunks as input for concise synthesis.
 
+## Workflow: Index A Source Document
+
+Use this when the user wants an LLM-powered indexing pass over a document or
+chapter. The CLI extracts headings and stores records; the agent is responsible
+for deciding which concepts, facts, requirements, procedures, tradeoffs, and
+cross-references deserve durable Wiki Pages and graph links.
+
+Indexing is not a page-by-page summary. Build a maintained knowledge layer:
+
+- Create Wiki Pages for concepts that are likely query targets, design
+  constraints, deployment patterns, system requirements, procedures,
+  component roles, known tradeoffs, and operational risks.
+- Prefer one focused page per durable concept. Avoid one giant document summary
+  page and avoid tiny pages that only restate a single sentence.
+- Use chapter or major Source Heading pages only as overview/navigation pages;
+  link them to the more specific pages when those relationships are useful.
+- Synthesize across multiple Source Headings when a concept is distributed
+  across the document. Cite each materially different source of evidence.
+- Keep Page Bodies concise and explanatory. They should read like maintained
+  wiki entries, not raw source excerpts or extraction notes.
+
+Recommended indexing loop:
+
+1. Start an Agent Session and list Source Headings for the Source Document.
+2. Choose a bounded chapter, section cluster, or theme to index.
+3. Read the relevant chunks with `source chunk`. For broad or noisy headings,
+   use adjacent headings or source text search to locate the real evidence.
+4. Draft candidate Wiki Pages and search for existing pages before writing.
+5. Create or update pages with citation markers in the body.
+6. Add Citation relations whose keys exactly match the body markers.
+7. Add Manual Links when the indexing assignment asks for a rich graph and you
+   can state the relationship reason concretely. Examples: "depends on",
+   "implements", "constrains", "contrasts with", "is configured by", or
+   "provides evidence for". Do not add decorative or vague links.
+8. Validate citations for every page touched.
+9. Run retrieval searches for likely questions and inspect whether the intended
+   pages rank ahead of raw Source Headings.
+10. Inspect the session log and report records read, records changed, validated
+    pages, and known gaps.
+
+Quality bar for an indexing pass:
+
+- A later query should find maintained Wiki Pages before raw Source Headings for
+  the important topics covered by the indexed scope.
+- Each evidence-backed claim in a Page Body should have a nearby Citation
+  Marker. One marker can support a short paragraph, but not an entire page of
+  unrelated claims.
+- Citation labels should name the human source anchor, not repeat opaque record
+  IDs.
+- Manual Link reasons should explain the domain relationship in plain language.
+- If Source Headings are too broad for confident citation, keep the citation but
+  report the precision gap; that is useful data for deciding whether finer
+  citation anchors are needed.
+- If a source point is unclear or contradictory, create a page that preserves
+  the uncertainty instead of silently choosing one interpretation.
+
 ## Workflow: Create Or Update A Wiki Page
 
 Before writing, search for an existing page about the same topic:
