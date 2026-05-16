@@ -60,7 +60,8 @@ a {
 .graph-map-node:focus-visible,
 .record-chip:focus-visible,
 .search-field input:focus-visible,
-.composer textarea:focus-visible {
+.composer textarea:focus-visible,
+.page-editor textarea:focus-visible {
   outline: 2px solid oklch(49% 0.11 168);
   outline-offset: 2px;
 }
@@ -225,6 +226,11 @@ p {
   border-color: oklch(80% 0.012 86);
   background: oklch(94% 0.008 86);
   color: oklch(36% 0.018 86);
+}
+
+.success-state {
+  border-color: oklch(75% 0.046 168);
+  background: oklch(95% 0.02 168);
 }
 
 .overview-actions,
@@ -541,9 +547,84 @@ dd {
 }
 
 .graph-region,
-.page-placeholder {
+.page-region {
   display: grid;
   gap: 14px;
+}
+
+.citation-panel,
+.page-editor {
+  display: grid;
+  gap: 10px;
+}
+
+.page-editor label {
+  color: oklch(34% 0.018 86);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.page-editor textarea {
+  width: 100%;
+  min-height: 280px;
+  border: 1px solid oklch(79% 0.012 86);
+  border-radius: 7px;
+  background: oklch(97% 0.004 86);
+  color: oklch(25% 0.018 86);
+  line-height: 1.45;
+  padding: 12px;
+  resize: vertical;
+}
+
+.page-editor-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.citation-list,
+.validation-list {
+  display: grid;
+  gap: 7px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.citation-list li,
+.validation-list li {
+  display: grid;
+  grid-template-columns: minmax(86px, auto) minmax(0, 1fr);
+  gap: 9px;
+  align-items: start;
+  border: 1px solid oklch(88% 0.009 86);
+  border-radius: 8px;
+  padding: 9px;
+}
+
+.citation-list code {
+  color: oklch(29% 0.075 168);
+  font-size: 0.78rem;
+  font-weight: 760;
+}
+
+.citation-list span,
+.validation-list span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: oklch(42% 0.018 86);
+  font-size: 0.84rem;
+  line-height: 1.35;
+}
+
+.validation-list {
+  margin-top: 10px;
+}
+
+.validation-list strong {
+  color: oklch(36% 0.08 31);
+  font-size: 0.76rem;
 }
 
 .graph-focus-picker {
@@ -973,6 +1054,16 @@ dd {
   .button-link,
   .search-field {
     width: 100%;
+  }
+
+  .page-editor-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .citation-list li,
+  .validation-list li {
+    grid-template-columns: 1fr;
   }
 
   .graph-node.primary {
