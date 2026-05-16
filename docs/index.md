@@ -10,8 +10,10 @@ This is the top-level router for the repository docs.
 ## Architecture Docs
 
 - [docs/architecture/index.md](architecture/index.md) for package ownership,
-  host-direct runtime topology, service startup, environment variables,
-  validation commands, and deferred split-topology/containerization work.
+  host-direct runtime topology, environment variables, and deferred
+  split-topology/containerization work.
+- [docs/operations/host-direct.md](operations/host-direct.md) for starting,
+  validating, and troubleshooting the proven single-host web app.
 - [docs/architecture/quality/index.md](architecture/quality/index.md) for engineering quality rules.
 - [docs/architecture/quality/validation.md](architecture/quality/validation.md) for proof methods, validation beads, result states, and failure classification.
 - [docs/adr](adr) for durable architecture decisions.

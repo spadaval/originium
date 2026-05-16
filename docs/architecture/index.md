@@ -6,6 +6,8 @@ Originium stores canonical Graph Wiki state in SurrealDB and exposes projections
 
 - [Quality](quality/index.md): baseline standards for errors, validation, and scope control.
 - [Surrealist inspection](surrealist-inspection.md): POC database inspection workflow and queries.
+- [Host-direct operations](../operations/host-direct.md): local startup,
+  health checks, validation scenario, and known gate classifications.
 - [ADRs](../adr): durable architecture decisions and historical context.
 - [SPEC.md](../../SPEC.md): source of truth for Graph Wiki behavior.
 - [CONTEXT.md](../../CONTEXT.md): source of truth for product language.
@@ -81,33 +83,9 @@ Until then, the backend owns Codex app-server and CLI/RPC execution directly.
 
 ## Host-Direct Operation
 
-Install dependencies and build the CLI before using the host-direct web app:
-
-```bash
-bun install
-bun run --cwd apps/cli build
-```
-
-Start the local database, apply the schema, then start the web server:
-
-```bash
-./apps/cli/dist/originium db start
-./apps/cli/dist/originium db apply-schema
-bun run dev:web
-```
-
-The default web backend listens on `127.0.0.1:3000`; open
-`http://127.0.0.1:3000/workspace` for the Agent Workspace and
-`http://127.0.0.1:3000/sources` for Source Documents. `apps/web` also exposes
-`/api/health`, which checks the five host-direct components: SurrealDB, CLI,
-Codex app-server, Source PDF bucket, and web backend configuration.
-
-Codex app-server may be started by the web backend when a workspace turn needs
-it. Operators can also start it explicitly before health validation:
-
-```bash
-codex app-server --listen ws://127.0.0.1:3001
-```
+Use [Host-direct operations](../operations/host-direct.md) for local startup,
+health checks, integrated validation scenarios, evidence capture, and known
+gate classifications.
 
 Key environment variables:
 
@@ -131,28 +109,6 @@ Key environment variables:
   `/sources/pdf`.
 - `ORIGINIUM_WEB_SOURCE_PDF_BUCKET_DIR`: Source PDF bucket directory; defaults
   to the SurrealDB bucket directory.
-
-Validation for the integrated host-direct scenario should combine the static
-repo gates with live runtime proof:
-
-```bash
-bun run check:markdown
-bun run check:biome
-bun run check:typecheck
-bun run check:build
-bun test
-curl -fsS http://127.0.0.1:3000/api/health
-```
-
-The validation bead `originium-7fl` passed at commit `1551acc` with runtime
-health green for SurrealDB, CLI, Codex app-server, Source PDF bucket, and web
-backend. It also proved `/workspace` chat through Codex with response
-`validation ping`; Agent Activity persisted separately from Change Log records;
-`/sources` loaded
-`source_document:curwb_deployment_for_autonomous_operations_in_open_pit_mining_66dd4ae65769`
-and streamed its 27,502,694-byte PDF; the graph neighborhood rendered for
-`wiki_page:poc_mining_deployment`; and a Page Body save created
-`change_log:bca0cab78f1b4dab95a0c6f983ebbf1a`.
 
 ## External Tools
 

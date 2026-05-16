@@ -43,7 +43,10 @@ bun run check
 - [CONTEXT.md](CONTEXT.md) defines canonical Graph Wiki language.
 - [docs/index.md](docs/index.md) is the compact knowledge map.
 - [docs/architecture/index.md](docs/architecture/index.md) summarizes package
-  ownership, host-direct operation, runtime validation, and deferred split
+  ownership, host-direct topology, runtime boundaries, and deferred split
   topology/containerization work.
+- [docs/operations/host-direct.md](docs/operations/host-direct.md) is the
+  runbook for starting, validating, and troubleshooting the current single-host
+  web app.
 - [docs/agent/index.md](docs/agent/index.md) summarizes the repo-local agent factory process.
 - [docs/architecture/quality/index.md](docs/architecture/quality/index.md) defines validation-centric engineering standards.
