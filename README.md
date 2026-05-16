@@ -15,7 +15,7 @@ bun run check
 - `packages/surreal`: SurrealDB configuration and schema file references.
 - `packages/pdf-ingest`: early PDF ingestion boundary placeholder.
 - `apps/cli`: command boundary for local database and ingestion workflows.
-- `apps/web`: placeholder web app boundary.
+- `apps/web`: TanStack Start web shell and backend routes for host-direct Graph Wiki workflows.
 - `schema/core.surql`: checked-in schemafull SurrealDB starting point.
 
 ## Runtime Notes
@@ -23,7 +23,7 @@ bun run check
 - CLI dev: `bun run --cwd apps/cli dev`
 - Bundled CLI: `bun run --cwd apps/cli build && ./apps/cli/dist/originium db status`
 - Installable CLI: `bun run cli:install && originium db status`
-- Web placeholder: `bun run dev:web`
+- Web shell: `bun run dev:web`
 - Full local gate: `bun run check`
 
 ## Operational Environment

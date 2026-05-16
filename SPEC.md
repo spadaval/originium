@@ -365,13 +365,12 @@ Initial TypeScript package/app shape:
 - `packages/surreal`: SurrealDB connection, schema application, table/relation access, file bucket helpers, retrieval queries, and logging wrappers.
 - `packages/pdf-ingest`: PDF metadata, heading extraction, page-range extraction, and token-budgeted chunk projection.
 - `apps/cli`: agent-facing CLI commands composed from domain, SurrealDB, and PDF ingestion packages.
-- `apps/web`: deferred human-facing Graph Wiki app for user workflows, editing,
-  agent chat, and richer Graph Wiki projections.
+- `apps/web`: TanStack Start web shell and host-direct backend seams for Source Document, Wiki Page, Agent Session, Change Log, Agent Activity, and PDF streaming workflows.
 - `.agents/skills/graph-wiki`: repo-local agent instructions for using the CLI, preserving citation markers, and respecting the Graph Wiki model.
 
-The Originium app is deferred until after the first POC. It should not own
-ingestion or database mutation semantics when introduced. The CLI and future
-workers should use the same package seams.
+The Originium web app owns browser-facing interaction and backend seams. It
+should not own ingestion or database mutation semantics. The CLI, web backend,
+and future workers should use the same package seams.
 
 ## Chapter Ingestion Workflow
 

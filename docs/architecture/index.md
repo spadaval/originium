@@ -18,7 +18,7 @@ Originium stores canonical Graph Wiki state in SurrealDB and exposes projections
 | SurrealDB access | `packages/surreal`    | Database configuration, schema file references, and future query helpers. |
 | PDF ingestion    | `packages/pdf-ingest` | Source Document import and Chapter Ingestion boundaries.                  |
 | CLI              | `apps/cli`            | Local database commands, schema application, and ingestion entry points.  |
-| Web              | `apps/web`            | Deferred human-facing Graph Wiki app and projection.                      |
+| Web              | `apps/web`            | TanStack Start shell and host-direct browser/backend seams.               |
 | Schema           | `schema`              | Checked-in SurrealQL definitions.                                         |
 
 ## Runtime Summary
@@ -29,8 +29,9 @@ Originium stores canonical Graph Wiki state in SurrealDB and exposes projections
 4. Agents write Wiki Pages, Citations, Manual Links, Agent Sessions, and Change Logs into SurrealDB.
 5. During the POC, the CLI renders agent-facing Projections and Surrealist is
    used for database-management inspection and manual validation.
-6. After the POC, `apps/web` can add user-facing interaction, editing, richer
-   Projections, and embedded agent chat.
+6. `apps/web` serves browser-facing route shells and backend seams for Source
+   Documents, Wiki Pages, Agent Sessions, Change Logs, Agent Activity, and PDF
+   streaming while downstream epics fill in the interactive workflows.
 
 ## Single-Host Topology
 
@@ -45,7 +46,7 @@ supervisor, or a remote service boundary.
 | Web backend      | `apps/web` server process on host   | SurrealDB variables above, `ORIGINIUM_WEB_BACKEND_BIND`, `ORIGINIUM_CLI_PATH`, `ORIGINIUM_WEB_SOURCE_PDFS_ENABLED`, `ORIGINIUM_WEB_SOURCE_PDF_ROUTE_PREFIX`, `ORIGINIUM_WEB_SOURCE_PDF_BUCKET_DIR`                                                                                          |
 | Web frontend     | Browser served by `apps/web`        | No direct runtime contract; it must call the Originium backend, not SurrealDB, local files, the CLI, or Codex app-server.                                                                                                                                                                   |
 
-For now, SurrealDB, the CLI, the future web backend, and Codex app-server must
+For now, SurrealDB, the CLI, the web backend, and Codex app-server must
 remain co-located on one trusted host because the system relies on local process
 management, local file-bucket paths, shell/CLI execution, and an owned
 app-server process boundary. The frontend may run in a browser, but it is only
@@ -97,5 +98,5 @@ Application boundaries may depend on packages. Shared packages should keep depen
 - `packages/surreal` may depend on `packages/domain`.
 - `packages/pdf-ingest` may depend on `packages/domain` and `packages/surreal`.
 - `apps/cli` may depend on all package boundaries.
-- `apps/web` should consume public package exports only when the deferred app
-  work starts.
+- `apps/web` should consume public package exports and keep direct SurrealDB
+  access behind backend-owned seams.

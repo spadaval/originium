@@ -45,8 +45,9 @@
 - `packages/pdf-ingest` owns PDF metadata, heading extraction, and chunk
   projection.
 - `apps/cli` owns agent-facing command composition and bundled CLI behavior.
-- `apps/web` is deferred until after the POC and will own human-facing
-  interaction, editing, projections, and embedded agent chat when introduced.
+- `apps/web` owns the TanStack Start web shell plus browser-facing backend seams
+  for human interaction, editing, projections, PDF streaming, and embedded agent
+  chat.
 - Surrealist is the POC DB-management and manual validation surface; do not
   vendor its source code into this repository.
 - Schema definitions live in `schema/*.surql`; TypeScript code should not hide
