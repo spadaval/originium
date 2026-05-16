@@ -1,0 +1,8 @@
+{
+  "database": "dolt",
+  "backend": "dolt",
+  "dolt_mode": "server",
+  "dolt_database": "originium",
+  "project_id": "eacec7f8-f616-436e-87a7-2d525286e7da",
+  "global_dolt_database": "beads_global"
+}
