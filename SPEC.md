@@ -448,14 +448,29 @@ should list imported Source Documents, show import/extraction status and
 Source Heading metadata, and embed a PDF viewer for PDF Source Documents when
 the stored file can be served safely from the backend. The browser should load
 PDFs through an Originium backend endpoint, not by talking directly to SurrealDB
-file buckets or local bucket paths.
+file buckets or local bucket paths. The first viewer should use browser-native
+PDF embedding against that backend URL; custom PDF.js-style controls should wait
+until native embedding blocks real source-reading or citation workflows.
 
 The first web app agent runtime should couple directly to Codex app-server. Do
 not add an agent-runtime abstraction before there is a concrete second runtime.
 The backend should own the Codex app-server process/protocol boundary, database
 access, Source Document file access, and CLI/RPC calls. The browser should talk
 to the Originium backend rather than directly to SurrealDB, local files, or the
-agent process.
+agent process. `apps/web` should become a TanStack Start app, with server
+functions owning SurrealDB access, backend PDF streaming, and Codex app-server
+process control.
+
+One Codex app-server thread should map to one Originium Agent Session. Store the
+Codex thread identifier on the Agent Session or related runtime metadata so the
+web app can resume the chat/activity timeline and correlate Codex events with
+Graph Wiki mutations.
+
+The first graph view should render the local graph neighborhood of the selected
+record rather than the full Graph Wiki. For a selected Wiki Page, that
+neighborhood includes the page, cited Source Headings, Manual Links, and nearby
+Wiki Pages. Full-graph exploration can wait until there is evidence the local
+view is not enough.
 
 Basic Wiki Page editing belongs in the Page viewer. It should update only the
 Page Body, preserve graph-owned Citations and Manual Links, and run citation
