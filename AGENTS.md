@@ -12,6 +12,23 @@ bd close <id>         # Complete work
 bd dolt push          # Push beads data to remote
 ```
 
+## Originium Agent Process
+
+Use `docs/index.md` as the repository knowledge map. For coordinated agent
+work, use the repo-local skills under `.agents/skills/`:
+
+- `orchestrate-epic` for multi-bead workstreams and subagent coordination.
+- `manage-beads` for backlog graph shaping and tracker hygiene.
+- `implement` for one ordinary executable bead.
+- `review-code` for adversarial diff review.
+- `validate-behavior` for scenario validation.
+- `refresh-docs` for docs reconciliation.
+- `architecture-audit` for evidence-backed architecture findings.
+- `breaking-migration` for deliberate demolition/reconnect/closeout work.
+- `graph-wiki` for product-specific Graph Wiki behavior.
+
+Shared process docs live in `docs/agent/`.
+
 ## Non-Interactive Shell Commands
 
 **ALWAYS use non-interactive flags** with file operations to avoid hanging on confirmation prompts.
@@ -19,6 +36,7 @@ bd dolt push          # Push beads data to remote
 Shell commands like `cp`, `mv`, and `rm` may be aliased to include `-i` (interactive) mode on some systems, causing the agent to hang indefinitely waiting for y/n input.
 
 **Use these forms instead:**
+
 ```bash
 # Force overwrite without prompting
 cp -f source dest           # NOT: cp source dest
@@ -31,12 +49,14 @@ cp -rf source dest          # NOT: cp -r source dest
 ```
 
 **Other commands that may prompt:**
+
 - `scp` - use `-o BatchMode=yes` for non-interactive
 - `ssh` - use `-o BatchMode=yes` to fail instead of prompting
 - `apt-get` - use `-y` flag
 - `brew` - use `HOMEBREW_NO_AUTO_UPDATE=1` env var
 
 <!-- BEGIN BEADS INTEGRATION v:1 profile:minimal hash:ca08a54f -->
+
 ## Beads Issue Tracker
 
 This project uses **bd (beads)** for issue tracking. Run `bd prime` to see full workflow context and commands.
@@ -77,6 +97,7 @@ bd close <id>         # Complete work
 7. **Hand off** - Provide context for next session
 
 **CRITICAL RULES:**
+
 - Work is NOT complete until `git push` succeeds
 - NEVER stop before pushing - that leaves work stranded locally
 - NEVER say "ready to push when you are" - YOU must push

@@ -1,0 +1,20 @@
+{
+  "name": "@originium/cli",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "bin": {
+    "originium": "./dist/originium"
+  },
+  "scripts": {
+    "dev": "bun src/index.ts",
+    "build": "bun build --compile --outfile dist/originium src/index.ts",
+    "check:typecheck": "tsc --noEmit",
+    "test": "bun run build && bun test"
+  },
+  "dependencies": {
+    "@originium/domain": "workspace:*",
+    "@originium/pdf-ingest": "workspace:*",
+    "@originium/surreal": "workspace:*"
+  }
+}

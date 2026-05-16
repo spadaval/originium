@@ -1,0 +1,15 @@
+{
+  "name": "@originium/web",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "bun src/index.ts",
+    "build": "tsc --noEmit",
+    "check:typecheck": "tsc --noEmit",
+    "test": "bun test"
+  },
+  "dependencies": {
+    "@originium/domain": "workspace:*"
+  }
+}

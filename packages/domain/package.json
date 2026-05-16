@@ -1,0 +1,14 @@
+{
+  "name": "@originium/domain",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "build": "tsc --noEmit",
+    "check:typecheck": "tsc --noEmit",
+    "test": "bun test"
+  }
+}

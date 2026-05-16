@@ -1,0 +1,23 @@
+{
+  "compilerOptions": {
+    "allowImportingTsExtensions": true,
+    "baseUrl": ".",
+    "ignoreDeprecations": "6.0",
+    "module": "ESNext",
+    "moduleDetection": "force",
+    "moduleResolution": "Bundler",
+    "noEmit": true,
+    "paths": {
+      "@originium/cli": ["apps/cli/src/index.ts"],
+      "@originium/domain": ["packages/domain/src/index.ts"],
+      "@originium/pdf-ingest": ["packages/pdf-ingest/src/index.ts"],
+      "@originium/surreal": ["packages/surreal/src/index.ts"]
+    },
+    "resolveJsonModule": true,
+    "skipLibCheck": true,
+    "strict": true,
+    "target": "ES2022",
+    "types": ["bun", "node"]
+  },
+  "include": ["apps/**/*", "packages/**/*"]
+}

@@ -1,0 +1,46 @@
+{
+  "$schema": "https://turbo.build/schema.json",
+  "globalEnv": [
+    "NODE_ENV",
+    "ORIGINIUM_DATA_DIR",
+    "ORIGINIUM_SURREAL_BIN",
+    "ORIGINIUM_SURREAL_DATABASE",
+    "ORIGINIUM_SURREAL_NAMESPACE",
+    "ORIGINIUM_SURREAL_PASSWORD",
+    "ORIGINIUM_SURREAL_URL",
+    "ORIGINIUM_SURREAL_USER"
+  ],
+  "tasks": {
+    "dev": {
+      "cache": false,
+      "persistent": true
+    },
+    "build": {
+      "outputs": ["dist/**"]
+    },
+    "//#check:beads": {
+      "cache": false
+    },
+    "//#check:biome": {
+      "outputs": []
+    },
+    "//#check:build": {
+      "outputs": []
+    },
+    "//#check:markdown": {
+      "outputs": []
+    },
+    "//#check:typecheck": {
+      "outputs": []
+    },
+    "//#format:biome": {
+      "cache": false
+    },
+    "//#format:markdown": {
+      "cache": false
+    },
+    "test": {
+      "outputs": []
+    }
+  }
+}

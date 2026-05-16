@@ -1,0 +1,39 @@
+{
+  "name": "originium",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "packageManager": "bun@1.3.3",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "turbo run dev --ui=tui --filter=@originium/web",
+    "dev:web": "bun run --cwd apps/web dev",
+    "build": "turbo run build",
+    "typecheck": "tsc --noEmit",
+    "check:typecheck": "bun run typecheck",
+    "test": "bun run build && bun test",
+    "lint": "biome lint .",
+    "format": "turbo run format:biome format:markdown --continue=always --output-logs=errors-only --log-order=grouped --summarize",
+    "format:biome": "biome format --write .",
+    "format:markdown": "prettier --write \"README.md\" \"AGENTS.md\" \"SPEC.md\" \"CONTEXT.md\" \"docs/index.md\" \"docs/agent/**/*.md\" \"docs/architecture/**/*.md\" \".agents/**/*.md\"",
+    "format:check": "biome format .",
+    "format:markdown:check": "prettier --check \"README.md\" \"AGENTS.md\" \"SPEC.md\" \"CONTEXT.md\" \"docs/index.md\" \"docs/agent/**/*.md\" \"docs/architecture/**/*.md\" \".agents/**/*.md\"",
+    "biome:check": "biome check .",
+    "check:biome": "bun run biome:check",
+    "check:build": "bun run build",
+    "check:markdown": "bun run format:markdown:check",
+    "check:beads": "bd lint",
+    "check": "turbo run check:typecheck check:biome check:markdown check:build --continue=always --output-logs=errors-only --log-order=grouped --summarize && bun test"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.4.14",
+    "@types/bun": "1.3.3",
+    "@types/node": "25.0.3",
+    "prettier": "^3.8.3",
+    "turbo": "^2.3.3",
+    "typescript": "6.0.3"
+  }
+}

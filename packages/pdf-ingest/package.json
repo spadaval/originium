@@ -1,0 +1,18 @@
+{
+  "name": "@originium/pdf-ingest",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "build": "tsc --noEmit",
+    "check:typecheck": "tsc --noEmit",
+    "test": "bun test"
+  },
+  "dependencies": {
+    "@originium/domain": "workspace:*",
+    "@originium/surreal": "workspace:*"
+  }
+}
