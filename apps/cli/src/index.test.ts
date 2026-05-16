@@ -4,6 +4,10 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 
 const bundledCli = fileURLToPath(new URL("../dist/originium", import.meta.url));
+const repoRoot = fileURLToPath(new URL("../../..", import.meta.url));
+const acceptanceFixture = fileURLToPath(
+  new URL("../../../fixtures/source-documents/IA-Mining-DG.pdf", import.meta.url),
+);
 
 test("bundled CLI reports the configured SurrealDB target", () => {
   const output = execFileSync(bundledCli, ["db", "status"], {
@@ -73,7 +77,8 @@ test("bundled CLI reports structured unknown subgroup failures", () => {
 });
 
 test("bundled acceptance harness reports blocked stages with nonzero exit", () => {
-  const result = spawnSync(bundledCli, ["acceptance", "poc", "fixtures/source-documents/IA-Mining-DG.pdf"], {
+  const result = spawnSync(bundledCli, ["acceptance", "poc", acceptanceFixture], {
+    cwd: repoRoot,
     encoding: "utf8",
     env: {
       ...process.env,

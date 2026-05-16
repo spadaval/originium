@@ -3,16 +3,20 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
+  "files": [
+    "dist/originium"
+  ],
   "bin": {
     "originium": "./dist/originium"
   },
   "scripts": {
     "dev": "bun src/index.ts",
     "build": "bun build --compile --outfile dist/originium src/index.ts",
+    "prepare": "bun run build",
     "check:typecheck": "tsc --noEmit",
     "test": "bun run build && bun test"
   },
-  "dependencies": {
+  "devDependencies": {
     "@originium/domain": "workspace:*",
     "@originium/pdf-ingest": "workspace:*",
     "@originium/surreal": "workspace:*"

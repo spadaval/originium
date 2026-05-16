@@ -22,6 +22,7 @@ bun run check
 
 - CLI dev: `bun run --cwd apps/cli dev`
 - Bundled CLI: `bun run --cwd apps/cli build && ./apps/cli/dist/originium db status`
+- Installable CLI: `npm install -g ./apps/cli && originium db status`
 - Web placeholder: `bun run dev:web`
 - Full local gate: `bun run check`
 
