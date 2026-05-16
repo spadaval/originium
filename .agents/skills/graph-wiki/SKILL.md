@@ -1,60 +1,92 @@
 ---
 name: graph-wiki
-description: "Use when operating Originium as a Graph Wiki from the CLI: answering questions from maintained knowledge, finding evidence, importing Source Documents, creating or updating Wiki Pages, maintaining Citations and Manual Links, inspecting Change Logs, and performing cleanup."
+description: "Use when operating Originium from the CLI as an agent-maintained knowledge base: answer questions, find evidence, import Source Documents, synthesize Wiki Pages, maintain Citations and Manual Links, inspect Change Logs, and clean up graph state."
 ---
 
-# Graph Wiki Skill
+# Originium Graph Wiki
 
-Use this skill when you need Originium to behave like a maintained knowledge
-base. The user may ask you to look up a fact, answer a question with context,
-add a document, synthesize or update wiki knowledge, validate citations, inspect
-past edits, or clean up graph state.
+Originium is a CLI-operated knowledge base for agents. It stores trusted source
+material, agent-written synthesis, citations, explicit links, and edit logs in a
+graph database. The goal is to turn raw Source Documents into a maintained Graph
+Wiki that gets more useful over time.
 
-Originium is a Graph Wiki, not a generic RAG index and not a folder of markdown
-files. The CLI is the agent-facing interface. SurrealDB graph records are the
-canonical state. Markdown-like text is only a human/agent Projection.
+Use Originium when a user asks you to:
 
-## Operating Model
+- answer a question from the maintained knowledge base
+- find source-backed context for a topic
+- add or ingest a PDF
+- create or update a durable knowledge page
+- validate or repair citations
+- add explicit relationships between records
+- inspect what a previous agent session read or changed
+- clean up stale, duplicate, or inconsistent graph state
 
-- Prefer the installed `originium` command. Do not assume the skill lives inside
-  the Originium source repository. If `originium` is not on `PATH` and you are in
-  a source checkout, use the repo's documented wrapper, such as `bun run cli --`.
-- Use the CLI for Graph Wiki reads and writes. Do not edit SurrealDB directly
-  unless the user explicitly asks for low-level database inspection or repair.
-- Start each meaningful task with an Agent Session and pass `--session` to later
-  Graph Wiki commands so the Change Log can explain what happened.
-- Read command output as structured JSON. Successful results include `ok`,
-  `message`, and `data`; failures include `error.operation`, `error.input`,
-  `error.reason`, and `error.action`.
-- When reporting a failure, preserve the concrete operation, input identifier,
-  actionable reason, and next action from the CLI output.
+The `originium` CLI is the main interface. Prefer the installed command:
 
-## Product Rules
+```bash
+originium
+```
 
-- Call the product a Graph Wiki.
-- Source Documents are trusted raw material. Wiki Pages are agent-authored
-  synthesis.
-- Do not copy raw Source Document body text into Wiki Pages or durable wiki
-  records. Use short quotes in Citation metadata only when useful.
-- Page Body prose may include Citation Markers such as `[^source-key]`, but the
-  Citation target lives in the `cites` graph relation.
-- Citation Marker keys must match graph Citation keys.
-- Use Source Headings as Source Anchors unless a later Originium release exposes
-  more precise anchors.
-- Do not put raw source addresses, SurrealDB record IDs, file bucket pointers,
-  page ranges, or citation metadata into Page Body prose.
-- Create Manual Links only when explicitly requested and only with a reason.
-- Prefer updating existing Wiki Pages over creating duplicates.
+If `originium` is not on `PATH` and you are inside the source repository, use the
+repo wrapper:
 
-## Start Any Job
+```bash
+bun run cli --
+```
 
-First identify the active database target:
+The CLI prints JSON. A successful command has `ok: true`, a human `message`, and
+usually a `data` object. A failed command has `ok: false` and an `error` object
+with `operation`, `input`, `reason`, and `action`. When a command fails, report
+those fields directly; they are intended to be useful technical error messages.
+
+## Core Concepts
+
+**Graph Wiki**: the maintained knowledge base. Its canonical state is graph
+records in SurrealDB, not markdown files and not an opaque RAG index.
+
+**Source Document**: trusted raw material, such as an imported PDF. Source
+Documents provide evidence, but they are not the final compiled knowledge layer.
+
+**Source Heading**: a heading or chapter-like anchor extracted from a Source
+Document. Current Originium citations point to Source Headings.
+
+**Ingestion Chunk**: an agent-readable projection of one Source Heading or
+chapter-sized slice. Use it to process large documents without loading the whole
+document into context.
+
+**Wiki Page**: durable agent-written synthesis about a topic, entity, question,
+or procedure. Wiki Pages are the primary place to answer from.
+
+**Page Body**: the prose field of a Wiki Page. It may contain Citation Markers
+such as `[^network-architecture]`, but it should not contain raw record IDs,
+file bucket pointers, page ranges, or source metadata.
+
+**Citation Marker**: an inline marker in a Page Body. It is only a handle.
+
+**Citation**: a graph relation from a Wiki Page to a Source Heading. The
+Citation `key` must match the Page Body Citation Marker key.
+
+**Manual Link**: an explicit graph relationship between records. Create one only
+when the user asks for a relationship and you can state the reason.
+
+**Agent Session**: a bounded unit of agent work. Start one for every meaningful
+task.
+
+**Change Log**: a durable record of CLI reads and writes. Use it to explain,
+audit, and repair agent work.
+
+**Graph Retrieval**: search over Wiki Pages and Source Headings, with graph
+signals and local embeddings when available.
+
+## Before Any Work
+
+Check which database the CLI will use:
 
 ```bash
 originium db status
 ```
 
-If the database is unavailable or uninitialized, use the local setup commands:
+If the database is not running or the schema is missing, initialize it:
 
 ```bash
 originium db start
@@ -62,77 +94,170 @@ originium db doctor
 originium db apply-schema
 ```
 
-Create an Agent Session for the specific user task:
+Start an Agent Session for the user task:
 
 ```bash
-originium session start --purpose "<specific user task>"
+originium session start --purpose "<specific task>"
 ```
 
-Keep the returned ID, for example `agent_session:<id>`, and pass it to later
-commands:
+Keep the returned `agent_session:<id>` and pass it to later reads and writes:
 
 ```bash
-originium page search "<query>" --session <session-id>
+originium page search "<topic>" --session <session-id>
 ```
 
-## Answer A Question
-
-Use maintained Wiki Pages first. They are the compiled knowledge layer:
+At the end of the task, inspect the session log:
 
 ```bash
-originium page search "<question or topic>" --session <session-id>
-originium retrieval search "<question or topic>" --session <session-id>
+originium log show --session <session-id>
 ```
 
-Then read the strongest Wiki Page candidates:
+## Workflow: Answer A Question
 
-```bash
-originium page read <wiki-page-id> --session <session-id>
-originium citation list <wiki-page-id> --session <session-id>
-originium citation validate <wiki-page-id> --session <session-id>
-```
+Start from maintained synthesis, not raw source search.
 
-Answer from Wiki Page synthesis and cited Source Heading evidence. If retrieval
-only finds Source Headings, say the Graph Wiki has not synthesized that topic
-yet. Use those Source Headings as context, but do not present them as maintained
-wiki knowledge unless you create or update a Wiki Page.
+1. Search for existing Wiki Pages and graph-backed candidates:
 
-If Graph Retrieval fails because Ollama or the embedding model is unavailable,
-follow the CLI `error.action`. The usual local fix is:
+   ```bash
+   originium page search "<question or topic>" --session <session-id>
+   originium retrieval search "<question or topic>" --session <session-id>
+   ```
+
+2. Read the strongest Wiki Page candidates:
+
+   ```bash
+   originium page read <wiki-page-id> --session <session-id>
+   ```
+
+3. Inspect and validate the page evidence:
+
+   ```bash
+   originium citation list <wiki-page-id> --session <session-id>
+   originium citation validate <wiki-page-id> --session <session-id>
+   ```
+
+4. Answer from the Wiki Page synthesis and cited Source Heading evidence.
+
+5. If search only finds Source Headings, say that the topic has source material
+   but no maintained Wiki Page yet. Use the Source Headings as context only if
+   that satisfies the user, or create/update a Wiki Page before treating the
+   knowledge as compiled.
+
+`page search` and `retrieval search` use local embeddings. If Ollama or the
+embedding model is missing, follow the CLI `error.action`. The common fix is:
 
 ```bash
 ollama pull nomic-embed-text
 ```
 
-## Add A Source Document
+## Workflow: Add A Source Document
 
-Import a trusted PDF only when the user asks you to add or ingest a document:
+Import a PDF only when the user asks you to add, ingest, or use that document as
+trusted source material.
+
+1. Import the PDF:
+
+   ```bash
+   originium source import-pdf <pdf-path> --session <session-id>
+   ```
+
+   Save the returned Source Document ID.
+
+2. Extract Source Headings from the same PDF path:
+
+   ```bash
+   originium source headings <pdf-path> \
+     --source <source-document-id> \
+     --session <session-id>
+   ```
+
+3. Choose one Source Heading or chapter-sized anchor. Large documents should be
+   processed heading by heading.
+
+4. If you need the chunk projection without creating a Wiki Page yet:
+
+   ```bash
+   originium source chunk <pdf-path> \
+     --source <source-document-id> \
+     --heading <source-heading-id> \
+     --max-tokens 100000 \
+     --session <session-id>
+   ```
+
+5. If you need Chapter Ingestion context:
+
+   ```bash
+   originium ingest chapter \
+     --source <source-document-id> \
+     --heading <source-heading-id> \
+     --session <session-id>
+   ```
+
+Do not copy raw PDF body text into Wiki Pages or durable wiki records. Use
+Source Documents and Ingestion Chunks as input for concise synthesis.
+
+## Workflow: Create Or Update A Wiki Page
+
+Before writing, search for an existing page about the same topic:
 
 ```bash
-originium source import-pdf <pdf-path> --session <session-id>
+originium page search "<topic>" --session <session-id>
 ```
 
-Record the returned Source Document ID. Then project Source Headings from the
-same PDF path:
+Prefer updating the existing Wiki Page over creating a duplicate.
+
+Create a new page:
 
 ```bash
-originium source headings <pdf-path> --source <source-document-id> --session <session-id>
-```
-
-Process large documents one Source Heading or chapter-sized section at a time.
-Do not load a whole large PDF into agent context.
-
-To prepare one chapter or heading for synthesis:
-
-```bash
-originium ingest chapter \
-  --source <source-document-id> \
-  --heading <source-heading-id> \
+originium page create \
+  --title "<title>" \
+  --body "<concise synthesis with [^citation-key] markers when needed>" \
   --session <session-id>
 ```
 
-When you are ready to create or refresh a Wiki Page from that heading, include a
-title, Page Body, and matching citation key:
+Update a page by title:
+
+```bash
+originium page update \
+  --title "<title>" \
+  --body "<revised synthesis>" \
+  --session <session-id>
+```
+
+If the Page Body uses Citation Markers, add matching Citation relations:
+
+```bash
+originium citation add \
+  --page <wiki-page-id> \
+  --heading <source-heading-id> \
+  --key <citation-key> \
+  --label "<human label>" \
+  --quote "<short supporting quote when useful>" \
+  --session <session-id>
+```
+
+Then validate the page:
+
+```bash
+originium citation validate <wiki-page-id> --session <session-id>
+```
+
+Interpret validation results literally:
+
+- `missing-graph-citation`: the Page Body has a marker with no matching
+  Citation relation. Add the relation or remove the marker.
+- `unused-graph-citation`: a Citation relation exists but no matching marker is
+  used in the Page Body. Add the marker or revise the stale citation through a
+  supported CLI workflow.
+- `duplicate-marker`: the same Citation Marker key appears more than once.
+  Rewrite the Page Body.
+- `invalid-marker-syntax`: the marker is malformed. Use lowercase keys with
+  letters, numbers, `_`, or `-`, such as `[^source-1]`.
+
+## Workflow: Ingest A Chapter Into A Wiki Page
+
+Use this when a Source Heading should become or refresh a Wiki Page in one CLI
+operation.
 
 ```bash
 originium ingest chapter \
@@ -142,122 +267,83 @@ originium ingest chapter \
   --body "<concise synthesis with [^citation-key] marker>" \
   --key <citation-key> \
   --label "<human citation label>" \
-  --session <session-id>
-```
-
-## Create Or Update Wiki Pages
-
-Write concise synthesis. Keep Page Body prose useful to a reader who does not
-care about storage internals.
-
-```bash
-originium page create \
-  --title "<title>" \
-  --body "<body with Citation Markers when claims need evidence>" \
-  --session <session-id>
-
-originium page update \
-  --title "<title>" \
-  --body "<revised body>" \
-  --session <session-id>
-```
-
-After writing a page that uses Citation Markers, create or refresh matching
-Citation graph relations:
-
-```bash
-originium citation add \
-  --page <wiki-page-id> \
-  --heading <source-heading-id> \
-  --key <citation-key> \
-  --label "<label>" \
   --quote "<short supporting quote when useful>" \
   --session <session-id>
-
-originium citation validate <wiki-page-id> --session <session-id>
 ```
 
-If validation reports `missing-graph-citation`, add the Citation relation or
-remove the marker. If it reports `unused-graph-citation`, add the matching
-marker or revise the stale Citation through the supported CLI workflow. If it
-reports `duplicate-marker` or `invalid-marker-syntax`, rewrite the Page Body.
+The Citation Marker in `--body` must match `--key`. If the command reports a
+citation validation failure, change the Page Body or key before retrying.
 
-## Add Manual Links
+## Workflow: Add Explicit Links
 
-Manual Links are explicit graph relationships. Add one only when the user asks
-for a relationship or when a task specifically requires one.
+Use Citations for evidence. Use Manual Links for explicit semantic
+relationships requested by the user.
 
 ```bash
 originium link add \
   --from <record-id> \
   --to <record-id> \
-  --reason "<explicit reason>" \
+  --reason "<why this relationship should exist>" \
   --label "<optional label>" \
   --session <session-id>
-
-originium link list --record <record-id> --session <session-id>
 ```
 
-Do not use Manual Links as a substitute for Citations.
-
-## Cleanup And Maintenance
-
-Use maintenance commands to make graph state inspectable before changing it:
+Inspect links around a record:
 
 ```bash
-originium db doctor
-originium page search "<topic>" --session <session-id>
-originium citation validate <wiki-page-id> --session <session-id>
-originium citation list <wiki-page-id> --session <session-id>
 originium link list --record <record-id> --session <session-id>
-originium log show --session <session-id>
 ```
 
-Common cleanup actions:
+Do not infer links just because two pages seem related. If the user did not ask
+for the relationship, leave it out.
 
-- Duplicate topic: update the better existing Wiki Page instead of creating
-  another page.
-- Bad Page Body: use `page update` with corrected synthesis.
-- Citation mismatch: align Citation Markers and Citation graph keys, then run
-  `citation validate` again.
-- Bad Manual Link: inspect the link and Change Log first; if the CLI has no
-  supported delete/repair command, report the exact unsupported cleanup needed
-  rather than editing the database silently.
-- Suspect previous edit: inspect the Agent Session Change Log, then make a
-  compensating CLI edit so the correction is also logged.
+## Workflow: Inspect Or Repair Previous Work
 
-The POC also has an end-to-end acceptance harness for local validation:
+Start with the relevant Agent Session or record ID.
+
+```bash
+originium session show <session-id>
+originium log show --session <session-id>
+originium page read <wiki-page-id> --session <session-id>
+originium citation list <wiki-page-id> --session <session-id>
+originium citation validate <wiki-page-id> --session <session-id>
+originium link list --record <record-id> --session <session-id>
+```
+
+Use the Change Log to understand what was read and changed. Prefer compensating
+CLI edits over direct database edits so the repair is also logged.
+
+Typical repairs:
+
+- duplicate topic: update the better Wiki Page; report any unsupported merge or
+  delete that still needs a future CLI command
+- bad Page Body: run `page update` with corrected synthesis
+- citation mismatch: align Citation Markers and Citation keys, then validate
+- bad Manual Link: inspect it and report the unsupported removal if no delete
+  command exists
+- failed command: report `error.operation`, `error.input`, `error.reason`, and
+  `error.action`
+
+## Workflow: Validate A Local Installation
+
+For a local proof that database setup, PDF import, heading extraction, Chapter
+Ingestion, citation validation, retrieval, and logging are wired together:
 
 ```bash
 originium acceptance poc <pdf-path>
 ```
 
-## End The Job
+If the acceptance command fails, use the failing stage, operation, reason, and
+action from the JSON output as the next diagnostic step.
 
-Before handing back, inspect the Agent Session:
+## Working Style
 
-```bash
-originium log show --session <session-id>
-```
-
-Summarize what you read, what you changed, the important record IDs, and any
-remaining unsupported cleanup or follow-up. If a command failed, quote the CLI's
-operation, input, reason, and action in your summary.
-
-## Language To Preserve
-
-- Graph Wiki
-- Source Document
-- Wiki Page
-- Page Body
-- Source Anchor
-- Source Heading
-- Citation
-- Citation Marker
-- Projection
-- Change Log
-- Agent Session
-- Chapter Ingestion
-- Ingestion Chunk
-- Manual Link
-- Graph Retrieval
+- Keep Wiki Pages concise and synthetic. Do not turn them into pasted source
+  excerpts.
+- Cite claims that depend on Source Document evidence.
+- Keep Page Body prose readable. Put evidence targets in Citation relations, not
+  inline metadata.
+- Process large documents one Source Heading at a time.
+- Make every meaningful read and write part of an Agent Session.
+- End by summarizing the records read, records changed, validation results, and
+  remaining unsupported cleanup.
