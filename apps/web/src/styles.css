@@ -454,6 +454,7 @@ dd {
 }
 
 .composer label,
+.message-role,
 .search-field span {
   color: oklch(34% 0.018 86);
   font-size: 0.78rem;
@@ -486,6 +487,99 @@ dd {
   padding: 6px 9px;
 }
 
+.chat-transcript,
+.message-list {
+  display: grid;
+  gap: 10px;
+}
+
+.message-list {
+  max-height: 44vh;
+  overflow: auto;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.message-row {
+  display: grid;
+  gap: 5px;
+}
+
+.message-row.assistant {
+  justify-items: start;
+}
+
+.message-row.user {
+  justify-items: end;
+}
+
+.message-row.user .message-role {
+  padding-right: 4px;
+}
+
+.message-row.assistant .message-role {
+  padding-left: 4px;
+}
+
+.message-bubble {
+  display: grid;
+  gap: 7px;
+  max-width: min(100%, 68ch);
+  border: 1px solid oklch(86% 0.01 86);
+  border-radius: 8px;
+  background: oklch(97% 0.004 86);
+  padding: 10px 11px;
+}
+
+.message-row.user .message-bubble {
+  border-color: oklch(69% 0.058 168);
+  background: oklch(91% 0.03 168);
+  color: oklch(25% 0.065 168);
+}
+
+.message-bubble p {
+  margin: 0;
+  white-space: pre-wrap;
+}
+
+.message-status {
+  width: fit-content;
+  border-radius: 999px;
+  background: oklch(92% 0.012 86);
+  color: oklch(38% 0.018 86);
+  font-size: 0.72rem;
+  font-weight: 740;
+  padding: 3px 7px;
+}
+
+.message-status.streaming {
+  background: oklch(93% 0.032 58);
+  color: oklch(38% 0.07 48);
+}
+
+.message-status.failed {
+  background: oklch(93% 0.035 31);
+  color: oklch(36% 0.08 31);
+}
+
+.turn-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.turn-summary span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  border-radius: 999px;
+  background: oklch(92% 0.012 86);
+  color: oklch(39% 0.018 86);
+  font-size: 0.74rem;
+  font-weight: 700;
+  padding: 4px 7px;
+}
+
 .activity-list {
   display: grid;
   gap: 8px;
@@ -496,17 +590,41 @@ dd {
 
 .activity-list li {
   display: grid;
-  grid-template-columns: 48px minmax(0, 1fr);
+  grid-template-columns: 58px minmax(0, 1fr);
   gap: 10px;
   border: 1px solid oklch(88% 0.009 86);
   border-radius: 8px;
+  background: oklch(98% 0.004 86);
   padding: 10px;
 }
 
+.activity-list li.graph {
+  border-color: oklch(78% 0.055 58);
+  background: oklch(96% 0.018 58);
+}
+
+.activity-list li.runtime {
+  border-color: oklch(83% 0.014 86);
+}
+
 .activity-list time,
-.activity-list span {
+.activity-list span,
+.activity-list small {
   color: oklch(46% 0.018 86);
   font-size: 0.8rem;
+}
+
+.activity-list code {
+  display: block;
+  width: fit-content;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  border-radius: 6px;
+  background: oklch(92.5% 0.009 86);
+  color: oklch(31% 0.018 86);
+  font-size: 0.74rem;
+  margin-top: 5px;
+  padding: 3px 5px;
 }
 
 .activity-list strong,
@@ -514,6 +632,35 @@ dd {
   display: block;
   color: oklch(28% 0.018 86);
   font-size: 0.9rem;
+}
+
+.activity-title-line {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.activity-lane {
+  display: inline-flex;
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: oklch(91% 0.018 86);
+  color: oklch(36% 0.018 86);
+  font-size: 0.68rem;
+  font-weight: 780;
+  padding: 3px 6px;
+  text-transform: uppercase;
+}
+
+.activity-lane.graph {
+  background: oklch(89% 0.035 58);
+  color: oklch(35% 0.07 48);
+}
+
+.activity-lane.runtime {
+  background: oklch(90.5% 0.025 168);
+  color: oklch(29% 0.075 168);
 }
 
 .tabbar {

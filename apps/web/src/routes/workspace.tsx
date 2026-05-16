@@ -1,13 +1,19 @@
 import { validatePageBodyCitationMarkers } from "@originium/domain";
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useRouter } from "@tanstack/react-router";
 import { createServerFn } from "@tanstack/react-start";
 import { type CSSProperties, type FormEvent, useEffect, useState, useTransition } from "react";
+import { readWebRuntimeConfig } from "../config.ts";
+import { type CodexWorkspaceTurnData, runCodexWorkspaceTurn } from "../server/codex-app-server.ts";
 import {
+  type AgentActivityRecord,
   type AgentSessionRecord,
+  type ChangeLogRecord,
   createOrResumeWorkspaceAgentSession,
   type GraphNeighborhoodData,
   type GraphNeighborhoodEdge,
   type GraphNeighborhoodNode,
+  listAgentActivity,
+  listChangeLogs,
   listWikiPages,
   readGraphNeighborhood,
   readWikiPage,
@@ -29,13 +35,31 @@ type WorkspacePageData = {
   readonly graph?: GraphNeighborhoodData;
   readonly page?: WorkspaceWikiPage;
   readonly pageValidation?: PageCitationValidation;
+  readonly agentActivity: readonly WorkspaceAgentActivityRecord[];
+  readonly changeLogs: readonly WorkspaceChangeLogRecord[];
+  readonly sessionError?: WorkspaceDataError;
   readonly listError?: WorkspaceDataError;
   readonly graphError?: WorkspaceDataError;
   readonly pageError?: WorkspaceDataError;
+  readonly activityError?: WorkspaceDataError;
+  readonly changeLogError?: WorkspaceDataError;
 };
 
 type WorkspaceDataError = WebGraphWikiOperationFailure | WebGraphWikiValidationFailure;
+type WorkspaceTurnError = {
+  readonly kind: "codex_app_server_failure";
+  readonly operation: string;
+  readonly target: string;
+  readonly input: Record<string, string | number | boolean | null>;
+  readonly reason: string;
+  readonly action: string;
+};
 type PageCitationValidation = ReturnType<typeof validatePageBodyCitationMarkers>;
+
+type WorkspaceAgentActivityRecord = Omit<AgentActivityRecord, "metadata"> & {
+  readonly metadata?: string;
+};
+type WorkspaceChangeLogRecord = Omit<ChangeLogRecord, "before" | "after">;
 
 type WorkspaceCitationRecord = {
   readonly key: string;
@@ -65,6 +89,51 @@ type SavePageBodyResult =
       readonly error: WorkspaceDataError;
     };
 
+type SendWorkspaceMessageInput = {
+  readonly prompt: string;
+};
+
+type SendWorkspaceMessageResult =
+  | {
+      readonly ok: true;
+      readonly data: CodexWorkspaceTurnData;
+    }
+  | {
+      readonly ok: false;
+      readonly error: WorkspaceTurnError;
+    };
+
+type ChatMessage = {
+  readonly id: string;
+  readonly role: "user" | "assistant";
+  readonly text: string;
+  readonly status: "streaming" | "completed" | "failed";
+};
+
+type WorkspaceTimelineItem =
+  | {
+      readonly id: string;
+      readonly lane: "runtime";
+      readonly createdAt?: string;
+      readonly kind: AgentActivityRecord["kind"];
+      readonly status: AgentActivityRecord["status"];
+      readonly source: AgentActivityRecord["source"];
+      readonly summary: string;
+      readonly operation?: string;
+      readonly targetRecords: readonly string[];
+      readonly metadata?: string;
+    }
+  | {
+      readonly id: string;
+      readonly lane: "graph";
+      readonly createdAt?: string;
+      readonly command: string;
+      readonly operation: string;
+      readonly target: string;
+      readonly summary: string;
+      readonly targetRecords: readonly string[];
+    };
+
 const graphLimit = 9;
 const workspaceKey = "default";
 
@@ -91,11 +160,19 @@ const getWorkspacePageData = createServerFn({ method: "GET" })
     const sessionResult = await createOrResumeWorkspaceAgentSession({ workspaceKey });
     const listResult = await listWikiPages();
     const session = sessionResult.ok ? sessionResult.data.session : undefined;
+    const sessionError = sessionResult.ok ? undefined : sessionResult.error;
+    const activityResult = session ? await listAgentActivity({ sessionId: session.id }) : undefined;
+    const changeLogResult = session ? await listChangeLogs({ sessionId: session.id }) : undefined;
     if (!listResult.ok) {
       return {
         session,
         pages: [],
+        agentActivity: activityResult?.ok ? activityResult.data.map(serializableActivityRecord) : [],
+        changeLogs: changeLogResult?.ok ? changeLogResult.data.map(serializableChangeLogRecord) : [],
+        sessionError,
         listError: listResult.error,
+        activityError: activityResult && !activityResult.ok ? activityResult.error : undefined,
+        changeLogError: changeLogResult && !changeLogResult.ok ? changeLogResult.error : undefined,
       };
     }
 
@@ -104,6 +181,11 @@ const getWorkspacePageData = createServerFn({ method: "GET" })
       return {
         session,
         pages: listResult.data,
+        agentActivity: activityResult?.ok ? activityResult.data.map(serializableActivityRecord) : [],
+        changeLogs: changeLogResult?.ok ? changeLogResult.data.map(serializableChangeLogRecord) : [],
+        sessionError,
+        activityError: activityResult && !activityResult.ok ? activityResult.error : undefined,
+        changeLogError: changeLogResult && !changeLogResult.ok ? changeLogResult.error : undefined,
       };
     }
 
@@ -113,7 +195,12 @@ const getWorkspacePageData = createServerFn({ method: "GET" })
         session,
         pages: listResult.data,
         selectedRecordId,
+        agentActivity: activityResult?.ok ? activityResult.data.map(serializableActivityRecord) : [],
+        changeLogs: changeLogResult?.ok ? changeLogResult.data.map(serializableChangeLogRecord) : [],
+        sessionError,
         graphError: graphResult.error,
+        activityError: activityResult && !activityResult.ok ? activityResult.error : undefined,
+        changeLogError: changeLogResult && !changeLogResult.ok ? changeLogResult.error : undefined,
       };
     }
 
@@ -124,6 +211,11 @@ const getWorkspacePageData = createServerFn({ method: "GET" })
         pages: listResult.data,
         selectedRecordId,
         graph: graphResult.data,
+        agentActivity: activityResult?.ok ? activityResult.data.map(serializableActivityRecord) : [],
+        changeLogs: changeLogResult?.ok ? changeLogResult.data.map(serializableChangeLogRecord) : [],
+        sessionError,
+        activityError: activityResult && !activityResult.ok ? activityResult.error : undefined,
+        changeLogError: changeLogResult && !changeLogResult.ok ? changeLogResult.error : undefined,
       };
     }
 
@@ -134,7 +226,12 @@ const getWorkspacePageData = createServerFn({ method: "GET" })
         pages: listResult.data,
         selectedRecordId,
         graph: graphResult.data,
+        agentActivity: activityResult?.ok ? activityResult.data.map(serializableActivityRecord) : [],
+        changeLogs: changeLogResult?.ok ? changeLogResult.data.map(serializableChangeLogRecord) : [],
+        sessionError,
         pageError: pageResult.error,
+        activityError: activityResult && !activityResult.ok ? activityResult.error : undefined,
+        changeLogError: changeLogResult && !changeLogResult.ok ? changeLogResult.error : undefined,
       };
     }
 
@@ -170,6 +267,11 @@ const getWorkspacePageData = createServerFn({ method: "GET" })
       graph: graphResult.data,
       page,
       pageValidation,
+      agentActivity: activityResult?.ok ? activityResult.data.map(serializableActivityRecord) : [],
+      changeLogs: changeLogResult?.ok ? changeLogResult.data.map(serializableChangeLogRecord) : [],
+      sessionError,
+      activityError: activityResult && !activityResult.ok ? activityResult.error : undefined,
+      changeLogError: changeLogResult && !changeLogResult.ok ? changeLogResult.error : undefined,
     };
   });
 
@@ -200,11 +302,22 @@ const savePageBody = createServerFn({ method: "POST" })
     };
   });
 
-const activityItems = [
-  { time: "--:--", label: "Session idle", detail: "No Agent Session selected." },
-  { time: "--:--", label: "Activity stream idle", detail: "Agent Activity records are not connected." },
-  { time: "--:--", label: "Change Log idle", detail: "No Graph Wiki mutations in scope." },
-] as const;
+const sendWorkspaceMessage = createServerFn({ method: "POST" })
+  .inputValidator((input: unknown): SendWorkspaceMessageInput => {
+    const candidate = input && typeof input === "object" ? (input as Partial<SendWorkspaceMessageInput>) : {};
+    return {
+      prompt: typeof candidate.prompt === "string" ? candidate.prompt.trim() : "",
+    };
+  })
+  .handler(async ({ data }): Promise<SendWorkspaceMessageResult> => {
+    const result = await runCodexWorkspaceTurn(readWebRuntimeConfig(), {
+      workspaceKey,
+      prompt: data.prompt,
+      purpose: "Codex-powered Agent Workspace",
+    });
+    if (!result.ok) return { ok: false, error: serializableCodexFailure(result.error) };
+    return { ok: true, data: result.data };
+  });
 
 export const Route = createFileRoute("/workspace")({
   validateSearch: (search: Record<string, unknown>): WorkspaceSearch => ({
@@ -221,9 +334,83 @@ export const Route = createFileRoute("/workspace")({
 function WorkspaceRoute() {
   const data = Route.useLoaderData();
   const search = Route.useSearch();
+  const router = useRouter();
   const activeTab = search.tab ?? "graph";
   const selectedNode = data.graph?.nodes.find((node) => node.selected);
   const session = data.session;
+  const [messageText, setMessageText] = useState("");
+  const [chatMessages, setChatMessages] = useState<readonly ChatMessage[]>([]);
+  const [sendError, setSendError] = useState<WorkspaceTurnError | undefined>();
+  const [turnSummary, setTurnSummary] = useState<CodexWorkspaceTurnData | undefined>();
+  const [isSending, startSending] = useTransition();
+  const timelineItems = mergeTimeline(data.agentActivity, data.changeLogs);
+  const canSend = Boolean(session) && messageText.trim().length > 0 && !isSending;
+
+  function handleSendMessage(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const prompt = messageText.trim();
+    if (!prompt || isSending) return;
+
+    const userMessageId = `user-${Date.now()}`;
+    const assistantMessageId = `assistant-${Date.now()}`;
+    setMessageText("");
+    setSendError(undefined);
+    setTurnSummary(undefined);
+    setChatMessages((messages) => [
+      ...messages,
+      { id: userMessageId, role: "user", text: prompt, status: "completed" },
+      {
+        id: assistantMessageId,
+        role: "assistant",
+        text: "Waiting for Codex app-server output...",
+        status: "streaming",
+      },
+    ]);
+
+    startSending(async () => {
+      try {
+        const result = await sendWorkspaceMessage({ data: { prompt } });
+        if (result.ok) {
+          setTurnSummary(result.data);
+          setChatMessages((messages) =>
+            messages.map((message) =>
+              message.id === assistantMessageId
+                ? { ...message, text: result.data.messageText, status: "completed" }
+                : message,
+            ),
+          );
+          await router.invalidate();
+          return;
+        }
+        setSendError(result.error);
+        setChatMessages((messages) =>
+          messages.map((message) =>
+            message.id === assistantMessageId
+              ? { ...message, text: `${result.error.operation}: ${result.error.reason}`, status: "failed" }
+              : message,
+          ),
+        );
+        await router.invalidate();
+      } catch (error) {
+        const failure: WorkspaceTurnError = {
+          kind: "codex_app_server_failure",
+          operation: "web.workspace.message.send",
+          target: "workspace",
+          input: { promptLength: prompt.length },
+          reason: error instanceof Error ? error.message : String(error),
+          action: "Inspect the web route log and retry the workspace turn.",
+        };
+        setSendError(failure);
+        setChatMessages((messages) =>
+          messages.map((message) =>
+            message.id === assistantMessageId
+              ? { ...message, text: `${failure.operation}: ${failure.reason}`, status: "failed" }
+              : message,
+          ),
+        );
+      }
+    });
+  }
 
   return (
     <section className="route-stack" aria-labelledby="workspace-title">
@@ -233,12 +420,9 @@ function WorkspaceRoute() {
           <h1 id="workspace-title">Agent Session</h1>
         </div>
         <div className="header-actions">
-          <button type="button" className="button-link secondary" disabled>
-            Resume
-          </button>
-          <button type="button" className="button-link" disabled>
-            New session
-          </button>
+          <span className={session ? "status-pill" : "status-pill warning"}>
+            {session ? "Session ready" : "Session failed"}
+          </span>
         </div>
       </header>
 
@@ -249,27 +433,66 @@ function WorkspaceRoute() {
               <h2 id="session-heading">Chat</h2>
               <span className="quiet-label">{session?.id ?? "Agent Session unavailable"}</span>
             </div>
-            <span className="status-pill warning">{session ? "Ready" : "Idle"}</span>
+            <span className={isSending ? "status-pill warning" : "status-pill neutral"}>
+              {isSending ? "Turn running" : session ? "Ready" : "Offline"}
+            </span>
           </div>
 
-          <div className="empty-state compact-empty">
-            <strong>{session ? "Agent Session ready" : "No Agent Session"}</strong>
-            <p>
-              {session
-                ? "Graph Wiki edits from this workspace are logged to the active session."
-                : "Session creation failed; inspect the backend operation error."}
-            </p>
-          </div>
+          {data.sessionError ? (
+            <WorkspaceDataErrorPanel title="Agent Session startup failed" error={data.sessionError} />
+          ) : null}
 
-          <form className="composer" aria-label="Session message composer">
+          <section className="chat-transcript" aria-label="Workspace chat transcript" aria-live="polite">
+            {chatMessages.length === 0 ? (
+              <div className="empty-state compact-empty">
+                <strong>{session ? "Ask the workspace agent" : "No Agent Session"}</strong>
+                <p>
+                  {session
+                    ? "Messages run through the mapped Codex thread. Runtime events and Graph Wiki mutations appear below."
+                    : "Session creation failed; the composer stays disabled until the Agent Session can be created."}
+                </p>
+              </div>
+            ) : (
+              <ol className="message-list">
+                {chatMessages.map((message) => (
+                  <li key={message.id} className={`message-row ${message.role}`}>
+                    <span className="message-role">{message.role === "user" ? "You" : "Codex"}</span>
+                    <div className="message-bubble">
+                      <p>{message.text}</p>
+                      <span className={`message-status ${message.status}`}>{messageStatusLabel(message.status)}</span>
+                    </div>
+                  </li>
+                ))}
+              </ol>
+            )}
+          </section>
+
+          {turnSummary ? (
+            <div className="turn-summary" role="status">
+              <span>thread {turnSummary.threadId}</span>
+              <span>turn {turnSummary.turnId}</span>
+              <span>{formatCount(turnSummary.streamedEventCount, "streamed event")}</span>
+              <span>{formatCount(turnSummary.activityRecordCount, "activity record")}</span>
+            </div>
+          ) : null}
+
+          {sendError ? <WorkspaceTurnErrorPanel title="Message send failed" error={sendError} /> : null}
+
+          <form className="composer" aria-label="Session message composer" onSubmit={handleSendMessage}>
             <label htmlFor="session-message">Message</label>
-            <textarea id="session-message" placeholder="Backend connection required" disabled />
+            <textarea
+              id="session-message"
+              placeholder={session ? "Send a task, question, or inspection request" : "Agent Session unavailable"}
+              disabled={!session || isSending}
+              value={messageText}
+              onChange={(event) => setMessageText(event.currentTarget.value)}
+            />
             <div className="composer-actions">
               <button type="button" className="button-link secondary" disabled>
                 Attach page
               </button>
-              <button type="submit" className="button-link" disabled>
-                Send
+              <button type="submit" className="button-link" disabled={!canSend}>
+                {isSending ? "Sending" : "Send"}
               </button>
             </div>
           </form>
@@ -277,19 +500,15 @@ function WorkspaceRoute() {
           <section className="activity-region" aria-labelledby="activity-heading">
             <div className="panel-heading tight">
               <h3 id="activity-heading">Activity</h3>
-              <span className="quiet-label">0 records</span>
+              <span className="quiet-label">{formatCount(timelineItems.length, "record")}</span>
             </div>
-            <ol className="activity-list">
-              {activityItems.map((item) => (
-                <li key={item.label}>
-                  <time>{item.time}</time>
-                  <div>
-                    <strong>{item.label}</strong>
-                    <span>{item.detail}</span>
-                  </div>
-                </li>
-              ))}
-            </ol>
+            {data.activityError ? (
+              <WorkspaceDataErrorPanel title="Agent Activity read failed" error={data.activityError} />
+            ) : null}
+            {data.changeLogError ? (
+              <WorkspaceDataErrorPanel title="Change Log read failed" error={data.changeLogError} />
+            ) : null}
+            <ActivityTimeline items={timelineItems} />
           </section>
         </section>
 
@@ -513,6 +732,7 @@ function PageTab({
   readonly selectedNode?: GraphNeighborhoodNode;
   readonly selectedRecordId?: string;
 }) {
+  const router = useRouter();
   const [body, setBody] = useState(page?.body ?? "");
   const [baseBody, setBaseBody] = useState(page?.body ?? "");
   const [saveResult, setSaveResult] = useState<SavePageBodyResult | undefined>();
@@ -541,7 +761,10 @@ function PageTab({
       try {
         const result = await savePageBody({ data: { pageId: page.id, body } });
         setSaveResult(result);
-        if (result.ok) setBaseBody(body);
+        if (result.ok) {
+          setBaseBody(body);
+          await router.invalidate();
+        }
       } catch (error) {
         setSaveError(error instanceof Error ? error.message : "Unknown Page Body save failure.");
       }
@@ -658,6 +881,61 @@ function PageTab({
   );
 }
 
+function ActivityTimeline({ items }: { readonly items: readonly WorkspaceTimelineItem[] }) {
+  if (items.length === 0) {
+    return (
+      <div className="empty-state inline-empty compact-graph-empty" role="status">
+        <strong>No activity yet</strong>
+        <p>Send a message or save a Wiki Page body to populate runtime events and Graph Wiki mutations.</p>
+      </div>
+    );
+  }
+
+  return (
+    <ol className="activity-list" aria-label="Agent Activity and Change Log records">
+      {items.map((item) => (
+        <li key={`${item.lane}-${item.id}`} className={`activity-item ${item.lane}`}>
+          <time dateTime={item.createdAt}>{formatActivityTime(item.createdAt)}</time>
+          <div>
+            <div className="activity-title-line">
+              <strong>{item.summary}</strong>
+              <span className={`activity-lane ${item.lane}`}>{item.lane === "runtime" ? "Runtime" : "Graph Wiki"}</span>
+            </div>
+            {item.lane === "runtime" ? (
+              <>
+                <span>
+                  {activityKindLabel(item.kind)} · {activityStatusLabel(item.status)} · {item.source}
+                </span>
+                {item.operation ? <code>{item.operation}</code> : null}
+              </>
+            ) : (
+              <>
+                <span>
+                  {item.command} · {item.target}
+                </span>
+                <code>{item.operation}</code>
+              </>
+            )}
+            {item.targetRecords.length > 0 ? <small>{item.targetRecords.join(", ")}</small> : null}
+          </div>
+        </li>
+      ))}
+    </ol>
+  );
+}
+
+function WorkspaceTurnErrorPanel({ title, error }: { readonly title: string; readonly error: WorkspaceTurnError }) {
+  return (
+    <div className="state-panel error-state slim" role="alert">
+      <strong>{title}</strong>
+      <p>
+        {error.operation} on {error.target}: {error.reason}
+      </p>
+      <p>{error.action}</p>
+    </div>
+  );
+}
+
 function WikiPageCitationPanel({
   citations,
   validation,
@@ -734,6 +1012,135 @@ function WorkspaceDataErrorPanel({ title, error }: { readonly title: string; rea
       ) : null}
     </div>
   );
+}
+
+function mergeTimeline(
+  activity: readonly WorkspaceAgentActivityRecord[],
+  changeLogs: readonly WorkspaceChangeLogRecord[],
+): readonly WorkspaceTimelineItem[] {
+  const runtimeItems: WorkspaceTimelineItem[] = activity.map((record) => ({
+    id: record.id,
+    lane: "runtime",
+    createdAt: record.created_at,
+    kind: record.kind,
+    status: record.status,
+    source: record.source,
+    summary: record.summary,
+    operation: record.operation,
+    targetRecords: record.target_records,
+    metadata: record.metadata,
+  }));
+  const graphItems: WorkspaceTimelineItem[] = changeLogs.map((record) => ({
+    id: record.id,
+    lane: "graph",
+    createdAt: record.created_at,
+    command: record.command,
+    operation: record.operation,
+    target: record.target,
+    summary: record.summary,
+    targetRecords: record.target_records,
+  }));
+  return [...runtimeItems, ...graphItems].sort((left, right) => {
+    const leftTime = left.createdAt ? Date.parse(left.createdAt) : 0;
+    const rightTime = right.createdAt ? Date.parse(right.createdAt) : 0;
+    return rightTime - leftTime;
+  });
+}
+
+function serializableActivityRecord(record: AgentActivityRecord): WorkspaceAgentActivityRecord {
+  return {
+    ...record,
+    metadata: record.metadata === undefined ? undefined : JSON.stringify(record.metadata),
+  };
+}
+
+function serializableChangeLogRecord(record: ChangeLogRecord): WorkspaceChangeLogRecord {
+  return {
+    id: record.id,
+    agent_session: record.agent_session,
+    command: record.command,
+    operation: record.operation,
+    target: record.target,
+    target_records: record.target_records,
+    summary: record.summary,
+    created_at: record.created_at,
+  };
+}
+
+function serializableCodexFailure(error: {
+  readonly kind: "codex_app_server_failure";
+  readonly operation: string;
+  readonly target: string;
+  readonly input: Record<string, unknown>;
+  readonly reason: string;
+  readonly action: string;
+}): WorkspaceTurnError {
+  return {
+    kind: error.kind,
+    operation: error.operation,
+    target: error.target,
+    input: Object.fromEntries(Object.entries(error.input).map(([key, value]) => [key, serializableScalar(value)])),
+    reason: error.reason,
+    action: error.action,
+  };
+}
+
+function serializableScalar(value: unknown): string | number | boolean | null {
+  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean" || value === null) {
+    return value;
+  }
+  if (value === undefined) return null;
+  return JSON.stringify(value);
+}
+
+function messageStatusLabel(status: ChatMessage["status"]): string {
+  switch (status) {
+    case "streaming":
+      return "Streaming";
+    case "failed":
+      return "Failed";
+    case "completed":
+      return "Completed";
+  }
+}
+
+function activityKindLabel(kind: AgentActivityRecord["kind"]): string {
+  switch (kind) {
+    case "file_change":
+      return "File change";
+    case "graph_mutation":
+      return "Graph mutation";
+    case "message":
+      return "Message";
+    case "command":
+      return "Command";
+    case "tool":
+      return "Tool";
+    case "status":
+      return "Status";
+    case "error":
+      return "Error";
+  }
+}
+
+function activityStatusLabel(status: AgentActivityRecord["status"]): string {
+  switch (status) {
+    case "started":
+      return "Started";
+    case "streaming":
+      return "Streaming";
+    case "completed":
+      return "Completed";
+    case "failed":
+      return "Failed";
+  }
+}
+
+function formatActivityTime(value: string | undefined): string {
+  if (!value) return "--:--";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat(undefined, { hour: "2-digit", minute: "2-digit" }).format(date);
 }
 
 function graphNodeClassName(node: GraphNeighborhoodNode): string {

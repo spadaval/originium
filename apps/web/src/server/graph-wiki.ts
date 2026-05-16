@@ -493,7 +493,7 @@ export async function createOrResumeWorkspaceAgentSession(
   const createdResult = await querySingle<AgentSessionRecord>(
     operation,
     [
-      `CREATE ${sessionId} SET purpose = "${escapeSurrealString(purpose)}", workspace_key = "${escapeSurrealString(workspaceKey)}", created_at = time::now(), updated_at = time::now();`,
+      `CREATE ${sessionId} SET purpose = "${escapeSurrealString(purpose)}", workspace_key = "${escapeSurrealString(workspaceKey)}", created_at = time::now();`,
       agentSessionSelect(sessionId),
     ].join("\n"),
     { workspaceKey, sessionId },
@@ -529,7 +529,7 @@ export async function recordAgentSessionCodexThread(
   return querySingle(
     operation,
     [
-      `UPDATE ${sessionId} SET codex_thread_id = "${escapeSurrealString(input.threadId)}", codex_model = ${optionalString(input.model)}, codex_model_provider = ${optionalString(input.modelProvider)}, codex_cwd = ${optionalString(input.cwd)}, updated_at = time::now();`,
+      `UPDATE ${sessionId} SET codex_thread_id = "${escapeSurrealString(input.threadId)}", codex_model = ${optionalString(input.model)}, codex_model_provider = ${optionalString(input.modelProvider)}, codex_cwd = ${optionalString(input.cwd)};`,
       agentSessionSelect(sessionId),
     ].join("\n"),
     compactInput({ sessionId, threadId: input.threadId, model: input.model, modelProvider: input.modelProvider }),
@@ -806,7 +806,7 @@ function queryId(operation: string, input: OperationInput): string {
 
 function agentSessionSelect(target: string, suffix = ""): string {
   const clause = suffix ? ` ${suffix}` : "";
-  return `SELECT id, purpose, workspace_key, codex_thread_id, codex_model, codex_model_provider, codex_cwd, created_at, updated_at FROM ${target}${clause};`;
+  return `SELECT id, purpose, workspace_key, codex_thread_id, codex_model, codex_model_provider, codex_cwd, created_at FROM ${target}${clause};`;
 }
 
 function normalizeWorkspaceKey(value: string): string {
