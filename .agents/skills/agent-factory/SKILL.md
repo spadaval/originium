@@ -1,6 +1,6 @@
 ---
 name: agent-factory
-description: "Use for agent-factory work: planning bead graphs, orchestrating multi-bead execution, implementing assigned beads, deliberate migration breakage, code review, behavior validation, docs refresh, architecture audit, and Beads tracker hygiene. The orchestrator assigns one role/route per subagent."
+description: "Use for agent-factory work: installing the repo binding, planning bead graphs, orchestrating multi-bead execution, implementing assigned beads, deliberate migration breakage, code review, behavior validation, docs refresh, architecture audit, and Beads tracker hygiene. The orchestrator assigns one role/route per subagent."
 argument-hint: "[route] [target]"
 user-invocable: true
 ---
@@ -30,6 +30,7 @@ private chat history.
 
 | Route         | Use For                                                                                   | Load                                                 |
 | ------------- | ----------------------------------------------------------------------------------------- | ---------------------------------------------------- |
+| `install`     | Installing agent-factory in a repository and creating required bindings/scaffolding       | [reference/install.md](reference/install.md)         |
 | `plan`        | Creating, splitting, sequencing, clarifying, or cleaning up beads                         | [reference/plan.md](reference/plan.md)               |
 | `orchestrate` | Running an epic or multi-bead workstream and assigning subagents                          | [reference/orchestrate.md](reference/orchestrate.md) |
 | `implement`   | Executing one ordinary assigned bead or owned slice                                       | [reference/implement.md](reference/implement.md)     |
@@ -49,5 +50,7 @@ private chat history.
    orchestrator may then assign subagents to other routes.
 4. If the work starts from a diff, use `review`. If it starts from a scenario or
    behavior claim, use `validate`.
-5. If a bead intentionally permits breakage, closes out a migration, or asks for
+5. If `AGENTFACTORY.md` is missing or the user asks to set up agent-factory,
+   use `install`.
+6. If a bead intentionally permits breakage, closes out a migration, or asks for
    demolition/reconnect classification, use `migrate`.
