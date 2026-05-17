@@ -6,6 +6,7 @@ This is the top-level router for the repository docs.
 
 - [SPEC.md](../SPEC.md) for Graph Wiki purpose, proof-of-concept requirements, storage model, ingestion model, and target commands.
 - [CONTEXT.md](../CONTEXT.md) for canonical product language and ambiguity resolutions.
+- [docs/learning-graph-spec.md](learning-graph-spec.md) for the proposed learning graph capability, dual graph model, relationship types, and CLI direction.
 
 ## Architecture Docs
 
