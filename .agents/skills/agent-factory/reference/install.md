@@ -7,6 +7,55 @@ to plan, execute, review, validate, and hand off work.
 Do not make doctrine optional. The install route binds the doctrine to concrete
 paths and commands; it does not negotiate the operating model.
 
+## Target Repository Shape
+
+An agent-factory-ready repository has durable places for intent, scope,
+decisions, proof, and handoff. A fresh agent should be able to answer these
+questions without private chat history:
+
+- **What is this repository for?** Product intent names users, purpose, and
+  observable target behaviors.
+- **What words mean what?** Domain context defines core nouns and records
+  ambiguity decisions.
+- **Where do I start reading?** A docs map routes agents to product,
+  architecture, quality, validation, operations, and agent-process sources.
+- **What decisions are durable?** ADRs record choices that are costly,
+  surprising, or repeatedly relevant.
+- **How do I prove work?** A validation router maps checks and proof methods to
+  the behavior or quality they own.
+- **How is work tracked?** Beads holds scope, acceptance criteria, dependencies,
+  status, and handoff. Dolt sync keeps tracker state durable across machines.
+- **How does agent-factory bind to this repo?** `AGENTFACTORY.md` maps the
+  generic operating model to concrete files, commands, checks, tracker backup,
+  and product-specific skills.
+
+The expected shape is:
+
+```text
+.
+├── AGENTS.md
+├── AGENTFACTORY.md
+├── CONTEXT.md
+├── SPEC.md
+├── docs/
+│   ├── index.md
+│   ├── adr/
+│   └── architecture/
+│       ├── index.md
+│       └── quality/
+│           ├── index.md
+│           ├── architecture-quality.md
+│           ├── standards.md
+│           └── validation.md
+├── .agents/
+│   └── skills/
+│       └── <product-specific skills>
+└── .beads/
+```
+
+Exact names may differ only when `AGENTFACTORY.md` binds the equivalent source
+clearly. Missing equivalents are installation gaps, not harmless omissions.
+
 ## Start Gate
 
 Inspect the repository before writing:
