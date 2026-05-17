@@ -15,17 +15,11 @@ bd dolt push          # Push beads data to remote
 ## Originium Agent Process
 
 Use `docs/index.md` as the repository knowledge map. For coordinated agent
-work, use the repo-local skills under `.agents/skills/`:
+work, use the `agent-factory` repo-local skill. The orchestrator assigns one
+role/route to each subagent.
 
-- `orchestrate-epic` for multi-bead workstreams and subagent coordination.
-- `manage-beads` for backlog graph shaping and tracker hygiene.
-- `implement` for one ordinary executable bead.
-- `review-code` for adversarial diff review.
-- `validate-behavior` for scenario validation.
-- `refresh-docs` for docs reconciliation.
-- `architecture-audit` for evidence-backed architecture findings.
-- `breaking-migration` for deliberate demolition/reconnect/closeout work.
-- `graph-wiki` for product-specific Graph Wiki behavior.
+Use the `graph-wiki` repo-local skill for product-specific Graph Wiki CLI
+operation and knowledge-base maintenance.
 
 Shared process docs live in `docs/agent/`.
 

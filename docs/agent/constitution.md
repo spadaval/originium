@@ -126,4 +126,4 @@ Skills are the primary pulled context for role procedure. In-repo sources are
 primary. External systems may provide coordination context, but they must not be
 the only place durable knowledge lives.
 
-Agent interaction mechanics are documented in [workflow.md](workflow.md).
+Agent interaction mechanics live in the repo-local agent-factory skill.

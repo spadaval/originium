@@ -1,6 +1,8 @@
 # Beads Workflow
 
-Beads is the durable issue tracker for Originium agent work.
+Beads is the durable issue tracker for Originium agent work. Agent role
+procedure lives in the repo-local agent-factory skill; this page is the stable
+tracker reference for docs readers.
 
 ## Core Commands
 
@@ -49,15 +51,12 @@ Built-in types used by the agent workflow include:
 Custom types:
 
 - `validation`: scenario proof for product, operator, integration, browser, or
-  behavior-preservation workflows. Validation beads should recommend
-  `validate-behavior`, depend on the implementation they prove, and include the
-  scenario, procedure, required evidence, pass criteria, and failure
-  classification in the description.
+  behavior-preservation workflows. Validation beads should depend on the
+  implementation they prove and include the scenario, procedure, required
+  evidence, pass criteria, and failure classification in the description.
 - `closeout`: final integrated proof, cleanup, and handoff for an epic or
-  phase. Closeout beads should recommend `breaking-migration` and
-  `validate-behavior` when scenario proof is required, depend on the work they
-  close, and classify every parent validation criterion as passed, deferred,
-  blocked, or not applicable.
+  phase. Closeout beads should depend on the work they close and classify every
+  parent validation criterion as passed, deferred, blocked, or not applicable.
   Use implementation types such as `task` or `feature` for building behavior.
   Use `validation` when the bead exists to prove behavior rather than implement
   it. Use `closeout` when the bead exists to integrate, verify, clean up, and

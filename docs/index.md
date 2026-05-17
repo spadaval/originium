@@ -23,6 +23,5 @@ This is the top-level router for the repository docs.
 - [AGENTS.md](../AGENTS.md) for repository agent workflow rules.
 - [docs/agent/index.md](agent/index.md) for the local agent factory process.
 - [docs/agent/constitution.md](agent/constitution.md) for agent operating principles.
-- [docs/agent/workflow.md](agent/workflow.md) for planning and execution flow.
 - [docs/agent/beads.md](agent/beads.md) for Beads workflow rules.
 - [.agents/skills/graph-wiki/SKILL.md](../.agents/skills/graph-wiki/SKILL.md) for Originium-specific Graph Wiki agent rules.
