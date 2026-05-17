@@ -6,6 +6,7 @@ import {
   GraphWikiRecordIdConflictError,
   sourceDocumentRecordId,
   sourceHeadingRecordId,
+  sourceTextProjectionRecordId,
   toSlug,
   validatePageBodyCitationMarkers,
   wikiPageRecordId,
@@ -51,6 +52,15 @@ test("record ID helpers produce stable normalized IDs", () => {
   );
   assert.equal(wikiPageSlugFromTitle(" Résumé: CURWB Deployment!! "), "resume-curwb-deployment");
   assert.equal(wikiPageRecordId(" Résumé: CURWB Deployment!! "), "wiki_page:resume_curwb_deployment");
+  assert.equal(
+    sourceTextProjectionRecordId({
+      sourceDocumentId: "source_document:industrial_automation",
+      sourceHeadingId: "source_heading:industrial_automation_overview_p1_2_o1",
+      startPage: 1,
+      endPage: 2,
+    }),
+    "source_text_projection:industrial_automation_industrial_automation_overview_p1_2_o1_p1_2",
+  );
 });
 
 test("record ID helpers are idempotent for equivalent repeated input", () => {

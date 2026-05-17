@@ -16,6 +16,7 @@ This is the top-level router for the repository docs.
   validating, and troubleshooting the proven single-host web app.
 - [docs/architecture/quality/index.md](architecture/quality/index.md) for engineering quality rules.
 - [docs/architecture/quality/validation.md](architecture/quality/validation.md) for proof methods, validation beads, result states, and failure classification.
+- [docs/architecture/quality/retrieval-evaluation.md](architecture/quality/retrieval-evaluation.md) for Cisco corpus retrieval evaluation questions and pass/fail classification.
 - [docs/adr](adr) for durable architecture decisions.
 
 ## Agent Docs

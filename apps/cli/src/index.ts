@@ -1,13 +1,15 @@
 import { spawn } from "node:child_process";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { copyFileSync, existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import {
   type SourceHeadingDraft,
   sourceDocumentRecordId,
   sourceHeadingRecordId,
+  sourceTextProjectionRecordId,
   toSlug,
   validatePageBodyCitationMarkers,
+  type WikiPageKind,
   wikiPageRecordId,
   wikiPageSlugFromTitle,
 } from "@originium/domain";
@@ -86,10 +88,11 @@ type AcceptanceStage = {
 };
 
 type RetrievalCandidate = {
-  readonly kind: "wiki_page" | "source_heading";
+  readonly kind: "wiki_page" | "source_text_projection";
   readonly id: string;
   readonly title: string;
   readonly text: string;
+  readonly embedding?: readonly number[];
   readonly citedEvidence: readonly Record<string, unknown>[];
   readonly metadata: Record<string, unknown>;
 };
@@ -128,6 +131,18 @@ const routeGroups: Record<string, CommandHandler> = {
   source: routeSource,
   workflow: routeWorkflow,
 };
+
+const wikiPageKinds = ["concept", "workflow", "evidence", "decision", "question"] as const;
+const manualLinkLabels = [
+  "depends on",
+  "constrains",
+  "implements",
+  "uses",
+  "applies to",
+  "contrasts with",
+  "supersedes",
+  "related evidence",
+] as const;
 
 export async function runCli(argv: readonly string[] = process.argv.slice(2)): Promise<CliResult> {
   const routedArgv = withoutOutputFlags(argv);
@@ -243,11 +258,22 @@ async function routeSource(argv: readonly string[]): Promise<CliResult> {
       operation: "source.route",
       input: argv.join(" "),
       reason: "Missing source command.",
-      action: "Use one of: import-pdf, headings, chunk, read, search, find, anchor.",
+      action: "Use one of: import-pdf, list, headings, projections, evidence, chunk, read, search, find, anchor.",
     });
   }
 
   if (command === "anchor") return routeSourceAnchor(argv);
+  if (command === "list") {
+    return queryCommand(
+      "source list",
+      "source.list",
+      argv,
+      "SELECT id, title, kind, sha256, mime_type, page_count, source_uri, extraction_status, updated_at FROM source_document ORDER BY updated_at DESC;",
+      "Listed imported Source Documents.",
+      {},
+      { kind: "read", targetRecords: ["source_document"] },
+    );
+  }
 
   if (command === "import-pdf") {
     const path = argv[2];
@@ -298,7 +324,19 @@ async function routeSource(argv: readonly string[]): Promise<CliResult> {
 
   if (command === "headings") {
     const path = argv[2];
-    if (!path) return missingArgument("source headings", "source.headings", argv, "<pdf-path>");
+    const sourceOnlyId = valueAfter(argv, "--source") ?? (isRecordId(path, "source_document") ? path : undefined);
+    if (!path && !sourceOnlyId) return missingArgument("source headings", "source.headings", argv, "<pdf-path> or --source <source-document-id>");
+    if (sourceOnlyId && (!path || isRecordId(path, "source_document"))) {
+      return queryCommand(
+        "source headings",
+        "source.headings",
+        argv,
+        `SELECT id, source_document, title, heading_path, level, start_page, end_page, order, extraction_method FROM source_heading WHERE source_document = ${sourceOnlyId} ORDER BY order ASC;`,
+        `Listed persisted Source Headings for ${sourceOnlyId}.`,
+        { sourceId: sourceOnlyId, headingIdContract: "Use result[].id as the persisted Source Heading ID for citation and link commands." },
+        { kind: "read", targetRecords: [sourceOnlyId] },
+      );
+    }
     const sourceId = valueAfter(argv, "--source") ?? defaultSourceDocumentId(path);
     try {
       const headings = extractPdfHeadings(path, sourceId);
@@ -339,6 +377,9 @@ async function routeSource(argv: readonly string[]): Promise<CliResult> {
       );
     }
   }
+
+  if (command === "projections") return buildSourceTextProjections(argv);
+  if (command === "evidence") return searchPersistedEvidence(argv);
 
   if (command === "chunk") {
     const path = argv[2];
@@ -406,8 +447,173 @@ async function routeSource(argv: readonly string[]): Promise<CliResult> {
     "source",
     command,
     argv,
-    "Use one of: import-pdf, headings, chunk, read, search, find, anchor.",
+    "Use one of: import-pdf, list, headings, projections, evidence, chunk, read, search, find, anchor.",
   );
+}
+
+async function buildSourceTextProjections(argv: readonly string[]): Promise<CliResult> {
+  const path = argv[2];
+  if (!path) return missingArgument("source projections", "source.projections", argv, "<pdf-path>");
+  const sourceId = valueAfter(argv, "--source") ?? defaultSourceDocumentId(path);
+  const maxTokens = Number.parseInt(valueAfter(argv, "--max-tokens") ?? "12000", 10);
+
+  try {
+    const headings = extractPdfHeadings(path, sourceId);
+    const statements = headings.map((heading) => {
+      const persistedHeadingId = persistedSourceHeadingId(heading, sourceId);
+      const startPage = heading.startPage;
+      const endPage = heading.endPage ?? heading.startPage;
+      const projection = projectPdfText(path, {
+        sourceDocumentId: sourceId,
+        pageRange: { start: startPage, end: endPage },
+        maxTokens,
+      });
+      const projectionId = sourceTextProjectionRecordId({
+        sourceDocumentId: sourceId,
+        sourceHeadingId: persistedHeadingId,
+        startPage,
+        endPage,
+      });
+      const textHash = sha256Hex(projection.text);
+      return `UPSERT ${projectionId} SET source_document = ${sourceId}, source_heading = ${persistedHeadingId}, start_page = ${startPage}, end_page = ${endPage}, text = "${escapeSurrealString(projection.text)}", text_hash = "${textHash}", extraction_method = "${escapeSurrealString(projection.provenance.extractionMethod)}", extraction_version = "pdf-ingest-v1", projection_status = "ready", updated_at = time::now();`;
+    });
+    const result = await executeSurrealQuery(
+      readSurrealConfig(),
+      loggedQuery("source projections", "source.projections", argv, statements.join("\n"), {
+        kind: "write",
+        targetRecords: [sourceId, "source_text_projection"],
+        afterQuery: `SELECT id, source_document, source_heading, start_page, end_page, text_hash, extraction_method, projection_status FROM source_text_projection WHERE source_document = ${sourceId} ORDER BY start_page ASC`,
+        relateEditedTargets: [sourceId],
+      }),
+      { queryId: `source.projections:${sourceId}` },
+    );
+    if (!result.ok) return fromSurrealFailure("source projections", argv, result.error);
+    return success({
+      command: "source projections",
+      operation: "source.projections",
+      input: argv,
+      message: `Built ${headings.length} Source Text Projection record(s) for ${sourceId}.`,
+      data: {
+        sourceId,
+        warning:
+          "Source Text Projections are lossy, rebuildable search caches. Verify evidence against the canonical Source Document before citing.",
+        projections: headings.map((heading) => {
+          const persistedHeadingId = persistedSourceHeadingId(heading, sourceId);
+          const endPage = heading.endPage ?? heading.startPage;
+          return {
+            id: sourceTextProjectionRecordId({
+              sourceDocumentId: sourceId,
+              sourceHeadingId: persistedHeadingId,
+              startPage: heading.startPage,
+              endPage,
+            }),
+            sourceHeading: persistedHeadingId,
+            startPage: heading.startPage,
+            endPage,
+          };
+        }),
+        result: result.result,
+      },
+    });
+  } catch (error) {
+    return operationFailure(
+      "source projections",
+      "source.projections",
+      argv,
+      errorReason(error),
+      "Verify the PDF path, ensure Source Headings can be extracted, and rerun source projections with the same --source ID.",
+    );
+  }
+}
+
+async function searchPersistedEvidence(argv: readonly string[]): Promise<CliResult> {
+  const queryText = positionalArgs(argv, 2).join(" ").trim();
+  if (!queryText) return missingArgument("source evidence", "source.evidence", argv, "<query>");
+  const sourceId = valueAfter(argv, "--source");
+  const headingId = valueAfter(argv, "--heading");
+  const limit = Number.parseInt(valueAfter(argv, "--limit") ?? "10", 10);
+  if (sourceId && !isRecordId(sourceId, "source_document")) {
+    return operationFailure(
+      "source evidence",
+      "source.evidence",
+      argv,
+      `Invalid Source Document ID '${sourceId}'.`,
+      "Pass a Source Document record ID from 'originium source list', such as source_document:example.",
+    );
+  }
+  if (headingId && !isRecordId(headingId, "source_heading")) {
+    return operationFailure(
+      "source evidence",
+      "source.evidence",
+      argv,
+      `Invalid Source Heading ID '${headingId}'.`,
+      "Pass a Source Heading record ID from 'originium source headings --source <source-document-id>'.",
+    );
+  }
+  const filters = [
+    sourceId ? `source_document = ${sourceId}` : "",
+    headingId ? `source_heading = ${headingId}` : "",
+    `text CONTAINS "${escapeSurrealString(queryText)}"`,
+  ].filter(Boolean);
+  const where = filters.length > 0 ? ` WHERE ${filters.join(" AND ")}` : "";
+  const projectionScope = [
+    sourceId ? `source_document = ${sourceId}` : "",
+    headingId ? `source_heading = ${headingId}` : "",
+  ].filter(Boolean);
+  const projectionWhere = projectionScope.length > 0 ? ` WHERE ${projectionScope.join(" AND ")}` : "";
+  const statements = [
+    sourceId ? `SELECT id FROM ${sourceId};` : "",
+    `SELECT id FROM source_text_projection${projectionWhere} LIMIT 1;`,
+    `SELECT id, source_document, source_heading, start_page, end_page, text_hash, extraction_method, extraction_version, projection_status, string::slice(text, 0, 700) AS snippet FROM source_text_projection${where} ORDER BY start_page ASC LIMIT ${limit} FETCH source_document, source_heading;`,
+  ]
+    .filter(Boolean)
+    .join("\n");
+  const result = await executeSurrealQuery(
+    readSurrealConfig(),
+    loggedQuery("source evidence", "source.evidence", argv, statements, {
+      kind: "read",
+      targetRecords: [sourceId ?? headingId ?? "source_text_projection"],
+    }),
+    { queryId: `source.evidence:${queryText}` },
+  );
+  if (!result.ok) return fromSurrealFailure("source evidence", argv, result.error);
+  const queryResult = result.result as Array<{ result?: unknown }>;
+  const sourceStatementOffset = sourceId ? 1 : 0;
+  if (sourceId && resultRowCount(queryResult[0]) === 0) {
+    return operationFailure(
+      "source evidence",
+      "source.evidence",
+      argv,
+      `Source Document ${sourceId} does not exist; SELECT returned no source_document record.`,
+      "Run 'originium source list' to find an imported Source Document, or import the PDF before evidence search.",
+    );
+  }
+  if (resultRowCount(queryResult[sourceStatementOffset]) === 0) {
+    return operationFailure(
+      "source evidence",
+      "source.evidence",
+      argv,
+      `No Source Text Projections exist for ${headingId ?? sourceId ?? "the database"}.`,
+      sourceId
+        ? `Run 'originium source projections <pdf-path> --source ${sourceId}' before evidence search.`
+        : "Run 'originium source projections <pdf-path> --source <source-document-id>' for at least one imported Source Document.",
+    );
+  }
+
+  return success({
+    command: "source evidence",
+    operation: "source.evidence",
+    input: argv,
+    message: `Searched lossy Source Text Projections for '${queryText}'.`,
+    data: {
+      query: queryText,
+      sourceId,
+      headingId,
+      warning:
+        "Source Text Projections are lossy search caches. Use Source Document/PDF reading for canonical verification before citing.",
+      result: result.result,
+    },
+  });
 }
 
 async function routeSourceAnchor(argv: readonly string[]): Promise<CliResult> {
@@ -584,7 +790,8 @@ async function routePage(argv: readonly string[]): Promise<CliResult> {
   if (command === "replace" || command === "patch" || command === "append") return editPage(argv, command);
   if (command === "read") return selectById("page read", "page.read", argv, argv[2], "Wiki Page ID");
   if (command === "search") return searchPages(argv);
-  return unknownCommand("page", command, argv, "Use one of: create, read, update, replace, patch, append, search.");
+  if (command === "candidates") return pageCandidates(argv);
+  return unknownCommand("page", command, argv, "Use one of: create, read, update, replace, patch, append, search, candidates.");
 }
 
 async function routeCitation(argv: readonly string[]): Promise<CliResult> {
@@ -693,17 +900,35 @@ async function routeLink(argv: readonly string[]): Promise<CliResult> {
     const from = valueAfter(argv, "--from");
     const to = valueAfter(argv, "--to");
     const reason = valueAfter(argv, "--reason");
-    const label = valueAfter(argv, "--label");
+    const label = valueAfter(argv, "--label") ?? "related evidence";
     const session = valueAfter(argv, "--session");
     if (!from) return missingArgument("link add", "link.add", argv, "--from <record-id>");
     if (!to) return missingArgument("link add", "link.add", argv, "--to <record-id>");
     if (!reason) return missingArgument("link add", "link.add", argv, "--reason <reason>");
+    if (!manualLinkLabels.includes(label as (typeof manualLinkLabels)[number])) {
+      return operationFailure(
+        "link add",
+        "link.add",
+        argv,
+        `Unsupported Manual Link label '${label}'.`,
+        `Use one of: ${manualLinkLabels.join(", ")}. Keep --reason specific enough for future graph traversal.`,
+      );
+    }
+    if (hasWeakGraphManualLinkReason(reason)) {
+      return operationFailure(
+        "link add",
+        "link.add",
+        argv,
+        `Manual Link reason is too vague for '${from}' -> '${to}': ${JSON.stringify(reason)}.`,
+        "Provide a concrete reason naming the relationship and why traversal across this edge is useful.",
+      );
+    }
 
     return queryCommand(
       "link add",
       "link.add",
       argv,
-      `RELATE ${from}->manual_link->${to} SET reason = "${escapeSurrealString(reason)}", label = ${label ? `"${escapeSurrealString(label)}"` : "NONE"}, created_session = ${session ?? "NONE"}, created_at = time::now();`,
+      `RELATE ${from}->manual_link->${to} SET reason = "${escapeSurrealString(reason)}", label = "${escapeSurrealString(label)}", created_session = ${session ?? "NONE"}, created_at = time::now();`,
       `Added Manual Link from ${from} to ${to}.`,
       {},
       {
@@ -859,8 +1084,9 @@ async function routeActivity(argv: readonly string[]): Promise<CliResult> {
 
 async function routeGraph(argv: readonly string[]): Promise<CliResult> {
   const [, command] = argv;
-  if (!command) return missingGroupCommand("graph", argv, "Use one of: lint.");
-  if (command !== "lint") return unknownCommand("graph", command, argv, "Use one of: lint.");
+  if (!command) return missingGroupCommand("graph", argv, "Use one of: lint, neighborhood.");
+  if (command === "neighborhood") return graphNeighborhood(argv);
+  if (command !== "lint") return unknownCommand("graph", command, argv, "Use one of: lint, neighborhood.");
 
   const result = await executeSurrealQuery(
     readSurrealConfig(),
@@ -894,11 +1120,34 @@ async function routeGraph(argv: readonly string[]): Promise<CliResult> {
   });
 }
 
+async function graphNeighborhood(argv: readonly string[]): Promise<CliResult> {
+  const recordId = argv[2] ?? valueAfter(argv, "--record");
+  if (!recordId) return missingArgument("graph neighborhood", "graph.neighborhood", argv, "<record-id>");
+
+  const query = [
+    `LET $record = ${recordId};`,
+    `SELECT id, title, slug, aliases, scope_note, page_kind, ->cites AS outgoing_citations, <-cites AS incoming_citations, ->manual_link AS outgoing_links, <-manual_link AS incoming_links FROM ONLY $record;`,
+    `SELECT id, in, out, key, label, quote FROM cites WHERE in = $record OR out = $record;`,
+    `SELECT id, in, out, label, reason FROM manual_link WHERE in = $record OR out = $record;`,
+    `SELECT id, title, slug FROM wiki_page WHERE ->cites->source_heading CONTAINS $record OR <-cites<-wiki_page CONTAINS $record LIMIT 20;`,
+  ].join("\n");
+  return queryCommand(
+    "graph neighborhood",
+    "graph.neighborhood",
+    argv,
+    query,
+    `Inspected graph neighborhood for ${recordId}.`,
+    { id: recordId },
+    { kind: "read", targetRecords: [recordId] },
+  );
+}
+
 async function routeRetrieval(argv: readonly string[]): Promise<CliResult> {
   const [, command] = argv;
-  if (!command) return missingGroupCommand("retrieval", argv, "Use one of: search.");
+  if (!command) return missingGroupCommand("retrieval", argv, "Use one of: search, embed.");
   if (command === "search") return searchPages(argv);
-  return unknownCommand("retrieval", command, argv, "Use one of: search.");
+  if (command === "embed") return embedRetrievalRecords(argv);
+  return unknownCommand("retrieval", command, argv, "Use one of: search, embed.");
 }
 
 async function routeWorkflow(argv: readonly string[]): Promise<CliResult> {
@@ -1189,14 +1438,29 @@ async function writePage(argv: readonly string[], command: "create" | "update"):
   if (!title) return missingArgument(`page ${command}`, `page.${command}`, argv, "--title <title>");
   const slug = wikiPageSlugFromTitle(title);
   const id = wikiPageRecordId(title);
-  const query = `UPSERT ${id} SET title = "${escapeSurrealString(title)}", slug = "${slug}", body = "${escapeSurrealString(body)}", updated_at = time::now();`;
+  const aliases = valuesAfter(argv, "--alias");
+  const scopeNote = valueAfter(argv, "--scope-note");
+  const pageKind = valueAfter(argv, "--kind") as WikiPageKind | undefined;
+  if (pageKind && !wikiPageKinds.includes(pageKind)) {
+    return operationFailure(
+      `page ${command}`,
+      `page.${command}`,
+      argv,
+      `Unsupported Wiki Page kind '${pageKind}'.`,
+      `Use one of: ${wikiPageKinds.join(", ")}.`,
+    );
+  }
+  const pageKindSet = pageKind ? `, page_kind = "${escapeSurrealString(pageKind)}"` : "";
+  const aliasesSet = aliases.length > 0 ? `, aliases = ${surrealArray(aliases)}` : "";
+  const scopeSet = scopeNote ? `, scope_note = "${escapeSurrealString(scopeNote)}"` : "";
+  const query = `UPSERT ${id} SET title = "${escapeSurrealString(title)}", slug = "${slug}", body = "${escapeSurrealString(body)}"${aliasesSet}${scopeSet}${pageKindSet}, updated_at = time::now();`;
   return queryCommand(
     `page ${command}`,
     `page.${command}`,
     argv,
     query,
     `${command === "create" ? "Created" : "Updated"} Wiki Page ${id}.`,
-    { id, slug },
+    { id, slug, aliases, scopeNote, pageKind },
     {
       kind: "write",
       targetRecords: [id],
@@ -1205,6 +1469,41 @@ async function writePage(argv: readonly string[], command: "create" | "update"):
       relateEditedTargets: [id],
     },
   );
+}
+
+async function pageCandidates(argv: readonly string[]): Promise<CliResult> {
+  const queryText = positionalArgs(argv, 2).join(" ").trim();
+  if (!queryText) return missingArgument("page candidates", "page.candidates", argv, "<topic>");
+  const limit = Number.parseInt(valueAfter(argv, "--limit") ?? "10", 10);
+  const slug = wikiPageSlugFromTitle(queryText);
+  const query = [
+    `LET $exact = (SELECT id, title, slug, aliases, scope_note, page_kind, body, ->cites->source_heading AS cited_evidence, <-manual_link<-wiki_page AS inbound_links, ->manual_link->wiki_page AS outbound_links FROM wiki_page WHERE slug = "${escapeSurrealString(slug)}" OR title = "${escapeSurrealString(queryText)}");`,
+    `LET $text = (SELECT id, title, slug, aliases, scope_note, page_kind, body, ->cites->source_heading AS cited_evidence, <-manual_link<-wiki_page AS inbound_links, ->manual_link->wiki_page AS outbound_links FROM wiki_page WHERE title CONTAINS "${escapeSurrealString(queryText)}" OR body CONTAINS "${escapeSurrealString(queryText)}" OR aliases CONTAINS "${escapeSurrealString(queryText)}" LIMIT ${limit});`,
+    "RETURN array::distinct(array::concat($exact, $text));",
+  ].join("\n");
+  const result = await executeSurrealQuery(
+    readSurrealConfig(),
+    loggedQuery("page candidates", "page.candidates", argv, query, {
+      kind: "read",
+      targetRecords: [`page.candidates:${queryText}`],
+    }),
+    { queryId: `page.candidates:${queryText}` },
+  );
+  if (!result.ok) return fromSurrealFailure("page candidates", argv, result.error);
+  const candidates = pageCandidateRows(result.result as Array<{ result?: unknown }>, queryText).slice(0, limit);
+  return success({
+    command: "page candidates",
+    operation: "page.candidates",
+    input: argv,
+    message: `Found ${candidates.length} Wiki Page reuse candidate(s) for '${queryText}'.`,
+    data: {
+      query: queryText,
+      results: candidates,
+      interpretation:
+        "Extend or broaden a high-overlap candidate before creating a new page; create only when no candidate covers the concept scope.",
+      result: result.result,
+    },
+  });
 }
 
 async function editPage(argv: readonly string[], command: "replace" | "patch" | "append"): Promise<CliResult> {
@@ -1496,13 +1795,19 @@ async function searchPages(argv: readonly string[]): Promise<CliResult> {
   const queryEmbedding = await fetchOllamaEmbedding(queryText, command, operation, argv);
   if (!queryEmbedding.ok) return queryEmbedding.failure;
 
+  const lexical = escapeSurrealString(queryText);
   const result = await executeSurrealQuery(
     readSurrealConfig(),
     loggedQuery(
       command,
       operation,
       argv,
-      "SELECT id, title, slug, body, ->cites->source_heading AS cited_evidence FROM wiki_page; SELECT id, title, heading_path, start_page, end_page FROM source_heading;",
+      [
+        `LET $query_embedding = ${surrealNumberArray(queryEmbedding.embedding)};`,
+        `LET $wiki = (SELECT id, title, slug, aliases, scope_note, page_kind, body, embedding, embedded_text_hash, vector::similarity::cosine(embedding, $query_embedding) AS db_vector_score, ->cites->source_heading AS cited_evidence FROM wiki_page WHERE embedding != NONE AND (title CONTAINS "${lexical}" OR body CONTAINS "${lexical}" OR aliases CONTAINS "${lexical}") ORDER BY db_vector_score DESC LIMIT 50);`,
+        `LET $evidence = (SELECT id, source_document, source_heading, start_page, end_page, text, text_hash, embedding, embedded_text_hash, extraction_method, projection_status, vector::similarity::cosine(embedding, $query_embedding) AS db_vector_score FROM source_text_projection WHERE embedding != NONE AND text CONTAINS "${lexical}" ORDER BY db_vector_score DESC LIMIT 50 FETCH source_document, source_heading);`,
+        "RETURN { wiki: $wiki, evidence: $evidence };",
+      ].join("\n"),
       { kind: "read", targetRecords: [`${operation}:${queryText}`] },
     ),
     { queryId: `${operation}:${queryText}` },
@@ -1533,8 +1838,83 @@ async function searchPages(argv: readonly string[]): Promise<CliResult> {
       query: queryText,
       embedding: queryEmbedding.config,
       results: ranked.slice(0, 10),
+      candidateSource: "surreal-hybrid-candidate-query",
       result: result.result,
     },
+  });
+}
+
+async function embedRetrievalRecords(argv: readonly string[]): Promise<CliResult> {
+  const target = valueAfter(argv, "--target") ?? "all";
+  const limit = Number.parseInt(valueAfter(argv, "--limit") ?? "10", 10);
+  if (!["all", "wiki", "source"].includes(target)) {
+    return operationFailure(
+      "retrieval embed",
+      "retrieval.embed",
+      argv,
+      `Unsupported embedding target '${target}'.`,
+      "Use --target all, --target wiki, or --target source.",
+    );
+  }
+  const query = [
+    target === "all" || target === "wiki"
+      ? `SELECT id, title, body, embedded_text_hash, updated_at FROM wiki_page ORDER BY updated_at DESC LIMIT ${limit};`
+      : "",
+    target === "all" || target === "source"
+      ? `SELECT id, text, text_hash, embedded_text_hash, updated_at FROM source_text_projection WHERE projection_status = 'ready' ORDER BY updated_at DESC LIMIT ${limit};`
+      : "",
+  ]
+    .filter(Boolean)
+    .join("\n");
+  const result = await executeSurrealQuery(readSurrealConfig(), query, { queryId: `retrieval.embed.read:${target}` });
+  if (!result.ok) return fromSurrealFailure("retrieval embed", argv, result.error);
+
+  const config = readOllamaEmbeddingConfig();
+  const statements: string[] = [];
+  for (const candidate of embeddingCandidatesFromStatements(result.result as Array<{ result?: unknown }>)) {
+    if (candidate.embeddedTextHash === candidate.textHash) continue;
+    const embedding = await fetchOllamaEmbedding(candidate.text, "retrieval embed", "retrieval.embed", argv);
+    if (!embedding.ok) return embedding.failure;
+    if (embedding.embedding.length !== 768) {
+      return operationFailure(
+        "retrieval embed",
+        "retrieval.embed",
+        argv,
+        `Embedding dimension mismatch for ${candidate.id}: model '${config.model}' returned ${embedding.embedding.length}, schema index expects 768.`,
+        "Use an embedding model with 768 dimensions or change the SurrealDB vector index dimension deliberately.",
+      );
+    }
+    statements.push(
+      `UPDATE ${candidate.id} SET embedding = ${surrealNumberArray(embedding.embedding)}, embedding_provider = "ollama", embedding_model = "${escapeSurrealString(config.model)}", embedding_dimensions = ${embedding.embedding.length}, embedded_text_hash = "${candidate.textHash}", embedded_at = time::now();`,
+    );
+  }
+
+  if (statements.length === 0) {
+    return success({
+      command: "retrieval embed",
+      operation: "retrieval.embed",
+      input: argv,
+      message: `No stale retrieval embedding records found for target '${target}'.`,
+      data: { target, limit, updated: 0, provider: "ollama", model: config.model },
+    });
+  }
+
+  const update = await executeSurrealQuery(
+    readSurrealConfig(),
+    loggedQuery("retrieval embed", "retrieval.embed", argv, statements.join("\n"), {
+      kind: "write",
+      targetRecords: ["wiki_page", "source_text_projection"],
+      relateEditedTargets: [],
+    }),
+    { queryId: `retrieval.embed.update:${target}` },
+  );
+  if (!update.ok) return fromSurrealFailure("retrieval embed", argv, update.error);
+  return success({
+    command: "retrieval embed",
+    operation: "retrieval.embed",
+    input: argv,
+    message: `Updated ${statements.length} retrieval embedding record(s) for target '${target}'.`,
+    data: { target, limit, updated: statements.length, provider: "ollama", model: config.model, result: update.result },
   });
 }
 
@@ -2133,21 +2513,30 @@ function retrievalCandidatesFromStatements(
   statements: readonly { readonly result?: unknown }[],
 ): readonly RetrievalCandidate[] {
   const candidates: RetrievalCandidate[] = [];
-  const rows = statements.flatMap((statement) => (Array.isArray(statement.result) ? statement.result : []));
-  const sourceHeadingsById = new Map<string, Record<string, unknown>>();
+  const rows = statements.flatMap((statement) => {
+    const statementRows = Array.isArray(statement.result) ? statement.result : statement.result ? [statement.result] : [];
+    return statementRows.flatMap((entry) => {
+      if (!entry || typeof entry !== "object") return [entry];
+      const record = entry as Record<string, unknown>;
+      const nested = [record.wiki, record.evidence].flatMap((value) => (Array.isArray(value) ? value : []));
+      return nested.length > 0 ? nested : [entry];
+    });
+  });
 
   for (const row of rows) {
     if (!row || typeof row !== "object") continue;
     const record = row as Record<string, unknown>;
     const id = typeof record.id === "string" ? record.id : "";
-    if (id && Array.isArray(record.heading_path)) sourceHeadingsById.set(id, sourceHeadingEvidence(record));
-  }
-
-  for (const row of rows) {
-    if (!row || typeof row !== "object") continue;
-    const record = row as Record<string, unknown>;
-    const id = typeof record.id === "string" ? record.id : "";
-    const title = typeof record.title === "string" ? record.title : "";
+    const fetchedHeading =
+      record.source_heading && typeof record.source_heading === "object"
+        ? (record.source_heading as Record<string, unknown>)
+        : undefined;
+    const title =
+      typeof record.title === "string"
+        ? record.title
+        : typeof fetchedHeading?.title === "string"
+          ? fetchedHeading.title
+          : "";
     if (!id || !title) continue;
 
     if (typeof record.body === "string") {
@@ -2156,23 +2545,36 @@ function retrievalCandidatesFromStatements(
         id,
         title,
         text: `${title}\n${record.body}`,
-        citedEvidence: citationEvidence(record.cited_evidence, sourceHeadingsById),
-        metadata: { slug: record.slug },
+        embedding: numberVectorField(record, "embedding"),
+        citedEvidence: citationEvidence(record.cited_evidence),
+        metadata: {
+          slug: record.slug,
+          aliases: record.aliases,
+          scopeNote: record.scope_note,
+          pageKind: record.page_kind,
+          dbVectorScore: record.db_vector_score,
+        },
       });
       continue;
     }
 
-    if (Array.isArray(record.heading_path)) {
+    if (typeof record.text === "string") {
       candidates.push({
-        kind: "source_heading",
+        kind: "source_text_projection",
         id,
         title,
-        text: `${title}\n${record.heading_path.join(" ")}`,
+        text: `${title}\n${record.text}`,
+        embedding: numberVectorField(record, "embedding"),
         citedEvidence: [],
         metadata: {
-          headingPath: record.heading_path,
+          sourceDocument: record.source_document,
+          sourceHeading: record.source_heading,
           startPage: record.start_page,
           endPage: record.end_page,
+          textHash: record.text_hash,
+          extractionMethod: record.extraction_method,
+          projectionStatus: record.projection_status,
+          dbVectorScore: record.db_vector_score,
         },
       });
     }
@@ -2189,17 +2591,15 @@ async function rankRetrievalCandidates(
   const ranked: RankedRetrievalCandidate[] = [];
 
   for (const candidate of candidates) {
-    const candidateEmbedding = await fetchOllamaEmbedding(candidate.text, "retrieval rank", "retrieval.rank", [
-      "retrieval",
-      "rank",
-      candidate.id,
-    ]);
-    if (!candidateEmbedding.ok) throw new Error(candidateEmbedding.failure.error.reason);
+    if (!candidate.embedding) {
+      throw new Error(
+        `Missing persisted embedding for ${candidate.id}. Run 'originium retrieval embed --target all' before retrieval search.`,
+      );
+    }
 
     const lexical = lexicalScore(queryText, candidate.text);
-    const vector = cosineSimilarity(queryEmbedding, candidateEmbedding.embedding);
-    const graphAuthority =
-      (candidate.kind === "wiki_page" ? 0.35 : -0.1) + Math.min(candidate.citedEvidence.length, 3) * 0.15;
+    const vector = cosineSimilarity(queryEmbedding, candidate.embedding);
+    const graphAuthority = (candidate.kind === "wiki_page" ? 0.35 : -0.05) + Math.min(candidate.citedEvidence.length, 3) * 0.15;
     const score = vector * 0.55 + lexical * 0.3 + graphAuthority;
 
     ranked.push({
@@ -2220,26 +2620,100 @@ async function rankRetrievalCandidates(
   return ranked.sort((left, right) => right.score - left.score);
 }
 
-function citationEvidence(
-  value: unknown,
-  sourceHeadingsById: ReadonlyMap<string, Record<string, unknown>>,
-): readonly Record<string, unknown>[] {
+function citationEvidence(value: unknown): readonly Record<string, unknown>[] {
   if (!Array.isArray(value)) return [];
 
   return value.flatMap((entry): Record<string, unknown>[] => {
-    if (typeof entry === "string") return [sourceHeadingsById.get(entry) ?? { id: entry }];
+    if (typeof entry === "string") return [{ id: entry }];
     return entry && typeof entry === "object" ? [entry as Record<string, unknown>] : [];
   });
 }
 
-function sourceHeadingEvidence(record: Record<string, unknown>): Record<string, unknown> {
-  return {
-    id: record.id,
-    title: record.title,
-    headingPath: record.heading_path,
-    startPage: record.start_page,
-    endPage: record.end_page,
-  };
+function pageCandidateRows(
+  statements: readonly { readonly result?: unknown }[],
+  queryText: string,
+): readonly Record<string, unknown>[] {
+  const querySlug = toSlug(queryText);
+  return statements.flatMap((statement) => {
+    const rows = Array.isArray(statement.result) ? statement.result : [];
+    return rows.flatMap((entry): Record<string, unknown>[] => {
+      const nestedRows = Array.isArray(entry) ? entry : [entry];
+      return nestedRows.flatMap((row): Record<string, unknown>[] => {
+        if (!row || typeof row !== "object") return [];
+        const record = row as Record<string, unknown>;
+        const title = stringField(record, "title") ?? "";
+        const slug = stringField(record, "slug") ?? "";
+        const body = stringField(record, "body") ?? "";
+        const aliases = Array.isArray(record.aliases) ? record.aliases.filter((value) => typeof value === "string") : [];
+        const reasons = [
+          slug === querySlug ? "exact slug" : "",
+          title.toLowerCase() === queryText.toLowerCase() ? "exact title" : "",
+          aliases.some((alias) => alias.toLowerCase() === queryText.toLowerCase()) ? "exact alias" : "",
+          title.toLowerCase().includes(queryText.toLowerCase()) ? "title text" : "",
+          body.toLowerCase().includes(queryText.toLowerCase()) ? "body text" : "",
+        ].filter(Boolean);
+        return [
+          {
+            id: record.id,
+            title,
+            slug,
+            aliases,
+            scopeNote: record.scope_note,
+            pageKind: record.page_kind,
+            snippet: body.slice(0, 320),
+            citationCount: Array.isArray(record.cited_evidence) ? record.cited_evidence.length : 0,
+            inboundLinkCount: Array.isArray(record.inbound_links) ? record.inbound_links.length : 0,
+            outboundLinkCount: Array.isArray(record.outbound_links) ? record.outbound_links.length : 0,
+            matchReasons: reasons.length > 0 ? reasons : ["candidate query"],
+          },
+        ];
+      });
+    });
+  });
+}
+
+function embeddingCandidatesFromStatements(
+  statements: readonly { readonly result?: unknown }[],
+): readonly {
+  readonly id: string;
+  readonly text: string;
+  readonly textHash: string;
+  readonly embeddedTextHash?: string;
+}[] {
+  return statements.flatMap((statement) => {
+    if (!Array.isArray(statement.result)) return [];
+    return statement.result.flatMap((row) => {
+      if (!row || typeof row !== "object") return [];
+      const record = row as Record<string, unknown>;
+      const id = stringField(record, "id");
+      if (!id) return [];
+      const text =
+        typeof record.body === "string"
+          ? `${stringField(record, "title") ?? ""}\n${record.body}`
+          : typeof record.text === "string"
+            ? record.text
+            : "";
+      if (!text.trim()) return [];
+      return [
+        {
+          id,
+          text,
+          textHash: typeof record.text_hash === "string" ? record.text_hash : sha256Hex(text),
+          embeddedTextHash: stringField(record, "embedded_text_hash"),
+        },
+      ];
+    });
+  });
+}
+
+function numberVectorField(record: Record<string, unknown>, key: string): readonly number[] | undefined {
+  const value = record[key];
+  return isNumberVector(value) ? value : undefined;
+}
+
+function resultRowCount(statement: { readonly result?: unknown } | undefined): number {
+  if (!statement || !Array.isArray(statement.result)) return 0;
+  return statement.result.length;
 }
 
 function lexicalScore(queryText: string, candidateText: string): number {
@@ -2677,6 +3151,19 @@ function toSurrealIdPart(input: string): string {
 
 function surrealArray(values: readonly string[]): string {
   return `[${values.map((value) => `"${escapeSurrealString(value)}"`).join(", ")}]`;
+}
+
+function surrealNumberArray(values: readonly number[]): string {
+  return `[${values.map((value) => String(Number(value.toFixed(10)))).join(", ")}]`;
+}
+
+function sha256Hex(value: string): string {
+  return createHash("sha256").update(value).digest("hex");
+}
+
+function isRecordId(value: string | undefined, table?: string): value is string {
+  if (!value) return false;
+  return table ? value.startsWith(`${table}:`) : /^[a-z_]+:[A-Za-z0-9_:-]+$/.test(value);
 }
 
 function parseMetadataJson(value: string): Record<string, unknown> | Error {

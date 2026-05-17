@@ -292,6 +292,60 @@ test("bundled source search returns IA Mining snippets with persisted heading co
   assert.equal(output.data.hits[0].provenance.lossy, true);
 });
 
+test("bundled link add rejects unsupported labels before database access", () => {
+  const result = spawnSync(
+    bundledCli,
+    [
+      "link",
+      "add",
+      "--from",
+      "wiki_page:a",
+      "--to",
+      "wiki_page:b",
+      "--label",
+      "see also",
+      "--reason",
+      "A specific relationship that should be traversable later.",
+      "--json",
+    ],
+    { encoding: "utf8" },
+  );
+
+  assert.equal(result.status, 1);
+  const output = JSON.parse(result.stdout);
+  assert.equal(output.ok, false);
+  assert.equal(output.error.operation, "link.add");
+  assert.match(output.error.reason, /Unsupported Manual Link label 'see also'/);
+  assert.match(output.error.action, /depends on/);
+});
+
+test("bundled link add rejects vague reasons before database access", () => {
+  const result = spawnSync(
+    bundledCli,
+    [
+      "link",
+      "add",
+      "--from",
+      "wiki_page:a",
+      "--to",
+      "wiki_page:b",
+      "--label",
+      "uses",
+      "--reason",
+      "related",
+      "--json",
+    ],
+    { encoding: "utf8" },
+  );
+
+  assert.equal(result.status, 1);
+  const output = JSON.parse(result.stdout);
+  assert.equal(output.ok, false);
+  assert.equal(output.error.operation, "link.add");
+  assert.match(output.error.reason, /too vague/);
+  assert.match(output.error.action, /concrete reason/);
+});
+
 test("Wiki Page replace preview reports before/after context and does not mutate", () => {
   const result = previewPageReplace("wiki_page:test", "Alpha detail.[^source]\n\nBeta detail.", ["source"], {
     find: "Beta detail.",

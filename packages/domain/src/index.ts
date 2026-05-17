@@ -26,6 +26,18 @@ export type WikiPageDraft = {
   readonly title: string;
   readonly slug: string;
   readonly body: string;
+  readonly aliases?: readonly string[];
+  readonly scopeNote?: string;
+  readonly pageKind?: WikiPageKind;
+};
+
+export type WikiPageKind = "concept" | "workflow" | "evidence" | "decision" | "question";
+
+export type SourceTextProjectionDraft = {
+  readonly sourceDocumentId: string;
+  readonly sourceHeadingId: string;
+  readonly startPage: number;
+  readonly endPage: number;
 };
 
 export type CitationDraft = {
@@ -115,6 +127,14 @@ export function wikiPageSlugFromTitle(title: string): string {
 
 export function wikiPageRecordId(title: string): string {
   return `wiki_page:${toSurrealIdPart(wikiPageSlugFromTitle(title))}`;
+}
+
+export function sourceTextProjectionRecordId(draft: SourceTextProjectionDraft): string {
+  const documentPart = normalizeRecordIdPart(draft.sourceDocumentId.replace(/^[^:]+:/, ""));
+  const headingPart = normalizeRecordIdPart(draft.sourceHeadingId.replace(/^[^:]+:/, ""));
+  return `source_text_projection:${toSurrealIdPart(
+    `${documentPart}-${headingPart}-p${draft.startPage}-${draft.endPage}`,
+  )}`;
 }
 
 export function formatGraphWikiRecordIdConflict(conflict: GraphWikiRecordIdConflict): string {
