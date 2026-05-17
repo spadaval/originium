@@ -15,8 +15,6 @@ private chat history.
 ## General Guidelines
 
 - Use `docs/index.md` as the repository knowledge map.
-- Keep `docs/agent/constitution.md` in mind as design guidance for the agent
-  system, not as an execution checklist.
 - For delegated work, the orchestrator explicitly assigns one route to each
   subagent. A subagent should load only the assigned route reference unless the
   assignment says otherwise.

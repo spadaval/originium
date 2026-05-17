@@ -11,7 +11,6 @@ output is reconciling docs with target design, code, beads, or agent process.
 - `docs/architecture/`: runtime topology, ownership, package boundaries,
   quality, validation, security, reliability, and testing.
 - `docs/adr/`: durable decisions. Current ADRs live here.
-- `docs/agent/constitution.md`: agent-system design guidance.
 - Beads: active work, sequencing, phase tags, handoff notes, and migration
   intent.
 
@@ -40,7 +39,7 @@ output is reconciling docs with target design, code, beads, or agent process.
 - Update product docs when user-visible behavior, UX principles, or design
   language changes.
 - Update agent docs or skills when process changes. Keep role-specific
-  procedure in this skill and keep `docs/agent/constitution.md` non-actionable.
+  procedure in this skill and keep agent-system design guidance non-actionable.
 - Update bead descriptions, acceptance criteria, or notes when docs work
   reveals tracker ambiguity that would mislead the next agent.
 - Keep Beads-native acceptance criteria as the executable contract for bead

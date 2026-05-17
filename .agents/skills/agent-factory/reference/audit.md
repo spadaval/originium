@@ -51,7 +51,7 @@ When auditing agent readiness, evaluate the role interface:
 
 Flag process findings only when route boundaries are ambiguous, stale,
 overlapping in a way that misroutes work, or inconsistent with `AGENTS.md`,
-`docs/agent/constitution.md`, current ADRs, or bead notes.
+current ADRs, or bead notes.
 
 ## Value Discipline
 
