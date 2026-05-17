@@ -46,8 +46,8 @@
 - Domain-specific Graph Wiki queries may live with the CLI or web business
   surface that owns the command, route, or projection. Do not move them into
   `packages/surreal` just to centralize query strings.
-- `packages/pdf-ingest` owns PDF metadata, heading extraction, and chunk
-  projection.
+- `packages/pdf-ingest` owns PDF metadata, heading extraction, Source Text
+  Projection generation, and chunk projection.
 - `apps/cli` owns agent-facing command composition and bundled CLI behavior.
 - `apps/web` owns the TanStack Start web shell plus browser-facing backend seams
   for human interaction, editing, projections, PDF streaming, and embedded agent
@@ -61,7 +61,11 @@
 ## SurrealDB
 
 - Keep canonical Graph Wiki state in SurrealDB graph records and relations.
-- Do not persist full extracted Source Document body text into wiki records.
+- Do not persist full extracted Source Document body text into Wiki Pages or
+  canonical evidence records.
+- Persist extracted text only as Source Text Projections: lossy, rebuildable
+  search caches with page range, extraction provenance, and a path back to the
+  immutable Source Document.
 - Keep file binaries in SurrealDB file buckets or file-bucket references, not
   JSON fields.
 - Use deterministic IDs where repeated imports or ingestion passes should be
@@ -70,6 +74,8 @@
   existing conflicting record.
 - Use raw SurrealQL when graph relations, indexes, file buckets, or query shapes
   are clearer than an ORM abstraction.
+- Keep retrieval query code explicit about the job it serves: concept reuse,
+  answer retrieval, evidence search, or graph neighborhood inspection.
 
 ## CLI
 

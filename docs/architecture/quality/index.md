@@ -7,7 +7,11 @@
 - Use the owning package, app, workflow, or service interface; do not reach through private source paths.
 - Do not add compatibility shims, deprecated wrappers, compatibility symlinks, transitional aliases, dual paths, or old-path re-exports during refactors.
 - Keep the Graph Wiki canonical in SurrealDB; markdown-like text is only a Projection.
-- Do not copy extracted Source Document body text into Wiki Pages or durable wiki records.
+- Do not copy extracted Source Document body text into Wiki Pages or canonical
+  evidence records.
+- Durable Source Text Projections are allowed only as lossy, rebuildable search
+  caches with provenance; citations still point to Source Documents through
+  Source Anchors.
 - Add or update meaningful tests for behavior changes, bug fixes, contract changes, and non-trivial refactors.
 - Skip tests only for pure deletion, mechanical rename, docs-only, tracker-only, or when a missing harness would add more noise than signal.
 - Use the validation command catalog to choose the narrowest command set that proves the owned slice.

@@ -37,10 +37,11 @@ Commands that mutate without any active session should create and report an
 implicit session. Explicit session overrides remain available for automation and
 nested workflows.
 
-Source text exposed through the CLI is a lossy source text projection. Source
+Source text exposed through the CLI is a lossy Source Text Projection. Source
 Documents remain the trusted material, Source Headings and agent-maintained
 Source Anchors are stable citation targets, and source text read/search commands
-must report extraction provenance and location context.
+must report extraction provenance and location context. Durable projection
+caches are allowed for retrieval, but they are rebuildable and non-canonical.
 
 Graph QA commands use the term graph lint for checks that find empty Wiki Pages,
 uncited pages, citation marker/relation mismatches, duplicate-ish pages, orphan
@@ -48,8 +49,9 @@ records, broad citation targets, and weak Manual Links. Destructive cleanup is
 preview-first and explicit.
 
 Workflow commands should preserve the lower-level primitives but collapse common
-agent flows such as answer-context retrieval, page upsert with citations, source
-read/search, and neighborhood inspection.
+agent flows such as concept reuse checks, answer-context retrieval, page upsert
+with citations, evidence search, source read/search, and graph neighborhood
+inspection.
 
 ## Rationale
 
@@ -78,7 +80,7 @@ Require explicit `--session` on every mutating command. This is simple and
 predictable for scripts, but it is unnecessarily repetitive for long agent
 sessions. Explicit session override still gives scripts deterministic control.
 
-Copy extracted source text into durable graph records. This would make source
+Treat extracted source text as canonical graph state. This would make source
 search convenient, but it blurs the boundary between trusted Source Documents
-and lossy extraction. Projection commands should expose source text with
-provenance instead.
+and lossy extraction. Source Text Projections may be durable retrieval caches,
+but they remain rebuildable, lossy, and subordinate to Source Documents.

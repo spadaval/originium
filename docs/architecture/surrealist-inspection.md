@@ -77,6 +77,8 @@ truth for creating or changing bucket definitions.
 Inspect these schemafull tables for the POC:
 
 - `source_document`: trusted raw document metadata and file bucket reference.
+- `source_text_projection`: lossy, rebuildable extracted-text search cache
+  with page range and provenance.
 - `source_heading`: Source Anchors extracted from Source Documents.
 - `wiki_page`: agent-authored synthesis and Page Body.
 - `agent_session`: agent run metadata for inspection and undo workflows.
@@ -96,15 +98,18 @@ with IDs from the inspected fixture state.
 ```sql
 LET $source = source_document:curwb_deployment_for_autonomous_operations_in_open_pit_mining_66dd4ae65769;
 LET $heading = source_heading:curwb_deployment_for_autonomous_operations_in_open_pit_mining_66dd4ae65769_chapter_1_autonomous_and_tele_remote_operations_in_open_pit_mining_p1_o1;
+LET $projection = source_text_projection:replace_with_projection_id;
 LET $chunk = ingestion_chunk:curwb_deployment_for_autonomous_operations_in_open_pit_mining_66dd4ae65769_chapter_1_autonomous_and_tele_remote_operations_in_open_pit_mining_p1_o1_100000;
 LET $page = wiki_page:poc_mining_deployment;
 LET $session = agent_session:replace_with_acceptance_session;
 ```
 
 The fixture acceptance command creates those Source Document, Source Heading,
-Ingestion Chunk, and Wiki Page IDs. Replace `$session` with the Agent Session
-ID printed by `originium acceptance poc fixtures/source-documents/IA-Mining-DG.pdf`
-or by `originium log show --session <session-id>`.
+Ingestion Chunk, and Wiki Page IDs. Replace `$projection` when inspecting a
+retrieval cache created by indexing work. Replace `$session` with the Agent
+Session ID printed by
+`originium acceptance poc fixtures/source-documents/IA-Mining-DG.pdf` or by
+`originium log show --session <session-id>`.
 
 ## Source Documents
 
@@ -132,6 +137,19 @@ Inspect the Chapter Ingestion chunk created for the first POC chapter:
 
 ```sql
 SELECT * FROM $chunk;
+```
+
+Inspect Source Text Projections without treating them as canonical evidence:
+
+```sql
+SELECT id, source_document, source_heading, page_start, page_end, extraction_method, extraction_version, lossy, checksum_sha256, updated_at
+FROM source_text_projection
+WHERE source_document = $source
+ORDER BY page_start ASC, page_end ASC
+LIMIT 50;
+
+SELECT id, source_document, source_heading, page_start, page_end, text, extraction_method, lossy
+FROM $projection;
 ```
 
 ## Source Headings
@@ -218,13 +236,19 @@ SELECT
 FROM $page;
 ```
 
-Inspect the Graph Retrieval candidate surface that should show the POC Wiki
-Page with cited Source Heading evidence:
+Inspect Graph Retrieval candidate surfaces. Surrealist can show the raw
+candidate tables; the CLI/package retrieval workflow owns hybrid scoring and
+graph-aware reranking.
 
 ```sql
 SELECT id, title, slug, body, updated_at, ->cites->source_heading AS cited_evidence
 FROM wiki_page
 ORDER BY updated_at DESC
+LIMIT 20;
+
+SELECT id, source_document, source_heading, page_start, page_end, text, extraction_method
+FROM source_text_projection
+WHERE text CONTAINS "CURWB"
 LIMIT 20;
 ```
 

@@ -12,6 +12,13 @@ _Avoid_: knowledge graph, wiki, RAG index
 A trusted raw document that the Graph Wiki reads from but does not treat as agent-authored synthesis.
 _Avoid_: document, file, reference
 
+**Source Text Projection**:
+A lossy, rebuildable search cache derived from a Source Document for retrieval,
+agent reading, and evidence discovery. It may preserve text, page range,
+heading context, extraction provenance, and embeddings, but it is not canonical
+evidence and must be regenerated when extraction policy changes.
+_Avoid_: canonical text, source copy, evidence record
+
 **Wiki Page**:
 An agent-maintained synthesis record about a topic, entity, question, or other durable subject in the Graph Wiki.
 _Avoid_: markdown page, concept cache
@@ -71,7 +78,9 @@ An agent-created relationship between Wiki Pages, Source Headings, or other grap
 _Avoid_: automatic link, inferred edge
 
 **Graph Retrieval**:
-A query process that combines text or vector relevance with graph connectivity to find authoritative Wiki Pages or Source Headings.
+A query process that over-fetches candidates with SurrealDB full-text and
+vector search, then reranks those candidates with graph connectivity,
+citations, and manual links.
 _Avoid_: RAG, similarity search
 
 **Source Document Page**:
@@ -81,6 +90,8 @@ _Avoid_: file browser, document editor
 ## Relationships
 
 - A **Graph Wiki** contains many **Source Documents** and many **Wiki Pages**.
+- A **Source Document** may have many **Source Text Projections**.
+- A **Source Text Projection** is derived from a **Source Document** and can be rebuilt from it.
 - A **Wiki Page** has one **Page Body**.
 - A **Source Document** has many **Source Anchors**.
 - A **Source Heading** can be used as a **Source Anchor**.
@@ -110,7 +121,18 @@ _Avoid_: file browser, document editor
 - Wiki Page content should not absorb metadata, citations, or links. Resolved: a **Wiki Page** has a **Page Body** for prose synthesis, while citations, metadata, and links live in graph records and relations.
 - Inline citation syntax is a projection concern. Resolved: a **Citation Marker** appears in the Page Body, while the **Citation** graph relation is canonical.
 - Document linking is deliberately agent-driven for the first proof of concept. Resolved: only create **Manual Links** on explicit trigger.
-- Source text is not copied into Wiki Pages or durable wiki records. Resolved: Source Documents stay in file buckets, Source Headings store navigational metadata, and ingestion reads source text from the file when needed.
-- Explicit contradiction modeling is important but deferred until after the first proof of concept.
+- Source text is not copied into Wiki Pages or treated as canonical evidence.
+  Resolved: Source Documents stay in file buckets as immutable evidence;
+  Source Text Projections may store lossy extracted text, page ranges,
+  provenance, and embeddings as rebuildable search caches.
+- Search requests can mean different jobs. Resolved: use **Graph Retrieval**
+  for answer retrieval, concept reuse checks for finding existing Wiki Pages
+  before creating new ones, evidence search for finding Source Headings or
+  Source Text Projections, and graph neighborhood inspection for traversing
+  citations and Manual Links around known records.
+- Explicit contradiction modeling is important but deferred until after the
+  first proof of concept. Resolved: represent contradictions in Wiki Page prose
+  with clear citation markers and graph evidence first; do not hardcode a
+  contradiction schema until real workflows show the needed shape.
 - Agent write controls are intentionally deferred. For the first proof of concept, agents may mutate Graph Wiki state directly, and the **Change Log** is the mitigation mechanism for inspecting and undoing bad agent actions.
 - "log" can mean mutation history, runtime activity, or approval history. Resolved: the **Change Log** remains mutation history, while the **Agent Activity Log** is a human-facing projection of persisted session activity and is not an approval queue.

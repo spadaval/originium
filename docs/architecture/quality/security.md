@@ -4,7 +4,10 @@
 
 - Trusted Source Documents are raw material, not automatically safe output.
 - Do not paste full extracted Source Document body text into logs, beads,
-  prompts, wiki records, change logs, or durable events.
+  prompts, Wiki Pages, Change Logs, durable events, or tracker notes.
+- Source Text Projections may persist extracted text only as lossy, rebuildable
+  search caches with source document ID, page range, extraction provenance, and
+  warning context.
 - Durable records may store stable metadata, source document IDs, source heading
   paths, page ranges, hashes, MIME types, extraction methods, and concise
   diagnostics.

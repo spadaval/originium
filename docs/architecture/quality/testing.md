@@ -27,7 +27,9 @@
 - Keep fixture PDFs small for ordinary tests. Use `fixtures/source-documents/IA-Mining-DG.pdf`
   or other large documents for explicit POC or acceptance validation, not every
   unit test.
-- Tests should not store full extracted source body text in durable wiki records.
+- Tests should not store full extracted source body text in Wiki Pages,
+  canonical evidence records, or durable events. Source Text Projection fixtures
+  should stay bounded, lossy, and tied to source document/page provenance.
 - For citation behavior, fixtures should include both valid marker/relation
   agreement and concrete mismatch cases.
 

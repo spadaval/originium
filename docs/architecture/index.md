@@ -1,6 +1,7 @@
 # Architecture
 
-Originium stores canonical Graph Wiki state in SurrealDB and exposes projections for humans and agents.
+Originium stores canonical Graph Wiki state in SurrealDB and exposes derived
+projections for humans, agents, and retrieval.
 
 ## Start Here
 
@@ -14,26 +15,57 @@ Originium stores canonical Graph Wiki state in SurrealDB and exposes projections
 
 ## Package Ownership
 
-| Area             | Owner                 | Purpose                                                                                                                     |
-| ---------------- | --------------------- | --------------------------------------------------------------------------------------------------------------------------- |
-| Domain language  | `packages/domain`     | Shared Graph Wiki types, IDs, and small pure helpers.                                                                       |
-| SurrealDB access | `packages/surreal`    | Database configuration, schema file references, file-bucket helpers, and shared persistence helpers such as Agent Activity. |
-| PDF ingestion    | `packages/pdf-ingest` | Source Document import and Chapter Ingestion boundaries.                                                                    |
-| CLI              | `apps/cli`            | Local database commands, schema application, ingestion entry points, and agent-facing Graph Wiki query composition.         |
-| Web              | `apps/web`            | TanStack Start shell, host-direct browser/backend seams, and browser-facing Graph Wiki query composition.                   |
-| Schema           | `schema`              | Checked-in SurrealQL definitions.                                                                                           |
+| Area             | Owner                 | Purpose                                                                                                                       |
+| ---------------- | --------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| Domain language  | `packages/domain`     | Shared Graph Wiki types, IDs, and small pure helpers.                                                                         |
+| SurrealDB access | `packages/surreal`    | Database configuration, schema file references, file-bucket helpers, and shared persistence helpers such as Agent Activity.   |
+| PDF ingestion    | `packages/pdf-ingest` | Source Document import, Source Text Projection generation, and Chapter Ingestion boundaries.                                  |
+| CLI              | `apps/cli`            | Local database commands, schema application, ingestion entry points, retrieval workflows, and agent-facing query composition. |
+| Web              | `apps/web`            | TanStack Start shell, host-direct browser/backend seams, and browser-facing Graph Wiki projection/retrieval composition.      |
+| Schema           | `schema`              | Checked-in SurrealQL definitions.                                                                                             |
 
 ## Runtime Summary
 
 1. A Source Document is imported through the CLI.
 2. The PDF binary is stored through SurrealDB file bucket support when configured.
-3. Ingestion reads source text from the stored Source Document and processes one Source Heading or Ingestion Chunk at a time.
-4. Agents write Wiki Pages, Citations, Manual Links, Agent Sessions, and Change Logs into SurrealDB.
-5. During the POC, the CLI renders agent-facing Projections and Surrealist is
+3. Extraction creates Source Headings and may create Source Text Projections:
+   lossy, rebuildable search caches with page ranges, provenance, and retrieval
+   metadata.
+4. Ingestion reads source text through Source Text Projections or one-off
+   projections from the stored Source Document and processes one Source Heading
+   or Ingestion Chunk at a time.
+5. Agents write Wiki Pages, Citations, Manual Links, Agent Sessions, and Change Logs into SurrealDB.
+6. Retrieval uses SurrealDB hybrid candidate search across Wiki Pages, Source
+   Headings, and Source Text Projections, then applies graph-aware reranking
+   from Citation relations, Manual Links, and local graph neighborhoods.
+7. During the POC, the CLI renders agent-facing Projections and Surrealist is
    used for database-management inspection and manual validation.
-6. `apps/web` serves browser-facing route shells and backend seams for Source
+8. `apps/web` serves browser-facing route shells and backend seams for Source
    Documents, Wiki Pages, Agent Sessions, Change Logs, Agent Activity, and PDF
    streaming while downstream epics fill in the interactive workflows.
+
+Source Documents remain immutable canonical evidence. Source Text Projections
+are durable only as derived caches: they may be indexed, embedded, deleted, and
+rebuilt without changing the evidence record. Projection text may lose
+formatting, diagrams, emphasis, tables, layout, and exact reading order, so
+citations still target Source Headings or other Source Anchors rather than
+projection rows.
+
+Retrieval has four separate jobs:
+
+- Concept reuse checks look for existing Wiki Pages before creating new
+  synthesis.
+- Answer retrieval finds synthesized Wiki Page context and follows Citations to
+  evidence.
+- Evidence search inspects Source Headings and Source Text Projections with
+  page-range provenance.
+- Graph neighborhood inspection traverses known records through Citations,
+  Manual Links, Agent Sessions, and nearby Source Headings.
+
+Contradictions should be represented as cited disagreement in Wiki Page prose
+and retrieval output until repeated workflows justify a dedicated contradiction
+record or relation. Do not encode a hardcoded contradiction schema in the first
+retrieval foundation.
 
 ## Single-Host Topology
 
