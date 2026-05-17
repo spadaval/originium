@@ -1,25 +1,24 @@
 ---
 name: agent-factory
-description: "Use for agent-factory work: installing the repo binding, planning bead graphs, orchestrating multi-bead execution, implementing assigned beads, deliberate migration breakage, code review, behavior validation, docs refresh, architecture audit, and Beads tracker hygiene. The orchestrator assigns one role/route per subagent."
+description: "Use for coordinated agent work: installing bindings, planning beads, orchestrating execution, implementing slices, migration, review, validation, docs, audit, and tracker hygiene. The orchestrator assigns one role/route per subagent."
 argument-hint: "[route] [target]"
 user-invocable: true
 ---
 
 # Agent Factory
 
-The agent factory is the role router for coordinated agent work. It keeps
-planning, execution, review, validation, stewardship, and handoff as separate
-responsibilities so agents work from durable repository state instead of
-private chat history.
+The agent factory is the role router for coordinated agent work. It routes
+work to specialized roles so agents operate from durable repository state,
+not private chat history.
 
 ## General Guidelines
 
 - Load `AGENTFACTORY.md` first. It binds this operating model to concrete repo
   paths, commands, checks, and product-specific skills.
 - For delegated work, the orchestrator explicitly assigns one route to each
-  subagent. A subagent should load only the assigned route reference unless the
+  subagent. A subagent loads only the assigned route reference unless the
   assignment says otherwise.
-- Beads are the durable work queue. Use explicit `bd` commands and avoid
+- Beads are the durable work queue. Use explicit `bd` commands. Do not use
   interactive commands such as `bd edit`.
 - Planning and execution are separate concerns. Do not reshape the bead graph
   while implementing unless graph management is the assigned route.

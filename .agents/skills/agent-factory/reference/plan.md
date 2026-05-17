@@ -2,12 +2,12 @@
 
 Use this route when creating, splitting, reparenting, sequencing, clarifying, or
 cleaning up beads. Planning decides what work exists, what is ready, and how
-work should be sequenced. It is not the implementation procedure for a named
+work is sequenced. It is not the implementation procedure for a named
 code bead.
 
 ## Inspect Before Mutating
 
-Start with enough read-only context to avoid duplicate or contradictory graph
+Start with enough read-only context to prevent duplicate or contradictory graph
 changes:
 
 ```bash
@@ -69,7 +69,7 @@ explicit-ID plans.
 
 ## Reshaping Existing Beads
 
-When you touch a weak bead, improve it enough for the next agent. Preserve the
+Improve any weak bead you touch enough for the next agent. Preserve the
 bead ID and human intent where possible.
 
 If meaning changes materially:
@@ -85,6 +85,6 @@ the area you are already managing.
 
 ## Handoff
 
-At handoff, the bead graph should be clearer than when you started. Report
+At handoff, the bead graph must be clearer than when you started. Report
 beads created or changed, dependency changes, validation or lint run, remaining
 ambiguity, and any follow-up decisions needed.

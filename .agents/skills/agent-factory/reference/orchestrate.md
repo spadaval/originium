@@ -70,12 +70,12 @@ while implementing unless that is the assigned work.
 
 ## Subagent Delegation
 
-Assign one coherent owned slice per worker, usually one to three beads. Avoid
-parallel implementation unless write sets are clearly disjoint. Parallel
-read-only exploration, standards validation, or review is usually safe when the
+Assign one coherent owned slice per worker, usually one to three beads. Do not
+run parallel implementation unless write sets are clearly disjoint. Parallel
+read-only exploration, standards validation, or review is safe when the
 questions are separate.
 
-Each worker prompt should include:
+Each worker prompt includes:
 
 - exact bead IDs and parent epic;
 - assigned agent-factory route;
@@ -132,5 +132,5 @@ Before closing an epic:
 - commit remaining tracker backup changes;
 - verify `git status --short --branch` is clean.
 
-Final handoff should name completed epic, commits, closed beads, validation
+Final handoff names completed epic, commits, closed beads, validation
 commands, residual breakage, follow-up beads, and tracker/Dolt status.

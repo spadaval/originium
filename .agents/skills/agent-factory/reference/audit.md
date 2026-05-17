@@ -28,15 +28,14 @@ Audit mode identifies problems, not fixes. For each finding, report:
 - **Value if fixed**: caller knowledge removed, code deleted, changes
   localized, tests improved, agent confusion reduced, or behavior made more
   reliable.
-- **Risk of wrong optimization**: what assumption could make a refactor
-  premature or harmful.
+- **Risk**: what assumption could make a refactor premature or harmful, and
+  what must be learned before shaping work.
 - **Confidence**: high, medium, or low.
-- **Unknowns**: what must be learned before shaping work.
 - **Next step**: no action, spike, decision, docs clarification, ordinary
   implementation bead, demolition, reconnect, or closeout.
 
-Do not force a solution. If several target states are plausible, say that.
-Prefer a spike or decision bead when the solution space is unclear.
+Be specific.
+Recommend an implementation only if a solution is obvious. 
 
 ## Agent Process Audits
 

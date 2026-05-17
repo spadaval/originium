@@ -1,7 +1,7 @@
 # Review
 
 Use this route for independent code review. Code review starts from the diff and
-asks whether the change is well-built. It is not scenario validation.
+judges whether the change is well-built. It is not scenario validation.
 
 ## Sources
 
@@ -25,8 +25,7 @@ Lead with findings ordered by severity. Focus on:
 - architecture or ownership regressions;
 - missing or misleading tests;
 - security, data loss, persistence, concurrency, or lifecycle risk;
-- compatibility shims or legacy paths forbidden by agent-factory migration
-  doctrine;
+- compatibility shims, deprecated wrappers, or legacy paths;
 - docs/code disagreement;
 - validation claims unsupported by evidence.
 
@@ -35,8 +34,8 @@ checks.
 
 ## Evidence
 
-Findings should cite concrete files and lines when possible. Explain why the
-issue matters and what should change. Do not bury findings under a long summary.
+Findings cite concrete files and lines when possible. Explain why the
+issue matters and what to change. Do not bury findings under a long summary.
 
 Use this output shape:
 

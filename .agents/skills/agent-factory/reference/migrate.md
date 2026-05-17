@@ -55,7 +55,7 @@ For reconnect beads:
 - Remove nearby legacy references rather than preserving compatibility paths.
 - File follow-up beads for adjacent breakage outside the owned slice.
 
-Focused validation should prove the reconnected seam and satisfy the bead's
+Focused validation proves the reconnected seam and satisfies the bead's
 acceptance criteria, not the entire migration unless the bead is a closeout.
 
 ## Closeout Rules

@@ -8,9 +8,8 @@ of correctness.
 
 ### Planning
 
-Work is deliberately planned before it is executed. Planning is
-human-in-the-loop: a person or explicitly assigned planning agent shapes scope,
-defines acceptance criteria, and verifies readiness before workers start.
+Work is deliberately planned before it is executed. Planning requires a person or assigned planning agent to shape scope,
+define acceptance criteria, and verify readiness before workers start.
 
 The system does not autonomously discover what to build. It executes what has
 been planned. Scope is the hardest problem. Workers with bounded attention
@@ -28,9 +27,9 @@ Work is not complete until the next agent can continue safely.
 
 Agent work naturally drifts toward convenient local patterns: shallow fixes,
 stale docs, lost scope, debris, and search paths that go off course. The system
-expects this and creates recurring pressure against it.
+expects drift and counteracts it.
 
-A worker owns a coherent slice. Scope should be small enough to finish and
+A worker owns a coherent slice. Scope must be small enough to finish and
 prove, and large enough to repair the real problem.
 
 Claims become trustworthy through proof. Tests, static checks, code review,
@@ -43,23 +42,21 @@ relevant identifier, and actionable reason.
 
 ### Change And Migration
 
-Legacy paths are not preserved by default. Temporary downstream breakage is
+Legacy paths are not preserved. Temporary downstream breakage is
 allowed only when it is named, owned, reconnected, and closed out.
 
 The system evolves when practice exposes better boundaries, missing roles, weak
-proof, or coordination failures. Procedure changes should strengthen these
-commitments; they should not accumulate ceremony.
+proof, or coordination failures. Procedure changes must strengthen these
+commitments; they must not accumulate ceremony.
 
 ## 2. System
 
 ### Systems Thinking
 
-No individual person or agent can know everything about the system. No change
-can be perfectly reasoned against every possible aspect of the system.
+No agent knows the whole system. No change is perfectly safe.
 
-Local improvements can be globally harmful. A change that looks correct in
-isolation may break coordination, obscure intent, or reward drift. Design for
-the whole.
+Local improvements can be globally harmful. Design for the whole system,
+not the local change.
 
 Tasks must be decomposed. Work must be checked and verified.
 
@@ -80,7 +77,7 @@ Agent responsibilities are separated by concern:
 
 Managers spawn workers and validators, then integrate their output. Validators
 judge worker output independently. Stewards highlight problems for managers to
-route. No worker should be the sole validator of its own output when
+route. A worker is never the sole validator of its own output when
 independent validation is expected.
 
 | Branch      | Role                      | Responsibility                                                                              |

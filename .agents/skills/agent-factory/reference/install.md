@@ -10,7 +10,7 @@ paths and commands; it does not negotiate the operating model.
 ## Target Repository Shape
 
 An agent-factory-ready repository has durable places for intent, scope,
-decisions, proof, and handoff. A fresh agent should be able to answer these
+decisions, proof, and handoff. A fresh agent must be able to answer these
 questions without private chat history:
 
 - **What is this repository for?** Product intent names users, purpose, and
@@ -53,7 +53,7 @@ The expected shape is:
 └── .beads/
 ```
 
-Exact names may differ only when `AGENTFACTORY.md` binds the equivalent source
+Exact names differ only when `AGENTFACTORY.md` binds the equivalent source
 clearly. Missing equivalents are installation gaps, not harmless omissions.
 
 ## Start Gate
@@ -140,14 +140,14 @@ concrete files, commands, and product-specific skills.
 - `<name>`: `<path>`
 ```
 
-Delete entries that truly do not exist only after creating a follow-up bead to
-add the missing source. A missing binding is not a silent omission.
+Delete entries only after creating a follow-up bead to add the missing source.
+A missing binding is not a silent omission.
 
 ## Starter Files
 
 When creating starter files, keep them small and useful.
 
-`CONTEXT.md` should define domain language:
+`CONTEXT.md` defines domain language:
 
 ```md
 # Context
@@ -161,7 +161,7 @@ When creating starter files, keep them small and useful.
 - TODO: record terminology decisions that prevent repeated confusion.
 ```
 
-The product intent file should define purpose and user-visible target behavior:
+The product intent file defines purpose and user-visible target behavior:
 
 ```md
 # Product Intent
@@ -179,7 +179,7 @@ TODO: name the users or operators.
 - TODO: list observable behaviors the product must support.
 ```
 
-The docs map should route agents to durable sources:
+The docs map routes agents to durable sources:
 
 ```md
 # Documentation Map
@@ -192,7 +192,7 @@ The docs map should route agents to durable sources:
 - `docs/architecture/quality/`: quality, standards, and validation.
 ```
 
-The validation router should define check ownership:
+The validation router defines check ownership:
 
 ```md
 # Validation
@@ -238,7 +238,7 @@ Ensure agent instructions say:
 - load `AGENTFACTORY.md` for agent-factory bindings;
 - use the `agent-factory` skill for coordinated agent work;
 - orchestrators assign one route per subagent;
-- avoid interactive tracker commands such as `bd edit`.
+- do not use interactive tracker commands such as `bd edit`.
 
 Keep this short. Do not duplicate the route references in `AGENTS.md`.
 
@@ -256,7 +256,7 @@ git diff --check
 ```
 
 If any required source is intentionally deferred, create a bead that names the
-missing source, why it matters, and which route should create it.
+missing source, why it matters, and which route creates it.
 
 ## Handoff
 

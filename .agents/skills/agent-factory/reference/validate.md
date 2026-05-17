@@ -39,12 +39,12 @@ smallest proof that genuinely exercises the scenario:
 - **Scripted validation**: repeatable service, container, CLI, or operator flow.
 - **One-off walkthrough**: exploratory, credential-dependent, provider-dependent,
   expensive, or not-yet-stable behavior.
-- **Static/refactor proof**: public behavior should be preserved; combine
+- **Static/refactor proof**: public behavior is preserved; combine
   targeted tests, type/build checks, residue searches, and representative
   scenario proof where risk warrants it.
 
-For browser-visible behavior, prefer DOM and state assertions. Cover desktop and
-mobile viewports when responsive behavior matters.
+For browser-visible behavior, assert on DOM and state. Cover desktop and
+mobile when responsive behavior matters.
 
 ## Evidence
 
@@ -83,5 +83,5 @@ Before closing a validation bead, confirm acceptance criteria are satisfied or
 explicitly classified. Push tracker state before handoff when bead notes or
 status changed.
 
-Handoff should name the scenario result, evidence, checks or steps run,
+Handoff names the scenario result, evidence, checks or steps run,
 failures, follow-up beads, and deferred validation.

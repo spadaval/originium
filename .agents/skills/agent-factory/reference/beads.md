@@ -20,13 +20,13 @@ bd lint
 bd lint <id>
 ```
 
-Avoid `bd edit`; it opens an interactive editor and can block agents. Use
+Do not use `bd edit`; it opens an interactive editor and blocks agents. Use
 explicit `bd update` flags instead. Use `bd <command> --help` when syntax is
 unclear.
 
 ## Ready Bead Standard
 
-A ready executable bead should answer, without private context:
+A ready executable bead answers, without private context:
 
 - what package, app, workflow, file area, interface, or owner is changing;
 - why the work exists;
@@ -44,24 +44,24 @@ before treating it as executable.
 
 ## Issue Types
 
-`epic` groups related child beads and should name the product, operator, or
-behavior-preservation criteria it must prove. Every epic should end with a
+`epic` groups related child beads and names the product, operator, or
+behavior-preservation criteria it must prove. Every epic ends with a
 `closeout` child when broad validation, cleanup, or handoff is required.
 
-`task`, `feature`, `story`, and `bug` should be executable by one worker
-without hidden planning. They should name owned scope and acceptance criteria
+`task`, `feature`, `story`, and `bug` are executable by one worker
+without hidden planning. They name owned scope and acceptance criteria
 with practical proof.
 
 `validation` starts from a product, operator, live-runtime, browser,
-integration, or behavior-preservation scenario. It should name the proof method,
+integration, or behavior-preservation scenario. It names the proof method,
 required evidence, pass criteria, and failure classification.
 
 `closeout` owns integrated proof, cleanup, and handoff for an epic or phase. It
-should classify every parent epic validation criterion as passed, deferred to a
+classifies every parent epic validation criterion as passed, deferred to a
 named owner, blocked with a concrete reason, or not applicable.
 
-`milestone` marks program progress or a release boundary. It should not own
-executable validation work; it should depend on the closeout beads that prove
+`milestone` marks program progress or a release boundary. It does not own
+executable validation work; it depends on the closeout beads that prove
 the milestone.
 
 `spike` reduces uncertainty. It names the question, bounded evidence expected,
@@ -116,6 +116,5 @@ If Dolt sync fails, stop orchestration and fix tracker state before spawning or
 assigning more work.
 
 The mapped tracker backup/export is the committed backup of Beads state.
-Tracker updates are allowed and expected to update it. Auto-export does not
-stage it; explicitly stage and commit it with related source/docs changes or in
-a tracker-only commit.
+Tracker updates change the export file. Stage and commit it explicitly—either
+with related changes or in a tracker-only commit.
