@@ -1,9 +1,9 @@
 # Plan
 
 Use this route when creating, splitting, reparenting, sequencing, clarifying, or
-cleaning up Originium beads. Planning decides what work exists, what is ready,
-and how work should be sequenced. It is not the implementation procedure for a
-named code bead.
+cleaning up beads. Planning decides what work exists, what is ready, and how
+work should be sequenced. It is not the implementation procedure for a named
+code bead.
 
 ## Inspect Before Mutating
 

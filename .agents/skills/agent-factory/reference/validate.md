@@ -34,9 +34,8 @@ smallest proof that genuinely exercises the scenario:
 
 - **Integration test**: deterministic cross-package, persistence, lifecycle,
   migration, or workflow behavior.
-- **Browser or Playwright validation**: inspection UI state, navigation,
-  interaction, failure rendering, empty states, citation panels, graph
-  neighborhoods, or responsive behavior.
+- **Browser or Playwright validation**: UI state, navigation, interaction,
+  failure rendering, empty states, or responsive behavior.
 - **Scripted validation**: repeatable service, container, CLI, or operator flow.
 - **One-off walkthrough**: exploratory, credential-dependent, provider-dependent,
   expensive, or not-yet-stable behavior.

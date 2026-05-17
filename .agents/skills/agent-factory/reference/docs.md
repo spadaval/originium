@@ -5,12 +5,8 @@ output is reconciling docs with target design, code, beads, or agent process.
 
 ## Source Map
 
-- `CONTEXT.md`: canonical Originium glossary.
-- `SPEC.md`: product purpose, proof-of-concept requirements, UX intent, and
-  user-visible behavior.
-- `docs/architecture/`: runtime topology, ownership, package boundaries,
-  quality, validation, security, reliability, and testing.
-- `docs/adr/`: durable decisions. Current ADRs live here.
+- Use `AGENTFACTORY.md` to find the docs map, domain context, product intent,
+  architecture docs, quality docs, validation router, and ADR directory.
 - Beads: active work, sequencing, phase tags, handoff notes, and migration
   intent.
 
@@ -34,8 +30,8 @@ output is reconciling docs with target design, code, beads, or agent process.
   changes.
 - Update ADRs only for decisions that are hard to reverse, surprising without
   context, and the result of a real trade-off.
-- Update `CONTEXT.md` when domain vocabulary changes or a term is being used
-  inconsistently across docs, beads, and code.
+- Update the mapped domain context when vocabulary changes or a term is being
+  used inconsistently across docs, beads, and code.
 - Update product docs when user-visible behavior, UX principles, or design
   language changes.
 - Update agent docs or skills when process changes. Keep role-specific
@@ -60,10 +56,10 @@ output is reconciling docs with target design, code, beads, or agent process.
 
 ## Verification
 
-Use `docs/architecture/quality/validation.md` as the validation command router.
-For docs-only changes, run focused docs checks. Run additional checks only when
-the docs work also changes scripts, package entrypoints, file names, executable
-behavior, or file-size-sensitive content.
+Use the mapped validation router for check ownership. For docs-only changes,
+run focused docs checks. Run additional checks only when the docs work also
+changes scripts, package entrypoints, file names, executable behavior, or
+file-size-sensitive content.
 
 ## Handoff
 

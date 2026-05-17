@@ -1,9 +1,9 @@
 # Orchestrate
 
-Use this route when acting as the primary orchestrator for an Originium epic or
-multi-bead workstream. The orchestrator selects, shapes, assigns, integrates,
-reviews, checkpoints, and steers. Worker subagents use the route assigned to
-them, not this route.
+Use this route when acting as the primary orchestrator for an epic or multi-bead
+workstream. The orchestrator selects, shapes, assigns, integrates, reviews,
+checkpoints, and steers. Worker subagents use the route assigned to them, not
+this route.
 
 ## Start Gate
 
@@ -61,8 +61,8 @@ while implementing unless that is the assigned work.
    bead, the closeout bead, or an explicit blocked/deferred/not-applicable
    classification.
 5. Shape or close duplicate, vague, or stale beads before implementation starts.
-6. Commit coherent implementation slices with `.beads/issues.jsonl` when the
-   tracker update records the same work.
+6. Commit coherent implementation slices with the mapped tracker backup when
+   the tracker update records the same work.
 7. Use `bd close <id> --reason "..."` for bead completion; use `bd update` for
    field edits and claiming.
 8. Before closeout closes, run residue searches, reconcile docs, run broad
@@ -115,9 +115,9 @@ git add <source/docs/tests>
 git commit -m "<message>"
 ```
 
-When tracker changes update `.beads/issues.jsonl`, stage it explicitly. Before
-assigning the next worker, make sure the previous checkpoint is either committed
-or deliberately reverted.
+When tracker changes update the mapped tracker backup, stage it explicitly.
+Before assigning the next worker, make sure the previous checkpoint is either
+committed or deliberately reverted.
 
 ## Closeout
 

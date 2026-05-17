@@ -1,20 +1,21 @@
 ---
 name: agent-factory
-description: "Use for Originium agent-factory work: planning bead graphs, orchestrating multi-bead execution, implementing assigned beads, deliberate migration breakage, code review, behavior validation, docs refresh, and architecture audit. The orchestrator assigns one role/route per subagent."
+description: "Use for agent-factory work: planning bead graphs, orchestrating multi-bead execution, implementing assigned beads, deliberate migration breakage, code review, behavior validation, docs refresh, architecture audit, and Beads tracker hygiene. The orchestrator assigns one role/route per subagent."
 argument-hint: "[route] [target]"
 user-invocable: true
 ---
 
 # Agent Factory
 
-The agent factory is Originium's role router for coordinated agent work. It
-keeps planning, execution, review, validation, stewardship, and handoff as
-separate responsibilities so agents can work from durable repo state instead of
+The agent factory is the role router for coordinated agent work. It keeps
+planning, execution, review, validation, stewardship, and handoff as separate
+responsibilities so agents work from durable repository state instead of
 private chat history.
 
 ## General Guidelines
 
-- Use `docs/index.md` as the repository knowledge map.
+- Load `AGENTFACTORY.md` first. It binds this operating model to concrete repo
+  paths, commands, checks, and product-specific skills.
 - For delegated work, the orchestrator explicitly assigns one route to each
   subagent. A subagent should load only the assigned route reference unless the
   assignment says otherwise.
@@ -22,8 +23,8 @@ private chat history.
   interactive commands such as `bd edit`.
 - Planning and execution are separate concerns. Do not reshape the bead graph
   while implementing unless graph management is the assigned route.
-- Use the repo docs for code, architecture, validation, product, and quality
-  rules. This skill owns role procedure and coordination mechanics.
+- Use the mapped repo docs for code, architecture, validation, product, and
+  quality rules. This skill owns role procedure and coordination mechanics.
 
 ## Routes
 

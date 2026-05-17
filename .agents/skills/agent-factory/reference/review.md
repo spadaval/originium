@@ -7,11 +7,11 @@ asks whether the change is well-built. It is not scenario validation.
 
 Read the changed files and relevant:
 
-- `AGENTS.md`;
-- `docs/architecture/quality/index.md`;
-- `docs/architecture/quality/standards.md` when code policy matters;
-- `docs/architecture/quality/validation.md` when test or validation coverage is
-  part of the review;
+- the mapped agent instructions;
+- the mapped quality index;
+- the mapped code standards when code policy matters;
+- the mapped validation router when test or validation coverage is part of the
+  review;
 - docs, ADRs, bead acceptance criteria, and expected migration breakage for the
   changed area.
 
@@ -25,7 +25,8 @@ Lead with findings ordered by severity. Focus on:
 - architecture or ownership regressions;
 - missing or misleading tests;
 - security, data loss, persistence, concurrency, or lifecycle risk;
-- compatibility shims or legacy paths forbidden by Originium policy;
+- compatibility shims or legacy paths forbidden by agent-factory migration
+  doctrine;
 - docs/code disagreement;
 - validation claims unsupported by evidence.
 

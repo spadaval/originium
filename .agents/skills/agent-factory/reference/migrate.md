@@ -41,8 +41,9 @@ For demolition beads:
 - Record expected downstream breakage and the reconnect/closeout bead that owns
   it in bead notes or acceptance criteria.
 
-Repo-wide compile or `bun run check` may fail after a valid demolition. Capture
-the exact failure and owning reconnect bead instead of hiding it.
+Broad checks may fail after a valid demolition only when the breakage is named
+and owned. Capture the exact failure and owning reconnect bead instead of hiding
+it.
 
 ## Reconnect Rules
 

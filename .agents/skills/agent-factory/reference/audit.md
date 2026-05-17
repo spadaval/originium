@@ -1,19 +1,18 @@
 # Audit
 
-Use this route to inspect Originium architecture quality, identify
-complexity-fit problems, and record evidence-backed findings without designing
-or implementing refactors.
+Use this route to inspect architecture quality, identify complexity-fit
+problems, and record evidence-backed findings without designing or implementing
+refactors.
 
 Use `implement` or `migrate` only after a bead already describes the problem and
 desired work.
 
 ## Read First
 
-- `docs/architecture/quality/architecture-quality.md` for vocabulary and value
-  tests.
-- `CONTEXT.md` for Originium domain terms.
-- `docs/architecture/index.md` for ownership and dependency direction.
-- Current ADRs under `docs/adr/` for durable decisions.
+- the mapped architecture quality vocabulary for value tests;
+- the mapped domain context for product terms;
+- the mapped architecture index for ownership and dependency direction;
+- the mapped ADR directory for durable decisions.
 
 ## Audit Mode
 
@@ -50,8 +49,8 @@ When auditing agent readiness, evaluate the role interface:
   role-specific procedure.
 
 Flag process findings only when route boundaries are ambiguous, stale,
-overlapping in a way that misroutes work, or inconsistent with `AGENTS.md`,
-current ADRs, or bead notes.
+overlapping in a way that misroutes work, or inconsistent with the mapped agent
+instructions, current ADRs, or bead notes.
 
 ## Value Discipline
 

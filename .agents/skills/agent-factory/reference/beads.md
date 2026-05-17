@@ -1,8 +1,8 @@
 # Beads Reference
 
-Beads is the durable issue tracker for Originium agent work. Use it to preserve
-scope, acceptance criteria, status, follow-up work, dependencies, and handoff
-outside chat.
+Beads is the durable issue tracker for agent work. Use it to preserve scope,
+acceptance criteria, status, follow-up work, dependencies, and handoff outside
+chat.
 
 ## Core Commands
 
@@ -115,7 +115,7 @@ bd lint
 If Dolt sync fails, stop orchestration and fix tracker state before spawning or
 assigning more work.
 
-`.beads/issues.jsonl` is the automated committed backup/export of the tracker.
-Tracker updates are allowed and expected to update this file. Auto-export does
-not stage it; explicitly stage and commit it with related source/docs changes
-or in a tracker-only commit.
+The mapped tracker backup/export is the committed backup of Beads state.
+Tracker updates are allowed and expected to update it. Auto-export does not
+stage it; explicitly stage and commit it with related source/docs changes or in
+a tracker-only commit.

@@ -43,13 +43,14 @@ assigned planning work.
 
 ## Implementation Rules
 
-- Originium is docs-first. Update docs before or alongside code when changing
-  ownership, contracts, runtime flow, architecture, or user-visible behavior.
+- Update mapped docs before or alongside code when changing ownership,
+  contracts, runtime flow, architecture, or user-visible behavior.
 - During active rewrites, docs are the target design unless they are clearly
   stale, contradictory, or incomplete.
-- Refactors do not keep backwards compatibility. Do not add shims, deprecated
-  wrappers, compatibility symlinks, transitional aliases, dual paths, or
-  old-path re-exports.
+- Legacy compatibility is not preserved unless the assigned bead explicitly
+  makes compatibility the deliverable. Do not add shims, deprecated wrappers,
+  compatibility symlinks, transitional aliases, dual paths, or old-path
+  re-exports.
 - Prefer one coherent owned slice over a narrow symptom patch.
 - Bias toward test-driven development for behavior changes, bug fixes, contract
   changes, and non-trivial refactors.
@@ -58,10 +59,9 @@ assigned planning work.
 
 ## Validation
 
-Use `docs/architecture/quality/validation.md` as the validation command router.
-Run the narrowest checks that prove the owned slice and satisfy the bead's
-acceptance criteria. Do not default to the whole suite unless the bead asks for
-it.
+Use the mapped validation router for check ownership. Run the narrowest checks
+that prove the owned slice and satisfy the bead's acceptance criteria. Do not
+default to the whole suite unless the bead asks for it.
 
 If a broader check fails because the repo is intentionally mid-migration,
 record the command, concrete failure shape, and bead expected to reconnect or

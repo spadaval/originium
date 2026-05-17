@@ -1,8 +1,8 @@
 # Agent Constitution
 
-Originium uses agents to execute deliberately planned work. Plausible answers
-are common and easy to produce. Verification is the only reliable signal of
-correctness.
+Agent Factory uses agents to execute deliberately planned work. Plausible
+answers are common and easy to produce. Verification is the only reliable signal
+of correctness.
 
 ## 1. Work
 
@@ -126,4 +126,4 @@ Skills are the primary pulled context for role procedure. In-repo sources are
 primary. External systems may provide coordination context, but they must not be
 the only place durable knowledge lives.
 
-Agent interaction mechanics live in the repo-local agent-factory skill.
+Agent interaction mechanics live in the agent-factory skill.

@@ -15,8 +15,8 @@ bd dolt push          # Push beads data to remote
 ## Originium Agent Process
 
 Use `docs/index.md` as the repository knowledge map. For coordinated agent
-work, use the `agent-factory` repo-local skill. The orchestrator assigns one
-role/route to each subagent.
+work, load `AGENTFACTORY.md` and use the `agent-factory` repo-local skill. The
+orchestrator assigns one role/route to each subagent.
 
 Use the `graph-wiki` repo-local skill for product-specific Graph Wiki CLI
 operation and knowledge-base maintenance.
