@@ -57,6 +57,114 @@ beads before changing meaning or sequencing.
 `bd lint` belongs to orchestration and tracker hygiene. Do not require ordinary
 implementation workers to run it as a start gate.
 
+## Bulk Bead Creation
+
+When creating a planned group of beads with dependencies, use `bd create
+--graph <plan.json>` instead of a long shell one-liner with many nested
+`bd create` command substitutions.
+
+Use graph JSON when any of these are true:
+
+- creating more than three beads at once;
+- assigning parent-child relationships while creating children;
+- adding dependency edges between newly created beads;
+- using labels, priorities, assignees, custom metadata, or metadata references
+  supported by graph plans;
+- wanting the whole graph to be created atomically.
+
+Graph plans support `key`, `title`, `type`, `description`, `assignee`,
+`assign_after_create`, `priority`, `labels`, `metadata`, `metadata_refs`,
+`parent_key`, `parent_id`, and dependency `edges`. They do not currently set
+Beads-native `acceptance_criteria`, `design`, `notes`, due dates, estimates, or
+every field accepted by single-issue `bd create`. When those fields matter,
+choose one of these approaches deliberately:
+
+- put only stable intent and routing context in the graph plan, then update
+  native fields with explicit `bd update <id> --acceptance ... --design ...`
+  commands after creation;
+- use `bd create -f <issues.md>` when native acceptance/design readability
+  matters more than symbolic dependency wiring;
+- use `bd import <issues.jsonl>` only when you intentionally own explicit bead
+  IDs and need a full-fidelity import shape with dependencies.
+
+Prefer this shape:
+
+```json
+{
+  "commit_message": "bd: seed <workstream> graph",
+  "nodes": [
+    {
+      "key": "epic",
+      "title": "Name the outcome",
+      "type": "epic",
+      "priority": 1,
+      "description": "Why this exists...\n\nScope:\n- ...",
+      "labels": ["migration"]
+    },
+    {
+      "key": "first",
+      "title": "First executable bead",
+      "type": "task",
+      "priority": 1,
+      "parent_key": "epic",
+      "description": "Why this exists...\n\nScope:\n- ...\n\nOut of scope:\n- ...\n\nRecommended skill: implement"
+    },
+    {
+      "key": "second",
+      "title": "Second executable bead",
+      "type": "task",
+      "priority": 1,
+      "parent_key": "epic",
+      "metadata_refs": {
+        "depends_on_design_bead": "first"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "from_key": "second",
+      "to_key": "first",
+      "type": "blocks"
+    }
+  ]
+}
+```
+
+Then run:
+
+```bash
+bd create --graph <plan.json> --json
+bd dep cycles
+bd lint
+bd graph <epic-id>
+```
+
+Dependency direction in graph JSON matches `bd dep add <blocked> <blocker>`:
+`from_key` is the bead being blocked, and `to_key` is the prerequisite. In the
+example above, `second` cannot start until `first` is done.
+
+For a large graph, create or generate a temporary JSON plan file, inspect it,
+then apply it. Do not inline multiline descriptions, acceptance criteria, and
+dependency wiring into a single quoted `/bin/zsh -lc ...` command. Giant
+one-liners are hard to review, easy to misquote, and leave poor failure
+boundaries when one bead or dependency is malformed.
+
+Use `bd batch` only for simple bulk operations that fit its narrow grammar:
+`create <type> <priority> <title...>`, `update`, `close`, and `dep add/remove`.
+It is useful for tracker cleanup but not for rich bead creation because it does
+not carry descriptions, acceptance criteria, labels, notes, or parent keys.
+
+Use `bd create -f <issues.md>` only when Markdown readability matters more than
+symbolic wiring. Markdown bulk creation supports sections such as description,
+design, acceptance criteria, assignee, labels, and dependencies, but dependency
+references are existing bead IDs, not symbolic keys for beads created in the
+same plan.
+
+Do not use `bd import` as a casual replacement for graph planning. It is an
+upsert/import path; it is appropriate for generated migrations, backups, and
+explicit-ID plans, not for ordinary agent-created work where `bd` should assign
+fresh IDs.
+
 ## Ready Bead Standard
 
 A ready executable bead should answer, without requiring private context:
