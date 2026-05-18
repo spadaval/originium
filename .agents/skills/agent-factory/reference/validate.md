@@ -1,6 +1,6 @@
 # Validate
 
-Use this route for validation beads, assigned validation scenarios, and
+Use this subskill for validation beads, assigned validation scenarios, and
 scenario-centered closeout checks. Validation starts from the intended behavior,
 not from the diff.
 

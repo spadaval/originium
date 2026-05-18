@@ -1,10 +1,10 @@
 # Install
 
-Use this route to install agent-factory in a repository. Installation creates
+Use this subskill to install agent-factory in a repository. Installation creates
 the concrete repository binding and the minimum durable sources that agents need
 to plan, execute, review, validate, and hand off work.
 
-Do not make doctrine optional. The install route binds the doctrine to concrete
+Do not make the operating model optional. The install subskill binds it to concrete
 paths and commands; it does not negotiate the operating model.
 
 ## Target Repository Shape
@@ -141,7 +141,7 @@ concrete files, commands, and product-specific skills.
 ```
 
 Delete entries only after creating a follow-up bead to add the missing source.
-A missing binding is not a silent omission.
+A missing binding is a defect.
 
 ## Starter Files
 
@@ -237,10 +237,10 @@ Ensure agent instructions say:
 - use Beads for task tracking;
 - load `AGENTFACTORY.md` for agent-factory bindings;
 - use the `agent-factory` skill for coordinated agent work;
-- orchestrators assign one route per subagent;
-- do not use interactive tracker commands such as `bd edit`.
+- orchestrators assign one subskill per subagent;
+- do not use interactive tracker commands (see the agent-factory beads reference for conventions).
 
-Keep this short. Do not duplicate the route references in `AGENTS.md`.
+Keep this short. Do not duplicate the subskill references in `AGENTS.md`.
 
 ## Verification
 
@@ -256,7 +256,7 @@ git diff --check
 ```
 
 If any required source is intentionally deferred, create a bead that names the
-missing source, why it matters, and which route creates it.
+missing source, why it matters, and which subskill creates it.
 
 ## Handoff
 

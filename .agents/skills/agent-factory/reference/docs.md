@@ -1,6 +1,6 @@
 # Docs
 
-Use this route when documentation freshness is the task, or when a bead's main
+Use this subskill when documentation freshness is the task, or when a bead's main
 output is reconciling docs with target design, code, beads, or agent process.
 
 ## Source Map
@@ -13,7 +13,6 @@ output is reconciling docs with target design, code, beads, or agent process.
 ## Staleness Rules
 
 - During active rewrites, docs and current ADRs describe the target design.
-  See `implement.md` for the staleness exception.
 - When docs and code disagree, identify whether code is behind target design or
   docs are stale before editing.
 - Do not leave two competing target states. Update, delete, or clearly mark
@@ -35,7 +34,7 @@ output is reconciling docs with target design, code, beads, or agent process.
 - Update product docs when user-visible behavior, UX principles, or design
   language changes.
 - Update agent docs or skills when process changes. Keep role-specific
-  procedure in route references. Keep design docs focused on principles and
+  procedure in subskill references. Keep design docs focused on principles and
   trade-offs, not step-by-step instructions.
 - Update bead descriptions, acceptance criteria, or notes when docs work
   reveals tracker ambiguity that would mislead the next agent.

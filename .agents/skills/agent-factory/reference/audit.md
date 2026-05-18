@@ -1,6 +1,6 @@
 # Audit
 
-Use this route to inspect architecture quality, identify complexity-fit
+Use this subskill to inspect architecture quality, identify complexity-fit
 problems, and record evidence-backed findings without designing or implementing
 refactors.
 
@@ -35,20 +35,20 @@ Audit mode identifies problems, not fixes. For each finding, report:
   implementation bead, demolition, reconnect, or closeout.
 
 Be specific.
-Recommend an implementation only if a solution is obvious. 
+Recommend an implementation only if a solution is obvious.
 
 ## Agent Process Audits
 
 When auditing agent readiness, evaluate the role interface:
 
-- the orchestrator can assign a clear route to each subagent;
-- the central route table makes role boundaries explicit;
-- route references contain task-specific procedure and constraints;
+- the orchestrator can assign a clear subskill to each subagent;
+- the central subskill table makes role boundaries explicit;
+- subskill references contain task-specific procedure and constraints;
 - shared docs stay focused on repository-wide principles and do not duplicate
   role-specific procedure.
 
-Flag process findings only when route boundaries are ambiguous, stale,
-overlapping in a way that misroutes work, or inconsistent with the mapped agent
+Flag process findings only when subskill boundaries are ambiguous, stale,
+overlapping in a way that misassigns work, or inconsistent with the mapped agent
 instructions, current ADRs, or bead notes.
 
 ## Value Discipline
@@ -63,7 +63,7 @@ drag.
 
 ## Tracker Handoff
 
-When the user asks to record findings, use the `plan` route conventions:
+When the user asks to record findings, use the `plan` subskill conventions:
 
 - create problem beads when the problem is clear enough;
 - create spike beads when evidence or solution space is incomplete;

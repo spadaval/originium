@@ -1,6 +1,6 @@
 # Migrate
 
-Use this route for demolition, reconnect, closeout, and other planned migration
+Use this subskill for demolition, reconnect, closeout, and other planned migration
 work where temporary downstream breakage is named, scoped, and handed off.
 
 ## First Classify The Bead

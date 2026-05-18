@@ -1,9 +1,9 @@
 # Implement
 
-Use this route for ordinary executable beads where the goal is to change code,
+Use this subskill for ordinary executable beads where the goal is to change code,
 tests, or docs for one owned slice.
 
-Do not use this route for graph planning, demolition, breaking migration,
+Do not use this subskill for graph planning, demolition, breaking migration,
 closeout work, independent validation, or read-only review.
 
 ## Start Gate
@@ -73,7 +73,7 @@ Create follow-up beads for bugs, missing validation, cleanup work, decision
 gaps, or newly discovered ordering constraints. Keep the current bead focused
 unless the user explicitly broadens scope.
 
-Do not use `bd edit`; use explicit `bd update` flags.
+Do not use `bd edit`; see [beads.md](beads.md) for tracker command conventions.
 
 ## Handoff
 

@@ -26,11 +26,12 @@ Work is not complete until the next agent can continue safely.
 ### Execution And Proof
 
 Agent work naturally drifts toward convenient local patterns: shallow fixes,
-stale docs, lost scope, debris, and search paths that go off course. The system
-expects drift and counteracts it.
+stale docs, lost scope, debris, and search paths that go off course. The
+agent-factory expects drift and counteracts it through mandatory review,
+validation, and residue checks.
 
-A worker owns a coherent slice. Scope must be small enough to finish and
-prove, and large enough to repair the real problem.
+A worker owns a coherent slice. Scope must be small enough to verify.
+Individual workers do not need to be given enough work to one-shot the problem.
 
 Claims become trustworthy through proof. Tests, static checks, code review,
 behavior validation, and closeout answer different questions and are not
@@ -77,7 +78,7 @@ Agent responsibilities are separated by concern:
 
 Managers spawn workers and validators, then integrate their output. Validators
 judge worker output independently. Stewards highlight problems for managers to
-route. A worker is never the sole validator of its own output when
+assign. A worker is never the sole validator of its own output when
 independent validation is expected.
 
 | Branch      | Role                      | Responsibility                                                                              |

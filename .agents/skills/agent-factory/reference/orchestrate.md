@@ -1,9 +1,9 @@
 # Orchestrate
 
-Use this route when acting as the primary orchestrator for an epic or multi-bead
+Use this subskill when acting as the primary orchestrator for an epic or multi-bead
 workstream. The orchestrator selects, shapes, assigns, integrates, reviews,
-checkpoints, and steers. Worker subagents use the route assigned to them, not
-this route.
+checkpoints, and steers. Worker subagents use the subskill assigned to them, not
+this subskill.
 
 ## Start Gate
 
@@ -78,7 +78,7 @@ questions are separate.
 Each worker prompt includes:
 
 - exact bead IDs and parent epic;
-- assigned agent-factory route;
+- assigned agent-factory subskill;
 - owned files, modules, workflows, or architectural seam;
 - what not to change;
 - whether downstream breakage is expected;
@@ -90,16 +90,15 @@ Each worker prompt includes:
 - instruction to list changed files, checks run, bead state changes, risks, and
   follow-up needs.
 
-Do not delegate the immediate blocker when your next local step depends on its
-answer. Do that work locally or wait intentionally.
+If your next step requires the answer, do it yourself instead of delegating it.
 
 ## Review And Validation
 
-Use the `review` route for high-risk diffs, public contracts, persistence,
+Use the `review` subskill for high-risk diffs, public contracts, persistence,
 security, migrations, broad refactors, and handoffs with uncertainty or skipped
 checks.
 
-Use the `validate` route for scenario-centered proof. Validators answer whether
+Use the `validate` subskill for scenario-centered proof. Validators answer whether
 the intended behavior works; they do not review the diff except as needed to
 understand expected behavior.
 

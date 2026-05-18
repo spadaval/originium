@@ -1,6 +1,6 @@
 # Review
 
-Use this route for independent code review. Code review starts from the diff and
+Use this subskill for independent code review. Code review starts from the diff and
 judges whether the change is well-built. It is not scenario validation.
 
 ## Sources
@@ -51,4 +51,4 @@ Residual Risk
 ```
 
 Reviewers may recommend validation, but they do not close product validation
-unless separately assigned the `validate` route.
+unless separately assigned the `validate` subskill.

@@ -21,8 +21,12 @@ bd lint <id>
 ```
 
 Do not use `bd edit`; it opens an interactive editor and blocks agents. Use
-explicit `bd update` flags instead. Use `bd <command> --help` when syntax is
-unclear.
+explicit `bd update` flags instead.
+
+Use `bd remember` for persistent knowledge that must survive across sessions.
+Do not use MEMORY.md files.
+
+Use `bd <command> --help` when syntax is unclear.
 
 ## Ready Bead Standard
 
@@ -36,7 +40,7 @@ A ready executable bead answers, without private context:
 - what docs or ADRs are relevant, when needed;
 - whether downstream breakage is expected;
 - which bead owns later reconnect or closeout, when breakage is expected;
-- which agent-factory route is recommended, when routing is non-obvious.
+- which agent-factory subskill is recommended, when assignment is non-obvious.
 
 Do not leave vague executable beads in the ready queue. If a bead is too large,
 ambiguous, missing prerequisites, or hiding several deliverables, reshape it
@@ -65,7 +69,7 @@ executable validation work; it depends on the closeout beads that prove
 the milestone.
 
 `spike` reduces uncertainty. It names the question, bounded evidence expected,
-and likely follow-up route.
+and likely follow-up subskill.
 
 `decision` records a durable architecture, domain, or process choice. Update
 relevant docs or ADRs when the decision changes target design.

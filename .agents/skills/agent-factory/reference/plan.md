@@ -1,6 +1,6 @@
 # Plan
 
-Use this route when creating, splitting, reparenting, sequencing, clarifying, or
+Use this subskill when creating, splitting, reparenting, sequencing, clarifying, or
 cleaning up beads. Planning decides what work exists, what is ready, and how
 work is sequenced. It is not the implementation procedure for a named
 code bead.
@@ -46,7 +46,7 @@ Problem or Goal
 ```
 
 A ready bead must answer what, why, in scope, out of scope, how to prove it, and
-which route to load when routing is not obvious.
+which subskill to load when assignment is not obvious.
 
 ## Bulk Bead Creation
 
@@ -69,8 +69,8 @@ explicit-ID plans.
 
 ## Reshaping Existing Beads
 
-Improve any weak bead you touch enough for the next agent. Preserve the
-bead ID and human intent where possible.
+Fix unclear scope, missing acceptance criteria, or stale blockers on any bead you
+edit. Preserve the bead ID and human intent where possible.
 
 If meaning changes materially:
 
@@ -78,7 +78,7 @@ If meaning changes materially:
 - add a note explaining why it changed;
 - adjust parent/blocker links;
 - create follow-up beads for split-out work;
-- add a route recommendation or phase tag when useful.
+- add a subskill recommendation or phase tag when useful.
 
 Do not perform a broad tracker rewrite unless the user asks for one. Improve
 the area you are already managing.

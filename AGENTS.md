@@ -16,12 +16,14 @@ bd dolt push          # Push beads data to remote
 
 Use `docs/index.md` as the repository knowledge map. For coordinated agent
 work, load `AGENTFACTORY.md` and use the `agent-factory` repo-local skill. The
-orchestrator assigns one role/route to each subagent.
+orchestrator assigns one role/subskill to each subagent.
 
 Use the `graph-wiki` repo-local skill for product-specific Graph Wiki CLI
 operation and knowledge-base maintenance.
 
 Shared process docs live in `docs/agent/`.
+
+For tracker command conventions, see the agent-factory beads reference.
 
 ## Non-Interactive Shell Commands
 
