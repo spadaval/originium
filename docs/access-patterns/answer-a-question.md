@@ -7,18 +7,55 @@ evidence, then source search when the maintained graph is incomplete.
 The key decision is whether the answer can be produced from existing graph
 state, or whether the agent should create/update Wiki Pages before answering.
 
+## Agent And CLI Split
+
+The agent decides what would answer the user's question and whether the graph is
+complete enough to answer responsibly. The CLI should provide retrieval,
+evidence inspection, citation validation, and safe write paths when the answer
+reveals reusable missing knowledge.
+
+Agent judgment:
+
+- interpret the user's question and decide what kind of answer is being asked
+  for
+- decide whether existing Wiki Pages are sufficient, stale, too thin, or
+  conflicting
+- decide when to answer directly from source evidence versus creating or
+  updating a Wiki Page first
+- write the final answer with visible confidence, gaps, and source scope
+- avoid mutating learner state or the Domain Model unless the command is
+  explicitly a learning or modeling workflow
+
+CLI responsibility:
+
+- run page, source, citation, frame, and graph-neighborhood retrieval with
+  transparent inputs
+- validate citations for every Wiki Page used in the answer
+- expose stale, missing, broad, or mismatched citations before the answer is
+  trusted
+- create or patch pages through citation-aware commands when durable knowledge
+  is missing
+- run lint and reindexing after any page or citation mutation
+
+The CLI should make the cheap path easy: read page, validate citations, inspect
+neighborhood, answer. It should also make the responsible mutation path
+repeatable when the graph is incomplete.
+
 ## Default Flow
 
 1. Start a session.
-2. Search Wiki Pages and graph retrieval for the question.
-3. Read the strongest Wiki Page candidates.
-4. Validate citations for any page used.
-5. If no adequate Wiki Page exists, search Source Headings and Source Text
+2. CLI searches Wiki Pages, graph retrieval, frames, and neighborhoods for the
+   question.
+3. CLI reads the strongest Wiki Page candidates and citation sets.
+4. CLI validates citations for any page used.
+5. Agent decides whether the existing graph answers the question.
+6. If no adequate Wiki Page exists, CLI searches Source Headings and Source Text
    Projections.
-6. Decide whether to answer directly from source evidence or create/update a
-   Wiki Page first.
-7. If new durable knowledge is created, cite it precisely and run lint.
-8. Answer with the graph's confidence and gaps made visible.
+7. Agent decides whether to answer directly from source evidence or
+   create/update a Wiki Page first.
+8. If new durable knowledge is created, CLI creates precise citations, runs
+   lint, and reindexes changed records.
+9. Agent answers with the graph's confidence and gaps made visible.
 
 ## Case: Existing Page Answers The Question
 
@@ -32,6 +69,13 @@ Expected behavior:
 
 If the question asks for a short factual answer, a page read plus citation
 validation is enough.
+
+CLI support needed:
+
+- an answer-read bundle that returns page body, citation validation status,
+  source locators, and graph neighborhood in one inspectable result
+- citation severity levels so the agent can decide whether a warning blocks the
+  answer
 
 ## Case: Existing Page Exists But Is Too Thin
 
@@ -50,6 +94,13 @@ Expected behavior:
 Do not create a second page for the same topic just because the current page is
 small.
 
+CLI support needed:
+
+- evidence expansion search seeded by an existing Wiki Page
+- page patch tooling that can add a cited claim without invalidating existing
+  markers
+- post-patch lint and retrieval reindexing
+
 ## Case: No Wiki Page Exists But Source Evidence Exists
 
 Expected behavior:
@@ -67,6 +118,13 @@ The threshold for creating a page should be lower when:
 - the answer introduces a new concept, requirement, procedure, or architecture
 - the answer will need multiple citations
 
+CLI support needed:
+
+- source-to-page promotion that starts from selected Source Headings,
+  projection snippets, or page locators
+- citation-aware page creation that fails if the cited source locator cannot be
+  validated
+
 ## Case: Source Document Is Missing
 
 Expected behavior:
@@ -80,6 +138,11 @@ Expected behavior:
 The Graph Wiki answer path should not silently fall back to uncited model
 knowledge.
 
+CLI support needed:
+
+- corpus/source search that clearly distinguishes missing sources, imported but
+  unindexed sources, and indexed sources with no matching evidence
+
 ## Case: Source Exists But Evidence Search Is Inconclusive
 
 Expected behavior:
@@ -90,6 +153,12 @@ Expected behavior:
 - avoid creating speculative pages
 
 This is a retrieval gap, not a reason to invent graph structure.
+
+CLI support needed:
+
+- search trace output that records queries, filters, candidate scores, and
+  rejected near misses
+- a follow-up issue or proposal command for missing retrieval coverage
 
 ## Case: Existing Graph Knowledge Appears Incorrect
 
@@ -104,6 +173,11 @@ Expected behavior:
 If the page body and citations disagree, answer from the cited source evidence
 and flag the page as stale.
 
+CLI support needed:
+
+- stale-page lint comparing page claims, citation claims, and citation targets
+- page patch or correction tooling that preserves old evidence in the change log
+
 ## Case: Evidence Conflicts Across Sources
 
 Expected behavior:
@@ -114,6 +188,12 @@ Expected behavior:
 - create a maintenance task if this should become durable contradiction state
 
 The answer should make conflict visible.
+
+CLI support needed:
+
+- conflict notes or contradiction records linked to the affected claims and
+  citations
+- retrieval display that groups evidence by source scope, date, and confidence
 
 ## Case: The Question Is Procedural
 
@@ -131,6 +211,12 @@ Expected behavior:
 - do not convert the procedure into a concept unless there is a separate concept
   worth teaching or retrieving
 
+CLI support needed:
+
+- procedure-aware retrieval that preserves step order and warning context
+- citation tooling that can attach locators to individual steps instead of only
+  the whole procedure page
+
 ## Case: The Question Asks For Learning Guidance
 
 Expected behavior:
@@ -141,6 +227,13 @@ Expected behavior:
   workflow
 - if a learning path requires missing prerequisites, create proposals or
   maintenance notes rather than asserting unsupported prerequisite edges
+
+CLI support needed:
+
+- learning-read commands that inspect teachable concept structure separately
+  from answer retrieval
+- proposal commands for prerequisite or sequencing edges that are not yet
+  source-supported
 
 ## Outputs
 

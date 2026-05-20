@@ -7,14 +7,46 @@ The goal is not to create a Wiki Page for every heading. The goal is to promote
 high-value concepts, requirements, procedures, architectures, components, and
 use cases into durable graph records with precise enough evidence to audit.
 
+## Agent And CLI Split
+
+The agent decides what the source material means and what deserves durable
+promotion. The CLI should perform the exact source lookup, page matching,
+citation construction, validation, and index updates.
+
+Agent judgment:
+
+- identify candidate knowledge objects in the page or chapter
+- decide whether each candidate is durable knowledge, evidence-only reference
+  material, or noise
+- choose the best existing frame or propose a new one when the material does
+  not fit
+- decide whether to update an existing Wiki Page, create a new page, or leave
+  the material in source inventory
+- write the synthesis and explain uncertainty or conflicts
+
+CLI responsibility:
+
+- locate the Source Document, Source Heading, page range, projection, and text
+  hash for the material being read
+- search candidate Wiki Pages and aliases before writes
+- create citations from source locators and validate that markers, graph edges,
+  page ranges, quotes, and projections agree
+- lint the changed page, citation set, links, frame assignment, and source
+  projection coverage
+- reindex changed pages and projections after writes
+
+The agent should not manually assemble citation records beyond supplying the
+source locator, supported claim, and selected excerpt. The CLI should turn that
+input into a validated Citation edge and locator payload.
+
 ## Default Flow
 
-1. Identify the source context:
+1. CLI identifies or verifies the source context:
    - Source Document
    - containing Source Heading
    - page range being read
    - Source Text Projection or ingestion chunk, if available
-2. Extract candidate knowledge objects:
+2. Agent extracts candidate knowledge objects:
    - source-backed concepts
    - requirement sets
    - use cases
@@ -22,21 +54,24 @@ use cases into durable graph records with precise enough evidence to audit.
    - procedures
    - technology components
    - examples or evidence-only material
-3. Search existing Wiki Pages and aliases before creating anything.
-4. Decide whether each candidate should become:
+3. CLI searches existing Wiki Pages, aliases, frames, and nearby graph records
+   before creating anything.
+4. Agent decides whether each candidate should become:
    - a new Wiki Page
    - an update to an existing Wiki Page
    - a citation on an existing page
    - a Manual Link or proposed semantic edge
    - no durable graph object yet
-5. Capture citation-local evidence:
+5. CLI creates citation-local evidence records from agent-supplied locator
+   input:
    - Source Heading target
    - page range
    - claim being supported
    - short quote or normalized excerpt when available
    - context before/after when useful
    - Source Text Projection ID and text hash when available
-6. Run graph lint or citation validation for the changed records.
+6. CLI runs graph lint, citation validation, and reindexing for changed
+   records.
 
 ## Case: Source Document Does Not Exist
 
@@ -50,6 +85,12 @@ Expected behavior:
 - if import is out of scope, report that the graph cannot yet cite the source
 - do not create placeholder citations to nonexistent records
 
+CLI support needed:
+
+- `source find` by file path, title, fingerprint, and corpus
+- `source import` with clear trust/corpus metadata
+- `source headings` with page coverage reporting
+
 This is a hard stop for source-backed claims.
 
 ## Case: Source Document Exists But Headings Are Missing
@@ -62,6 +103,13 @@ Expected behavior:
 - verify page coverage before creating citations
 - if headings cannot be extracted, create a concrete follow-up issue or report
   the operation and failure reason
+
+CLI support needed:
+
+- heading extraction that reports missing page ranges, duplicate headings, and
+  extraction confidence
+- a lint rule that blocks heading-backed citations when no heading covers the
+  cited page
 
 Do not cite the whole Source Document as a substitute unless the CLI explicitly
 supports document-level citations and the source is very short.
@@ -98,6 +146,13 @@ Expected behavior:
 Lint should warn when a multi-page heading citation has no page range or
 locator.
 
+CLI support needed:
+
+- a `cite` flow that accepts a Source Heading plus page, paragraph, or quote
+  locator and produces the citation payload
+- a citation narrowing command that upgrades broad citations when the agent
+  later supplies a better locator
+
 ## Case: The Candidate Topic Already Has A Wiki Page
 
 The agent should update the existing page rather than create a duplicate.
@@ -112,6 +167,13 @@ Expected behavior:
 
 If the existing page has the wrong scope, prefer a maintenance action: split,
 rename, or add a scope note.
+
+CLI support needed:
+
+- page candidate search tuned for reuse, not just answer retrieval
+- page patch support that preserves citation markers and validates the resulting
+  Citation edge set
+- duplicate warnings when a new title or alias overlaps an existing page
 
 ## Case: The Candidate Is A New Concept
 
@@ -130,6 +192,12 @@ Expected behavior:
 
 The agent should not automatically add prerequisites or contrast edges unless
 the source supports them.
+
+CLI support needed:
+
+- concept or page creation that requires a scope note, aliases, frame assignment
+  or frame proposal, and at least one citation for source-backed claims
+- citation validation before the page becomes eligible for retrieval ranking
 
 ## Case: The Candidate Is Not A Concept
 
@@ -151,6 +219,12 @@ Expected behavior:
 - otherwise leave it as source evidence and add frame metadata/proposals later
 - do not force everything into `page_kind = concept`
 
+CLI support needed:
+
+- frame search and frame examples so the agent can compare candidate roles
+- evidence-only annotation or proposal commands for useful source regions that
+  should not become teachable Wiki Pages yet
+
 ## Case: Source Material Contradicts Or Revises Existing Graph Knowledge
 
 Expected behavior:
@@ -162,6 +236,13 @@ Expected behavior:
 
 Until contradiction modeling exists, the page body should say the graph contains
 conflicting or newer evidence.
+
+CLI support needed:
+
+- conflict lint that detects incompatible claims or competing citations when the
+  agent flags a contradiction
+- contradiction or supersession note creation that does not require immediately
+  changing the Domain Model
 
 ## Outputs
 

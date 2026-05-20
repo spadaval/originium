@@ -8,6 +8,38 @@ Maintenance differs from ordinary indexing or question answering. The agent is
 allowed to change structure, but should make each structural decision explicit
 and auditable.
 
+## Agent And CLI Split
+
+The agent decides what structural change should happen and why. The CLI should
+execute the graph refactor, preserve evidence, update indexes, and prove the
+result is coherent.
+
+Agent judgment:
+
+- choose the maintenance target and explain why it matters
+- decide whether two pages are duplicates, adjacent concepts, parent/child
+  scopes, or legitimately separate records
+- decide whether a weak pattern is a data cleanup issue or evidence that the
+  Domain Model needs to evolve
+- define frame boundaries, examples, non-examples, slots, and relation semantics
+- review lint failures and decide which repairs are semantically correct
+
+CLI responsibility:
+
+- inspect affected neighborhoods, citations, aliases, inbound links, outbound
+  links, projections, and embeddings
+- perform refactors atomically where possible: merge, split, rename, retarget,
+  rebuild, and reindex
+- preserve old identifiers, redirects, aliases, citation provenance, and change
+  logs
+- run before/after lint and produce concrete diffs of graph changes
+- prevent destructive edits when cited claims would be orphaned or citations
+  would be invalidated
+
+The agent should not manually rewrite a large graph neighborhood. It should ask
+the CLI for a proposed refactor plan, approve or adjust the semantic choices,
+then let the CLI execute and validate the mechanical work.
+
 ## Default Flow
 
 1. Choose a maintenance target:
@@ -18,16 +50,19 @@ and auditable.
    - unframed records
    - confusing page scope
    - repeated unknown source shapes
-2. Inspect the affected records and their neighborhoods.
-3. Validate citations before moving or deleting claims.
-4. Decide whether the issue is:
+2. CLI inspects the affected records, neighborhoods, citations, aliases,
+   projections, embeddings, and lint state.
+3. CLI validates citations before moving or deleting claims.
+4. Agent decides whether the issue is:
    - a graph data cleanup
    - a citation locator cleanup
    - a page merge/split
    - a Domain Model/frame change
    - an extraction/indexing problem
-5. Apply the smallest change that makes the graph more coherent.
-6. Run lint and record the maintenance action.
+5. CLI proposes the smallest refactor plan that makes the graph more coherent.
+6. Agent approves, rejects, or revises semantic choices in the plan.
+7. CLI applies the refactor, reruns lint, reindexes changed records, and records
+   the maintenance action.
 
 ## Case: Duplicate Or Overlapping Wiki Pages
 
@@ -42,6 +77,15 @@ Expected behavior:
 
 Do not delete a page until its cited claims are either migrated or explicitly
 discarded as invalid.
+
+CLI support needed:
+
+- duplicate detection with title, alias, body, citation, and neighborhood
+  signals
+- `page merge` that moves citation markers and Citation edges, migrates aliases,
+  rewrites Manual Links, creates redirects when supported, and reindexes the
+  survivor
+- dry-run output showing claims, citations, aliases, and links that will move
 
 ## Case: Page Scope Is Wrong
 
@@ -58,6 +102,13 @@ Expected behavior:
 This is graph cleanup, not Domain Model evolution, unless the existing frames
 cannot represent the corrected scope.
 
+CLI support needed:
+
+- `page split` or claim-move tooling that preserves citations with the claims
+  they support
+- frame reassignment with lint explaining why the old and new frames differ
+- redirect or alias migration when titles change
+
 ## Case: Manual Link Is Weak Or Vague
 
 Current example: a Manual Link with reason `related` is linted as weak.
@@ -72,6 +123,14 @@ Expected behavior:
 
 If a needed label is missing repeatedly, create a Domain Model or relation
 vocabulary proposal rather than inventing ad hoc labels.
+
+CLI support needed:
+
+- link lint that flags vague labels and missing reasons
+- relation-label search showing allowed labels, definitions, examples, and
+  non-examples
+- link rewrite tooling for replacing or removing weak links across a selected
+  neighborhood
 
 ## Case: Citation Is Too Broad
 
@@ -89,6 +148,14 @@ Expected behavior:
 Promote evidence into a reusable evidence object only when it has independent
 value across multiple pages, claims, or maintenance workflows.
 
+CLI support needed:
+
+- citation lint for missing page range, missing claim, missing quote/context,
+  projection mismatch, and over-broad heading targets
+- citation narrowing that updates locator fields without changing the supported
+  claim
+- bulk reports sorted by citation risk and retrieval impact
+
 ## Case: Citation Is Incorrect Or Stale
 
 Expected behavior:
@@ -102,6 +169,13 @@ Expected behavior:
 - repair the locator or citation target rather than weakening evidence
 
 If the source no longer supports the claim, remove or rewrite the claim.
+
+CLI support needed:
+
+- citation repair commands that retarget citations, update locators, or mark a
+  claim unsupported
+- page-body/citation reconciliation so marker edits cannot leave dangling
+  Citation edges
 
 ## Case: Source Extraction Is Wrong
 
@@ -122,6 +196,13 @@ Expected behavior:
 
 This should usually be a maintenance task, not part of answer generation.
 
+CLI support needed:
+
+- extraction lint that finds headings without documents, missing page coverage,
+  duplicate headings, stale projections, and missing embeddings
+- rebuild commands for projections and embeddings with before/after hashes and
+  affected retrieval records
+
 ## Case: Records Are Unframed
 
 When Domain Model tools exist, maintenance should identify high-value unframed
@@ -136,6 +217,13 @@ Expected behavior:
 - avoid bulk-framing all headings just because the title matches a keyword
 
 Frame assignment is a semantic claim and should be auditable.
+
+CLI support needed:
+
+- frame candidate search with examples and non-examples
+- bulk frame-assignment dry runs that show confidence, evidence, and affected
+  lint rules before mutation
+- proposal creation when confidence is low
 
 ## Case: Existing Frame Fits Poorly
 
@@ -161,6 +249,13 @@ Change the Domain Model when:
 If uncertain, create a frame proposal. Do not silently change the active Domain
 Model during unrelated question answering.
 
+CLI support needed:
+
+- frame proposal commands that attach concrete graph examples, non-examples,
+  expected slots, allowed edges, and affected lint behavior
+- model-impact reports showing which pages, headings, links, citations, and
+  retrieval queries would change if the proposal is accepted
+
 ## Case: Frame Or Relation Vocabulary Needs Tightening
 
 Expected behavior:
@@ -174,6 +269,15 @@ Expected behavior:
 
 Domain Model changes should be versioned and reviewed like architecture
 decisions, not treated as incidental metadata edits.
+
+CLI support needed:
+
+- Domain Model versioning, migration dry runs, and accepted/rejected proposal
+  history
+- frame/relation lint that can run against both the current model and a proposed
+  model
+- migration tooling that reclassifies instances, rewrites labels, and records
+  the old semantics for audit
 
 ## Outputs
 

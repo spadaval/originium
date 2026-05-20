@@ -10,6 +10,60 @@ Wiki Pages, Citations, and Manual Links. The access patterns should therefore
 optimize for disciplined promotion from source material into durable graph
 knowledge.
 
+## Agent And CLI Split
+
+The agent should provide judgment. The CLI should provide precise, repeatable
+graph operations.
+
+The agent is responsible for:
+
+- deciding whether material is important enough to promote from source evidence
+  into Wiki Pages
+- choosing the semantic role of a candidate record, such as concept, procedure,
+  requirement set, reference architecture, technology component, or
+  evidence-only reference material
+- deciding when an existing page is the right home for a claim versus when the
+  graph needs a split, merge, redirect, or frame proposal
+- explaining uncertainty, conflict, missing evidence, and scope decisions to the
+  user
+- proposing Domain Model changes when repeated graph examples no longer fit the
+  active model
+
+The CLI is responsible for:
+
+- finding candidate pages, headings, projections, citations, links, frames, and
+  neighborhoods without relying on the agent's memory
+- creating citations from source locators with stable validation fields instead
+  of expecting the agent to hand-write perfect citation records
+- linting pages, citations, links, frames, and source projections before and
+  after mutation
+- performing refactors such as page merge, page split, alias migration, citation
+  retargeting, link rewrites, projection rebuilds, and embedding reindexing
+- recording concrete change logs for every read, write, lint result, and
+  refactor
+
+The practical rule is: if an operation requires semantic judgment, the agent
+decides; if an operation requires exact graph mutation, citation precision,
+index consistency, or repeated validation, the CLI must own it.
+
+## CLI Affordance Families
+
+These access patterns imply a few high-leverage CLI families:
+
+- Search tools: page candidate search, evidence search, frame/role search,
+  graph-neighborhood search, duplicate detection, and projection lookup.
+- Citation tools: create a citation from a source locator, validate citation
+  markers, narrow a broad heading citation, retarget citations during page
+  refactors, and report unsupported claims.
+- Lint tools: page lint, citation lint, link lint, frame lint, source extraction
+  lint, stale projection lint, and graph consistency lint.
+- Refactor tools: merge pages, split pages, rename pages, move claims between
+  pages, migrate aliases, rewrite Manual Links, retarget citations, rebuild
+  projections, and reindex embeddings.
+- Proposal tools: create frame proposals, relation-label proposals, unresolved
+  evidence notes, contradiction notes, and follow-up maintenance issues without
+  mutating the active model prematurely.
+
 ## Patterns
 
 - [Read And Index Source Material](read-and-index-source-material.md): process a
