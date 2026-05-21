@@ -63,7 +63,8 @@ payload or projection metadata, but they should not be Citation targets.
    - a new Wiki Page
    - an update to an existing Wiki Page
    - a citation on an existing page
-   - a Manual Link when explicit navigation is useful
+   - an inline Wiki Page Reference when navigation to another Wiki Page is
+     useful
    - no durable graph object yet
 5. CLI creates citation-local evidence records from agent-supplied locator
    input:
@@ -259,7 +260,7 @@ A successful indexing pass may produce:
 
 - new or updated Wiki Pages
 - new Citations with precise locators
-- Manual Links only when explicit navigation is useful
+- inline Wiki Page References only when page navigation is useful
 - frame assignments or frame proposals
 - follow-up maintenance issues for extraction failures, duplicates, or unclear
   scope
@@ -270,4 +271,7 @@ It should not produce:
 - duplicate pages for the same concept
 - broad Source Document citations without locator fields when page-local
   evidence is known
+- Wiki Page References in Citation footnote sections or as substitutes for
+  Source Document Citations
+- new generic Manual Links as semantic graph edges
 - frame catalog changes unless a repeated shape cannot fit existing frames

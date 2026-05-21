@@ -43,16 +43,20 @@ Sparse metadata on a Source Document or Wiki Page whose expected slots are descr
 _Avoid_: arbitrary JSON blob, Page Body frontmatter
 
 **Page Body**:
-The prose synthesis of a Wiki Page, separate from citations, metadata, and graph links.
+The prose synthesis of a Wiki Page, separate from citation targets and metadata.
 _Avoid_: content object, markdown file
 
 **Citation**:
-A relationship from wiki synthesis back to one or more Source Documents that support it, with citation-local locator metadata when needed.
+A relationship from wiki synthesis back to one or more Source Documents that support it, with citation-local locator metadata when needed. Citations target Source Documents only; Source Text Projections, Wiki Pages, and page references are not evidence targets.
 _Avoid_: reference, link
 
 **Citation Marker**:
-A stable inline marker in a Page Body that points to a Citation graph relation.
-_Avoid_: raw source address, inline reference
+A stable keyed footnote-style marker in a Page Body, such as `[^fm1000-enclosure]`, that points to a Citation graph relation. Numbered footnotes are only a Projection concern.
+_Avoid_: raw source address, inline reference, numbered canonical footnote
+
+**Wiki Page Reference**:
+An inline Page Body link to another Wiki Page, such as `[[Autonomous Operations]]` or `[[Autonomous Operations|autonomous operations]]`. Wiki Page References are navigation and synthesis context, not evidence.
+_Avoid_: citation, evidence link, semantic graph edge
 
 **Projection**:
 A rendered view of graph data for humans or agents, such as markdown-like text generated from Wiki Pages and their linked records.
@@ -85,13 +89,17 @@ A token-budgeted slice of a Source Document processed as one agent-readable unit
 _Avoid_: arbitrary chunk, page batch
 
 **Manual Link**:
-An agent-created navigational relationship between durable graph records, created only when explicitly requested and never used as evidence support.
-_Avoid_: automatic link, inferred edge, related evidence
+Deprecated generic graph edge for ad hoc navigation. New Wiki Page-to-Wiki Page navigation should use inline Wiki Page References, and new semantic edges should wait for governed Domain Relations.
+_Avoid_: automatic link, inferred edge, related evidence, semantic relation
+
+**Domain Relation**:
+A future governed semantic graph edge with a typed predicate, evidence, review status, and lint rules. Domain Relations are not generic Manual Links.
+_Avoid_: manual link, related edge, inferred semantic link
 
 **Graph Retrieval**:
 A query process that over-fetches candidates with SurrealDB full-text and
 vector search, then reranks those candidates with graph connectivity,
-citations, and manual links.
+citations and governed page/reference signals.
 _Avoid_: RAG, similarity search
 
 **Source Document Page**:
@@ -108,6 +116,7 @@ _Avoid_: file browser, document editor
 - A **Wiki Page** may have a **Frame Assignment** and sparse **Frame Metadata**.
 - A **Wiki Page** uses **Citations** to point to supporting **Source Documents**.
 - A **Page Body** may contain Citation Markers, but Citation targets live in graph relations.
+- A **Page Body** may contain **Wiki Page References** to other Wiki Pages, but those references are not evidence.
 - A **Domain Frame** defines advisory metadata slots but does not block ingestion or page creation.
 - A **Projection** is derived from graph state and is not the canonical source of truth.
 - An **Agent Session** writes one or more **Change Log** entries.
@@ -116,7 +125,8 @@ _Avoid_: file browser, document editor
 - A **Change Log** entry describes one mutation to Graph Wiki state.
 - **Source Document Ingestion** creates per-page Source Text Projections for paginated Source Documents.
 - **Source Document Ingestion** may use **Ingestion Chunks** sized to a practical agent context budget.
-- A **Manual Link** may connect Wiki Pages or other graph records.
+- A **Manual Link** is deprecated for new semantic graph structure.
+- A future **Domain Relation** may connect graph records only under governed typed-predicate rules.
 - **Graph Retrieval** ranks graph records using both relevance and graph authority.
 - A **Source Document Page** shows many **Source Documents** and can render the selected Source Document as a human reading Projection.
 
@@ -128,13 +138,14 @@ _Avoid_: file browser, document editor
 ## Flagged Ambiguities
 
 - "document" can mean raw trusted material or agent-authored synthesis. Resolved: use **Source Document** for raw trusted material and **Wiki Page** for synthesis.
-- "reference" can mean source metadata, a citation, or a graph edge. Resolved: use **Citation** for the relationship from synthesis to Source Document evidence, and keep precise location data as citation-local locator metadata.
+- "reference" can mean source metadata, a citation, an inline page link, or a graph edge. Resolved: use **Citation** for the relationship from synthesis to Source Document evidence, **Wiki Page Reference** for inline links between Wiki Pages, and future **Domain Relation** for governed semantic edges.
 - Extracted headings or sections are not domain concepts. Resolved: keep
   document structure as locator/projection metadata rather than graph records;
   store paginated source text as per-page **Source Text Projections**.
-- Wiki Page content should not absorb metadata, citations, or links. Resolved: a **Wiki Page** has a **Page Body** for prose synthesis, while citations, frame metadata, and links live in graph records and relations.
-- Inline citation syntax is a projection concern. Resolved: a **Citation Marker** appears in the Page Body, while the **Citation** graph relation is canonical.
-- Document linking is deliberately agent-driven for the first proof of concept. Resolved: only create **Manual Links** on explicit trigger, and do not use them for evidence support.
+- Wiki Page content should not absorb metadata or citation targets. Resolved: a **Wiki Page** has a **Page Body** for prose synthesis and inline **Wiki Page References**, while citations and frame metadata live in graph records and relations.
+- Inline citation rendering is a projection concern. Resolved: a keyed **Citation Marker** appears in the Page Body, while the **Citation** graph relation is canonical; numbered footnotes may be rendered from keys but are not canonical identifiers.
+- Internal Wiki Page links are not evidence. Resolved: a **Wiki Page Reference** may appear inline in the Page Body, but it must not appear in a Citation footnote section and must not substitute for a Citation. If a page relies on another Wiki Page's evidence, cite the underlying Source Document directly.
+- Generic linking is too ambiguous for semantic graph structure. Resolved: current **Manual Links** are disabled or deprecated for new semantic graph edges; future semantic edges belong in governed **Domain Relations** with typed predicates, evidence, review status, and lint rules.
 - Source text is not copied into Wiki Pages or treated as canonical evidence.
   Resolved: Source Documents stay in file buckets as immutable evidence;
   Source Text Projections may store lossy extracted page text, page numbers,
@@ -151,7 +162,8 @@ _Avoid_: file browser, document editor
   for answer retrieval, concept reuse checks for finding existing Wiki Pages
   before creating new ones, evidence search for finding Source Documents or
   Source Text Projections, and graph neighborhood inspection for traversing
-  citations and Manual Links around known records.
+  citations, Wiki Page References, and future governed Domain Relations around
+  known records.
 - Explicit contradiction modeling is important but deferred until after the
   first proof of concept. Resolved: represent contradictions in Wiki Page prose
   with clear citation markers and graph evidence first; do not hardcode a

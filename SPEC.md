@@ -20,8 +20,14 @@ a CLI.
 - Source Documents are trusted evidence. Wiki Pages are agent-authored synthesis.
 - Source Text Projections are lossy, rebuildable search caches. They improve
   retrieval but never replace the Source Document as evidence.
-- Citations use graph relations. Page prose may contain citation markers, but source targets do not live as raw inline addresses.
-- Links are explicit. Agents create semantic links only when asked to do so.
+- Citations use graph relations that target Source Documents only. Page prose
+  may contain keyed citation markers, but source targets do not live as raw
+  inline addresses.
+- Wiki Page References are inline Page Body links between Wiki Pages. They are
+  navigation and synthesis context, not evidence.
+- Generic Manual Links are disabled or deprecated for new semantic graph edges.
+  Future semantic edges must be governed Domain Relations with typed predicates,
+  evidence, review status, and lint rules.
 - The system should prefer simple records first, then split them only when real workflows demand more structure.
 - Agent writes are allowed for the POC. Safety comes from access/edit logging and the ability to ask an agent to inspect and undo another agent's work.
 - Technical failures should be concrete: include operation, input identifier, and actionable reason.
@@ -107,7 +113,7 @@ Use schemafull SurrealDB tables for core records and relations:
 - `change_log`
 - `agent_activity`
 - `cites`
-- `manual_link`
+- `manual_link` for legacy/deprecated disposable POC data only
 - `edited_in`
 
 Use flexible metadata objects only where the input is inherently extractor-,
@@ -234,7 +240,9 @@ Initial fields:
 - `created_at`
 - `updated_at`
 
-`body` is markdown-ish prose for humans and LLMs. It should not contain canonical source addresses, metadata, link objects, or citation targets.
+`body` is markdown-ish prose for humans and LLMs. It should not contain
+canonical source addresses, metadata, link objects, or citation targets. It may
+contain Citation Markers and inline Wiki Page References.
 
 Wiki Page semantic role is owned by frame assignment, not by a small
 `page_kind` enum. Frame metadata should stay sparse and graph-owned; Page Body
@@ -263,13 +271,31 @@ string, string list, date, boolean, number, and controlled string values. Slots
 can be required, recommended, or optional. Unknown slots should be reportable by
 lint/validation, but frame metadata remains advisory by default.
 
-Citation markers in `body` should look like ordinary footnote-style markers:
+Citation markers in `body` should use keyed footnote-style markers:
 
 ```md
 The FM 1000 features a ruggedized enclosure [^fm1000-enclosure].
 ```
 
-The marker is only a handle. The canonical citation target is a graph relation.
+The marker is only a handle. The canonical citation target is a graph relation
+from the Wiki Page to a Source Document. Renderers may project keyed citation
+markers into numbered footnotes, but numbering is never canonical graph state.
+
+Wiki Page References in `body` should use inline page-link syntax:
+
+```md
+The enclosure requirements are relevant to [[Autonomous Operations]].
+The same pattern appears in [[Autonomous Operations|autonomous mining operations]].
+```
+
+Wiki Page References are not evidence and must not appear in Citation footnote
+sections. If a page relies on evidence summarized by another Wiki Page, cite the
+underlying Source Document directly:
+
+```md
+Correct: CURWB systems target autonomous operations [^curwb-autonomy]. See [[Autonomous Operations]] for synthesis.
+Incorrect: CURWB systems target autonomous operations [^autonomous-operations-page].
+```
 
 ## Record Identity
 
@@ -292,7 +318,9 @@ Use Surreal graph relations for relationships that need metadata.
 
 ### `cites`
 
-Connects a Wiki Page to a Source Document.
+Connects a Wiki Page to a Source Document. Citation targets are Source
+Documents only; Source Text Projections, Wiki Pages, and Wiki Page References
+are not valid Citation targets.
 
 Shape:
 
@@ -312,27 +340,53 @@ Rules:
 - `key` is unique within a Wiki Page.
 - `key` must match a citation marker in `body` when the citation is used in prose.
 - A citation can exist before the prose uses it, but validation should report unused citations.
+- Citation footnote sections in rendered projections must contain Citations
+  only. Internal Wiki Page References belong inline in Page Body prose.
 
-### `manual_link`
+### Wiki Page References
 
-Connects graph records when an agent is explicitly asked to create a
-navigational relationship that improves traversal.
-
-Potential endpoints:
-
-- Wiki Page to Wiki Page
-- Wiki Page to Source Document
-- Wiki Page to source locator metadata through Citation relations, not Manual
-  Links
+Inline Page Body links connect synthesis pages for reading and navigation.
 
 Rules:
 
-- Do not create links automatically in the POC.
-- Do not use Manual Links as evidence support; use Citations for support from
+- Use `[[Page Title]]` or `[[Page Title|label]]` syntax.
+- Use Wiki Page References for navigation to another Wiki Page, not for source
+  support.
+- Do not place Wiki Page References in Citation footnote sections.
+- Do not create graph evidence edges from Wiki Page References.
+- When a claim depends on evidence summarized by a referenced Wiki Page, cite
+  the underlying Source Document directly from the current page.
+
+### `manual_link`
+
+Deprecated generic graph edge. It may exist in legacy disposable POC data, but
+it is disabled for new semantic graph structure and must not be retained as the
+target graph model.
+
+Rules:
+
+- Do not create new Manual Links for semantic relationships.
+- Do not use Manual Links as evidence support; use Citations to Source
   Source Documents.
-- Store reason, created session, and an optional small UI-renderable label on
-  the edge.
-- Vague labels such as `related evidence` should be removed or deprecated.
+- Replace Wiki Page-to-Wiki Page navigation with inline Wiki Page References.
+- Remove or ignore vague legacy labels such as `related`, `related evidence`,
+  or other untyped semantic claims during cleanup.
+
+### Domain Relations
+
+Future governed semantic graph edges may connect graph records only after the
+Domain Relation model exists.
+
+Rules:
+
+- Each Domain Relation has a typed predicate with examples and non-examples.
+- Each Domain Relation carries evidence, usually a Citation or Source Document
+  locator that justifies the relation.
+- Each Domain Relation has review status, such as draft, reviewed, or
+  deprecated.
+- Lint validates allowed predicates, endpoint types, evidence presence, review
+  status, and stale or contradictory relations.
+- Generic `related` edges are non-examples and should remain invalid.
 
 ### `edited_in`
 
@@ -346,8 +400,8 @@ The POC retrieval model should use SurrealDB for hybrid candidate search and
 Originium graph semantics for reranking. SurrealDB over-fetches candidates with
 full-text and vector search across Wiki Pages, Source Documents, and Source
 Text Projections. Originium then reranks those candidates with graph authority:
-Citation relations, Manual Links, nearby Wiki Pages, locator quality, and
-evidence proximity.
+Citation relations, Wiki Page References, future governed Domain Relations,
+nearby Wiki Pages, locator quality, and evidence proximity.
 
 Initial candidate records:
 
@@ -362,7 +416,10 @@ Initial ranking signals:
 - Full-text score
 - Vector similarity when embeddings are available
 - Citation authority, such as inbound `cites` edges from Wiki Pages
-- Manual-link authority, such as inbound `manual_link` edges from other relevant records
+- Inline Wiki Page Reference authority, such as inbound page references from
+  other relevant Wiki Pages
+- Future governed Domain Relation authority when typed, evidenced, reviewed,
+  and linted relations exist
 - Evidence proximity, such as a projection page range overlapping a locator
   cited by an already relevant Wiki Page
 - Extraction confidence, such as PDF outline-derived context ranking above
@@ -380,8 +437,8 @@ Initial embedding engine:
 Search jobs should stay distinct:
 
 - Concept reuse checks find existing Wiki Pages before creating or splitting
-  synthesis. They should prefer Wiki Page title/body matches and nearby Manual
-  Links over raw source text.
+  synthesis. They should prefer Wiki Page title/body matches and inline Wiki
+  Page References over raw source text.
 - Answer retrieval finds the best synthesized answer context. It should search
   Wiki Pages first, then use graph reranking and Citation relations to pull
   supporting Source Documents and Source Text Projections.
@@ -389,8 +446,9 @@ Search jobs should stay distinct:
   Source Documents and Source Text Projections, show extraction provenance and
   page ranges, and keep Source Documents as the final evidence boundary.
 - Graph neighborhood inspection starts from known records and traverses
-  Citations, Manual Links, edited-in sessions, and nearby Wiki Pages or cited
-  Source Documents. It is not a text search substitute.
+  Citations, inline Wiki Page References, future governed Domain Relations,
+  edited-in sessions, and nearby Wiki Pages or cited Source Documents. It is
+  not a text search substitute.
 
 Preferred answer flow:
 
@@ -504,6 +562,7 @@ originium metadata set --record <record-id> --slot <name> --value <value>
 originium metadata show <record-id>
 originium metadata validate <record-id>
 
+# Deprecated/disabled until governed Domain Relations exist:
 originium link add --from <record-id> --to <record-id> --label <label>
 originium link list <record-id>
 
@@ -536,7 +595,7 @@ Initial TypeScript package/app shape:
 - `packages/pdf-ingest`: PDF metadata, outline metadata extraction, page-range extraction, per-page Source Text Projection generation, and token-budgeted chunk projection.
 - `apps/cli`: agent-facing CLI commands composed from domain, SurrealDB, and PDF ingestion packages.
 - `apps/web`: TanStack Start web shell and host-direct backend seams for Source Document, Wiki Page, Agent Session, Change Log, Agent Activity, and PDF streaming workflows.
-- `.agents/skills/graph-wiki`: repo-local agent instructions for using the CLI, preserving citation markers, and respecting the Graph Wiki model.
+- `.agents/skills/graph-wiki`: repo-local agent instructions for using the CLI, preserving citation markers, using inline Wiki Page References, and respecting the Graph Wiki model.
 
 The Originium web app owns browser-facing interaction and backend seams. It
 should not own ingestion or database mutation semantics. The CLI, web backend,
@@ -553,7 +612,7 @@ The POC ingestion loop:
 5. Let an agent read the chunk or Source Text Projection and existing related Wiki Pages.
 6. The agent creates or updates Wiki Pages.
 7. The agent creates Citation relations for the citation markers it used.
-8. The agent optionally creates Manual Links when explicitly requested.
+8. The agent adds inline Wiki Page References when page navigation is useful.
 9. The CLI logs all reads and edits.
 10. Validate that page citation markers and Citation relations agree.
 
@@ -674,12 +733,13 @@ Graph Wiki mutations.
 The first graph view should render the local graph neighborhood of the selected
 record rather than the full Graph Wiki. For a selected Wiki Page, that
 neighborhood includes the page, cited Source Documents with locator metadata,
-Manual Links, and nearby Wiki Pages. Full-graph exploration can wait until
-there is evidence the local view is not enough.
+inline Wiki Page References, future governed Domain Relations when they exist,
+and nearby Wiki Pages. Full-graph exploration can wait until there is evidence
+the local view is not enough.
 
 Basic Wiki Page editing belongs in the Page viewer. It should update only the
-Page Body, preserve graph-owned Citations and Manual Links, and run citation
-validation after save.
+Page Body, preserve graph-owned Citations, preserve inline Wiki Page
+References, and run citation validation after save.
 
 ## Technology Direction
 
@@ -705,6 +765,7 @@ Surqlize is a promising candidate because its upstream repository describes type
 - Human approval gates
 - Fine-grained automatic rollback
 - Automatic semantic link creation
+- Governed Domain Relations
 - OCR for scanned PDFs
 - Full structured page/block model
 - Claim-level fact graph

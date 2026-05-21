@@ -7,14 +7,16 @@
 - Cite claims that depend on Source Document evidence.
 - Keep Page Body prose readable. Put evidence targets in Citation relations,
   not inline metadata.
+- Use inline Wiki Page References for navigation to other Wiki Pages, not for
+  evidence.
 - Process large documents one bounded page range, chapter, or theme at a time.
 - Make every meaningful read and write part of an Agent Session.
 - Validate retrieval after indexing with likely questions, aliases, acronyms,
   broader terms, and at least one graph-neighborhood inspection when available.
 - End by summarizing records read, records changed, pages reused or created,
   split-vs-merge decisions, citation validation results, retrieval checks,
-  Manual Links added, Source Text Projection fallbacks or verification gaps, and
-  remaining unsupported cleanup.
+  Wiki Page References added, Source Text Projection fallbacks or verification
+  gaps, and remaining unsupported cleanup.
 
 ## Page Granularity
 
@@ -64,6 +66,18 @@ Use this split-vs-merge heuristic:
 - If a projection snippet looks useful but cannot be verified against the Source
   Document or a trustworthy Source Text Projection, do not use it for a durable
   claim. Report the evidence gap.
+- If a claim depends on evidence summarized by another Wiki Page, cite the
+  underlying Source Document directly from the current page.
+- Keep Wiki Page References inline in Page Body prose. Do not put them in a
+  Citation footnote section.
+
+Examples:
+
+```md
+Correct: CURWB supports autonomous operations [^curwb-autonomy]. See [[Autonomous Operations]].
+Incorrect: CURWB supports autonomous operations [^autonomous-operations-page].
+Incorrect: [^1]: [[Autonomous Operations]]
+```
 
 Interpret citation validation results literally:
 
@@ -87,7 +101,7 @@ Run retrieval validation for likely questions, aliases, and broader terms with
 `originium retrieval search`, `originium page candidates`, and
 `originium graph neighborhood` when available. Inspect whether intended Wiki
 Pages rank ahead of raw source matches and whether graph neighborhoods expose
-useful citations and Manual Links.
+useful citations and Wiki Page References.
 
 If planned commands are not available yet, use `page search`, `retrieval search`,
-`citation list`, and `link list`, then report the fallback.
+and `citation list`, then report the fallback.

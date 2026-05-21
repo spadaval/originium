@@ -1,8 +1,8 @@
 # Maintain The Graph
 
 This access pattern covers deliberate graph maintenance: reading through graph
-state, merging pages, tightening citations, adjusting links, simplifying source
-structure, and evolving the Domain Frame catalog.
+state, merging pages, tightening citations, adjusting Wiki Page References,
+simplifying source structure, and evolving the Domain Frame catalog.
 
 Maintenance differs from ordinary indexing or question answering. The agent is
 allowed to change structure, but should make each structural decision explicit
@@ -26,8 +26,8 @@ Agent judgment:
 
 CLI responsibility:
 
-- inspect affected neighborhoods, citations, aliases, inbound links, outbound
-  links, projections, and embeddings
+- inspect affected neighborhoods, citations, aliases, inbound Wiki Page
+  References, outbound Wiki Page References, projections, and embeddings
 - perform refactors atomically where possible: merge, split, rename, retarget,
   rebuild, and reindex
 - preserve old identifiers, redirects, aliases, citation provenance, and change
@@ -44,14 +44,15 @@ then let the CLI execute and validate the mechanical work.
 
 1. Choose a maintenance target:
    - duplicate pages
-   - weak Manual Links
+   - stale or misplaced Wiki Page References
+   - legacy Manual Links
    - broad or stale citation locators
    - stale projections or embeddings
    - unframed records
    - confusing page scope
    - repeated unknown source shapes
-2. CLI inspects the affected records, neighborhoods, citations, aliases,
-   projections, embeddings, and lint state.
+2. CLI inspects the affected records, neighborhoods, citations, aliases, Wiki
+   Page References, projections, embeddings, and lint state.
 3. CLI validates citations before moving or deleting claims.
 4. Agent decides whether the issue is:
    - a graph data cleanup
@@ -73,7 +74,8 @@ Expected behavior:
   should be split
 - preserve all citation evidence
 - keep aliases on the surviving page when they improve search
-- update Manual Links and Citations to point at the surviving or split pages
+- update Wiki Page References and Citations to point at the surviving or split
+  pages
 
 Do not delete a page until its cited claims are either migrated or explicitly
 discarded as invalid.
@@ -83,8 +85,8 @@ CLI support needed:
 - duplicate detection with title, alias, body, citation, and neighborhood
   signals
 - `page merge` that moves citation markers and Citation edges, migrates aliases,
-  rewrites Manual Links, creates redirects when supported, and reindexes the
-  survivor
+  rewrites Wiki Page References, creates redirects when supported, and reindexes
+  the survivor
 - dry-run output showing claims, citations, aliases, and links that will move
 
 ## Case: Page Scope Is Wrong
@@ -109,33 +111,36 @@ CLI support needed:
 - frame reassignment with lint explaining why the old and new frames differ
 - redirect or alias migration when titles change
 
-## Case: Manual Link Is Weak Or Vague
+## Case: Legacy Manual Link Is Weak Or Vague
 
-Current example: a Manual Link with reason `related` is linted as weak.
+Current example: a legacy Manual Link with reason `related` is linted as weak.
 
 Expected behavior:
 
-- replace vague reasons with actionable relationship reasons
-- use an allowed label only when it captures the relationship
-- remove links that cannot be justified
+- remove or ignore generic Manual Links that cannot be justified
+- replace Wiki Page-to-Wiki Page navigation with inline Wiki Page References
 - prefer Citation edges for evidence support rather than page-to-page
   `related evidence` links when the source evidence is direct
+- create a follow-up Domain Relation modeling issue if a semantic edge is
+  repeatedly needed
 
-If a needed link label is missing repeatedly, create a follow-up modeling issue
-rather than inventing ad hoc labels. Do not use `related evidence`; direct
-support belongs in Citation relations and semantic classification belongs in
-frame metadata.
+Do not use `related evidence`; direct support belongs in Citation relations and
+semantic classification belongs in frame metadata. Future semantic graph edges
+belong in governed Domain Relations with typed predicates, evidence, review
+status, and lint rules.
 
 CLI support needed:
 
-- link lint that flags vague labels and missing reasons
-- link rewrite tooling for replacing or removing weak links across a selected
+- legacy Manual Link lint that flags disabled generic edges
+- Wiki Page Reference lint that reports missing target pages and citation
+  footnote misuse
+- cleanup tooling for replacing or removing weak legacy links across a selected
   neighborhood
 
 Deferred until the frame workflow MVP proves a concrete need:
 
-- relation-label search showing allowed labels, definitions, examples, and
-  non-examples
+- Domain Relation predicate search showing allowed predicates, definitions,
+  examples, non-examples, evidence requirements, review status, and lint rules
 
 ## Case: Citation Is Too Broad
 
@@ -263,16 +268,17 @@ CLI support needed:
 
 Deferred until the frame workflow MVP proves a concrete need:
 
-- model-impact reports showing which pages, source locator patterns, links,
-  citations, and retrieval queries would change if the proposal is accepted
+- model-impact reports showing which pages, source locator patterns, citations,
+  Wiki Page References, future Domain Relations, and retrieval queries would
+  change if the proposal is accepted
 
-## Case: Frame Or Link Vocabulary Needs Tightening
+## Case: Frame Or Domain Relation Vocabulary Needs Tightening
 
 Expected behavior:
 
 - inspect examples and non-examples from the current graph
 - define the semantic boundary
-- define expected metadata slots and any allowed link labels
+- define expected metadata slots and any governed Domain Relation predicates
 - define lint rules and severities
 - rebuild or reclassify current proof-of-concept instances when needed
 - keep future durable frame changes reviewed when behavior changes
@@ -282,14 +288,14 @@ treated as incidental metadata edits.
 
 CLI support needed:
 
-- frame/link lint that can run against both the current catalog and a proposed
-  catalog
+- frame and Domain Relation lint that can run against both the current catalog
+  and a proposed catalog
 
 Deferred until the frame workflow MVP proves a concrete need:
 
 - frame catalog versioning and accepted/rejected proposal history
-- migration tooling that reclassifies durable instances, rewrites labels, and
-  records the old semantics for audit
+- migration tooling that reclassifies durable instances, rewrites governed
+  predicates, and records the old semantics for audit
 
 For the current proof-of-concept graph, incompatible frame changes may rebuild
 graph records from Source Documents instead of migrating existing local data.
@@ -300,7 +306,7 @@ A successful maintenance pass may produce:
 
 - merged or split Wiki Pages
 - repaired Citation locators
-- removed or clarified Manual Links
+- removed legacy Manual Links or corrected Wiki Page References
 - rebuilt projections or embeddings
 - frame assignments or frame proposals
 - Domain Frame revisions

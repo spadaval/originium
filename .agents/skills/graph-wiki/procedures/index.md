@@ -3,7 +3,8 @@
 Use this when the user wants an LLM-powered indexing pass over a document,
 chapter, or theme. The CLI extracts headings and stores records; the agent is
 responsible for deciding which concepts, facts, requirements, procedures,
-tradeoffs, and cross-references deserve durable Wiki Pages and graph links.
+tradeoffs, and cross-references deserve durable Wiki Pages and inline Wiki Page
+References.
 
 Load first:
 
@@ -12,7 +13,8 @@ Load first:
 - [../standards/wiki-writing.md](../standards/wiki-writing.md)
 - [source.md](source.md)
 - [page.md](page.md)
-- [links.md](links.md), when graph enrichment is requested
+- [links.md](links.md), when legacy Manual Link cleanup or future relation
+  modeling comes up
 
 Indexing is not a page-by-page summary. Build a maintained knowledge layer.
 
@@ -40,8 +42,8 @@ Indexing is not a page-by-page summary. Build a maintained knowledge layer.
    granularity rules in [../standards/wiki-writing.md](../standards/wiki-writing.md).
 6. Create or update pages with citation markers in the body.
 7. Add Citation relations whose keys exactly match the body markers.
-8. Add Manual Links only when the indexing assignment asks for navigational
-   graph enrichment and you can state the relationship reason concretely.
+8. Add inline Wiki Page References when navigation to another Wiki Page is
+   useful.
 9. Validate citations for every page touched.
 10. Run Graph lint and address or report hygiene issues:
 
@@ -51,11 +53,14 @@ Indexing is not a page-by-page summary. Build a maintained knowledge layer.
 
 11. Run retrieval validation for likely questions, aliases, and broader terms.
 12. Inspect the session log and report records read, records changed, validated
-    pages, retrieval checks run, Manual Links added, fallbacks used, and known
-    gaps.
+    pages, retrieval checks run, Wiki Page References added, fallbacks used, and
+    known gaps.
 
-## Manual Link Labels
+## References And Relations
 
-When supported by the CLI, prefer controlled labels such as `depends on`,
-`constrains`, `implements`, `uses`, `applies to`, `contrasts with`, and
-`supersedes`. Do not add decorative, vague, or evidence-support links.
+Use `[[Page Title]]` or `[[Page Title|label]]` for page navigation.
+
+Do not add generic Manual Links. If indexing repeatedly needs a semantic graph
+edge such as `depends on`, `constrains`, `implements`, `uses`, `applies to`,
+`contrasts with`, or `supersedes`, file a follow-up for a governed Domain
+Relation with typed predicates, evidence, review status, and lint rules.

@@ -6,11 +6,13 @@ import {
   formatGraphWikiRecordIdConflict,
   GraphWikiRecordIdConflictError,
   parseCitationPageRange,
+  parseWikiPageReferences,
   sourceDocumentRecordId,
   sourceTextProjectionRecordId,
   toSlug,
   validateCitationLocator,
   validatePageBodyCitationMarkers,
+  validatePageBodyWikiPageReferences,
   wikiPageRecordId,
   wikiPageSlugFromTitle,
 } from "./index";
@@ -241,4 +243,78 @@ test("Citation Marker validation reports invalid marker syntax", () => {
     validation.issues[1]?.message,
     'Citation validation failed for Wiki Page "wiki_page:curwb_deployment": invalid-marker-syntax for Citation Marker "[^source-2|]". Use "[^key]" or "[^key|label]" with lowercase key characters a-z, 0-9, "_" or "-".',
   );
+});
+
+test("Wiki Page Reference parser accepts targets and optional labels", () => {
+  const validation = validatePageBodyWikiPageReferences({
+    wikiPageId: "wiki_page:curwb_deployment",
+    pageBody:
+      "CURWB builds on [[Industrial Wireless Backhaul]] and deployment guidance in [[Mining Deployment Pattern|mining patterns]].",
+  });
+
+  assert.deepEqual(validation.references, [
+    {
+      target: "Industrial Wireless Backhaul",
+      label: undefined,
+      marker: "[[Industrial Wireless Backhaul]]",
+      index: 16,
+    },
+    {
+      target: "Mining Deployment Pattern",
+      label: "mining patterns",
+      marker: "[[Mining Deployment Pattern|mining patterns]]",
+      index: 76,
+    },
+  ]);
+  assert.deepEqual(validation.issues, []);
+});
+
+test("Wiki Page Reference parser reports malformed references", () => {
+  const validation = validatePageBodyWikiPageReferences({
+    wikiPageId: "wiki_page:curwb_deployment",
+    pageBody: "Empty targets are invalid [[]]. Empty labels are invalid [[Mining Deployment Pattern|]].",
+  });
+
+  assert.deepEqual(
+    validation.issues.map((issue) => issue.kind),
+    ["malformed-reference", "malformed-reference"],
+  );
+  assert.equal(
+    validation.issues[0]?.message,
+    'Wiki Page Reference validation failed for Wiki Page "wiki_page:curwb_deployment": malformed-reference for marker "[[]]". Use "[[Page Title]]" or "[[Page Title|label]]" with non-empty target text and label text.',
+  );
+  assert.equal(
+    validation.issues[1]?.message,
+    'Wiki Page Reference validation failed for Wiki Page "wiki_page:curwb_deployment": malformed-reference for marker "[[Mining Deployment Pattern|]]". Use "[[Page Title]]" or "[[Page Title|label]]" with non-empty target text and label text.',
+  );
+});
+
+test("Wiki Page Reference parser reports duplicate references", () => {
+  const validation = validatePageBodyWikiPageReferences({
+    wikiPageId: "wiki_page:curwb_deployment",
+    pageBody: "First link [[Mining Deployment Pattern]]. Repeated link [[ mining deployment pattern |pattern]].",
+  });
+
+  assert.equal(validation.references.length, 2);
+  assert.equal(validation.issues.length, 1);
+  assert.equal(validation.issues[0]?.kind, "duplicate-reference");
+  assert.equal(
+    validation.issues[0]?.message,
+    'Wiki Page Reference validation failed for Wiki Page "wiki_page:curwb_deployment": duplicate-reference for target "mining deployment pattern". Each target should appear once in a Page Body; use one reference with a clear label.',
+  );
+});
+
+test("Wiki Page References coexist with Citation Markers", () => {
+  const body = "See [[Mining Deployment Pattern]] for context backed by the source claim [^source-1].";
+  const references = parseWikiPageReferences(body);
+  const citations = validatePageBodyCitationMarkers({
+    wikiPageId: "wiki_page:curwb_deployment",
+    pageBody: body,
+    graphCitationKeys: ["source-1"],
+  });
+
+  assert.equal(references.references.length, 1);
+  assert.deepEqual(references.issues, []);
+  assert.equal(citations.markers.length, 1);
+  assert.deepEqual(citations.issues, []);
 });

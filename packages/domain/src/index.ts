@@ -106,6 +106,29 @@ export type CitationMarkerValidation = {
   readonly issues: readonly CitationValidationIssue[];
 };
 
+export type WikiPageReference = {
+  readonly target: string;
+  readonly label?: string;
+  readonly marker: string;
+  readonly index: number;
+};
+
+export type WikiPageReferenceIssueKind = "duplicate-reference" | "malformed-reference";
+
+export type WikiPageReferenceIssue = {
+  readonly kind: WikiPageReferenceIssueKind;
+  readonly wikiPageId: string;
+  readonly message: string;
+  readonly target?: string;
+  readonly marker?: string;
+  readonly index?: number;
+};
+
+export type WikiPageReferenceValidation = {
+  readonly references: readonly WikiPageReference[];
+  readonly issues: readonly WikiPageReferenceIssue[];
+};
+
 export function toSlug(input: string): string {
   return normalizeRecordIdPart(input);
 }
@@ -299,6 +322,71 @@ export function validatePageBodyCitationMarkers(input: {
   return { markers, issues };
 }
 
+export function parseWikiPageReferences(pageBody: string): WikiPageReferenceValidation {
+  return validatePageBodyWikiPageReferences({
+    wikiPageId: "unknown Wiki Page",
+    pageBody,
+  });
+}
+
+export function validatePageBodyWikiPageReferences(input: {
+  readonly wikiPageId: string;
+  readonly pageBody: string;
+}): WikiPageReferenceValidation {
+  const references: WikiPageReference[] = [];
+  const issues: WikiPageReferenceIssue[] = [];
+  let searchFrom = 0;
+
+  while (searchFrom < input.pageBody.length) {
+    const markerStart = input.pageBody.indexOf("[[", searchFrom);
+
+    if (markerStart === -1) {
+      break;
+    }
+
+    const markerEnd = input.pageBody.indexOf("]]", markerStart + 2);
+    const lineEnd = input.pageBody.indexOf("\n", markerStart + 2);
+    const hasClosingBrackets = markerEnd !== -1 && (lineEnd === -1 || markerEnd < lineEnd);
+    const rawMarker = hasClosingBrackets
+      ? input.pageBody.slice(markerStart, markerEnd + 2)
+      : input.pageBody.slice(markerStart, lineEnd === -1 ? input.pageBody.length : lineEnd);
+    const parsedReference = parseWikiPageReference(rawMarker, markerStart);
+
+    if (parsedReference === undefined) {
+      issues.push({
+        kind: "malformed-reference",
+        wikiPageId: input.wikiPageId,
+        marker: rawMarker,
+        index: markerStart,
+        message: `Wiki Page Reference validation failed for Wiki Page "${input.wikiPageId}": malformed-reference for marker "${rawMarker}". Use "[[Page Title]]" or "[[Page Title|label]]" with non-empty target text and label text.`,
+      });
+    } else {
+      references.push(parsedReference);
+    }
+
+    searchFrom = hasClosingBrackets ? markerEnd + 2 : markerStart + 2;
+  }
+
+  const seenTargets = new Set<string>();
+  for (const reference of references) {
+    const targetKey = toSlug(reference.target);
+    if (seenTargets.has(targetKey)) {
+      issues.push({
+        kind: "duplicate-reference",
+        wikiPageId: input.wikiPageId,
+        target: reference.target,
+        marker: reference.marker,
+        index: reference.index,
+        message: `Wiki Page Reference validation failed for Wiki Page "${input.wikiPageId}": duplicate-reference for target "${reference.target}". Each target should appear once in a Page Body; use one reference with a clear label.`,
+      });
+    }
+
+    seenTargets.add(targetKey);
+  }
+
+  return { references, issues };
+}
+
 function normalizeRecordIdPart(input: string): string {
   return input
     .normalize("NFKD")
@@ -347,6 +435,27 @@ function parseCitationMarker(rawMarker: string, index: number): CitationMarker |
   return {
     key: match[1],
     label: label === undefined || label === "" ? undefined : label,
+    marker: rawMarker,
+    index,
+  };
+}
+
+function parseWikiPageReference(rawMarker: string, index: number): WikiPageReference | undefined {
+  const match = /^\[\[([^[\]|\r\n]+?)(?:\|([^[\]|\r\n]+))?\]\]$/.exec(rawMarker);
+
+  if (match === null) {
+    return undefined;
+  }
+
+  const target = match[1].trim();
+  const label = match[2]?.trim();
+  if (target.length === 0 || label === "") {
+    return undefined;
+  }
+
+  return {
+    target,
+    label: label === undefined ? undefined : label,
     marker: rawMarker,
     index,
   };

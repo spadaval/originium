@@ -6,6 +6,8 @@ This is the top-level router for the repository docs.
 
 - [SPEC.md](../SPEC.md) for Graph Wiki purpose, proof-of-concept requirements, storage model, ingestion model, and target commands.
 - [CONTEXT.md](../CONTEXT.md) for canonical product language and ambiguity resolutions.
+- [docs/frames/catalog.md](frames/catalog.md) for the sparse advisory Domain
+  Frame catalog used by frame-guided metadata design.
 - [docs/learning-graph-spec.md](learning-graph-spec.md) for the proposed learning graph capability, dual graph model, relationship types, and CLI direction.
 - [docs/landscape/index.md](landscape/index.md) for the knowledge graph, PKM, agent memory, and adaptive learning landscape review.
 - [docs/access-patterns/index.md](access-patterns/index.md) for Graph Wiki agent access patterns that shape Domain Frames, citation, metadata, and lint design.

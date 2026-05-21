@@ -1,47 +1,50 @@
-# Add Explicit Links
+# Deprecated Manual Links And Future Relations
 
-Use Citations for evidence. Use frame metadata for semantic classification. Use
-Manual Links only for explicit navigation relationships requested by the user or
-required by an indexing assignment. Manual Links should improve future
-traversal; they are not tags, backlinks, evidence support, or decorative
-related-content links.
+Use Citations for evidence. Use inline Wiki Page References for navigation to
+other Wiki Pages. Use frame metadata for semantic classification.
+
+Generic Manual Links are disabled or deprecated for new semantic graph edges.
+This procedure exists only for cleanup of legacy Manual Links and for deciding
+whether a repeated relationship need should become a future governed Domain
+Relation.
 
 Load first:
 
 - [../standards/cli.md](../standards/cli.md)
 - [../standards/concepts.md](../standards/concepts.md)
+- [../standards/wiki-writing.md](../standards/wiki-writing.md)
 
-Add a Manual Link:
-
-```bash
-originium link add \
-  --from <record-id> \
-  --to <record-id> \
-  --reason "<why this relationship should exist>" \
-  --label "<optional label>" \
-  --session <session-id>
-```
-
-Inspect links around a record:
+Inspect legacy links around a record when cleanup requires it:
 
 ```bash
 originium link list --record <record-id> --session <session-id>
 ```
 
-## Manual Link Discipline
+Do not add new Manual Links:
 
-- Use a concrete label from the controlled vocabulary when the CLI supports it.
-  Good labels include `depends on`, `constrains`, `implements`, `uses`,
-  `applies to`, `contrasts with`, and `supersedes`.
-- Make the reason specific enough that another agent can explain why traversing
-  the edge is useful.
-- Prefer Citations for source support and Manual Links for domain
-  relationships. Do not use a Manual Link as a substitute for a missing
-  Citation.
-- Do not use `related evidence`; direct support belongs in a Citation relation.
-- Do not infer links just because two pages seem related. If the user or
-  indexing assignment did not ask for graph enrichment, leave the relationship
-  out.
-- For contradiction, stale, or superseded material, usually write a cited page
-  section first. Add a `contrasts with` or `supersedes` Manual Link only when it
-  connects two durable pages and the traversal reason is clear.
+```bash
+# Non-example: disabled/deprecated
+originium link add --from <record-id> --to <record-id> --label related
+```
+
+## Reference Discipline
+
+- Use `[[Page Title]]` or `[[Page Title|label]]` inside Page Body prose for
+  Wiki Page References.
+- Do not place Wiki Page References in Citation footnote sections.
+- Do not use a Wiki Page Reference or Manual Link as evidence support. Cite the
+  underlying Source Document directly.
+- Remove, ignore, or report legacy Manual Links with vague labels such as
+  `related` or `related evidence`.
+- If a relationship repeatedly needs graph semantics, create a follow-up design
+  issue for a governed Domain Relation instead of inventing an ad hoc label.
+
+## Future Domain Relations
+
+Domain Relations are deferred until a dedicated model exists. They must have:
+
+- typed predicates with definitions, examples, and non-examples
+- evidence, usually a Citation or Source Document locator
+- review status, such as draft, reviewed, or deprecated
+- lint rules for allowed predicates, endpoint types, evidence presence, review
+  status, and stale or contradictory edges

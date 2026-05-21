@@ -9,7 +9,8 @@ Load first:
 - [../standards/concepts.md](../standards/concepts.md)
 - [../standards/wiki-writing.md](../standards/wiki-writing.md)
 - [page.md](page.md), when page edits are needed
-- [links.md](links.md), when Manual Links are involved
+- [links.md](links.md), when legacy Manual Links or future relation modeling are
+  involved
 
 Start with the relevant Agent Session or record ID.
 
@@ -19,7 +20,6 @@ originium log show --session <session-id>
 originium page read <wiki-page-id> --session <session-id>
 originium citation list <wiki-page-id> --session <session-id>
 originium citation validate <wiki-page-id> --session <session-id>
-originium link list --record <record-id> --session <session-id>
 originium graph neighborhood <record-id> --session <session-id>
 originium graph lint --session <session-id>
 ```
@@ -30,7 +30,7 @@ CLI edits over direct database edits so the repair is also logged.
 Run `graph lint` before and after cleanup or indexing passes. It reports empty
 and uncited Wiki Pages, Citation Marker/Citation mismatches, unused Citations,
 duplicate-ish and orphan pages, broad heading-level citation targets when Source
-Anchors exist, and Manual Links with missing or vague reasons.
+Anchors exist, misplaced Wiki Page References, and disabled legacy Manual Links.
 
 Treat lint output as a repair queue; destructive cleanup should be explicit and
 logged rather than done through direct database edits.
@@ -41,8 +41,10 @@ logged rather than done through direct database edits.
   delete that still needs a future CLI command
 - bad Page Body: run `page update` with corrected synthesis
 - citation mismatch: align Citation Markers and Citation keys, then validate
-- bad Manual Link: inspect it and report the unsupported removal if no delete
-  command exists
+- bad legacy Manual Link: inspect it and report the unsupported removal if no
+  delete command exists
+- bad Wiki Page Reference: keep it inline in prose, fix the target page, or
+  remove it if it is being used as evidence
 - fragmented concept pages: choose the better page, update it with any missing
   cited synthesis, add or report a merge/supersession follow-up, and avoid
   creating another near-duplicate

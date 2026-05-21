@@ -27,7 +27,6 @@ Read any close candidate before deciding:
 ```bash
 originium page read <wiki-page-id> --session <session-id>
 originium citation list <wiki-page-id> --session <session-id>
-originium link list --record <wiki-page-id> --session <session-id>
 ```
 
 When `page candidates` is unavailable, use repeated `page search` and
@@ -111,3 +110,8 @@ originium ingest chapter \
 
 The Citation Marker in `--body` must match `--key`. If the command reports a
 citation validation failure, change the Page Body or key before retrying.
+
+Use inline Wiki Page References such as `[[Autonomous Operations]]` only for
+navigation to other Wiki Pages. Do not use them as evidence, and do not put
+them in Citation footnote sections. If the page depends on evidence summarized
+by another Wiki Page, cite the underlying Source Document directly.

@@ -1,6 +1,6 @@
 ---
 name: graph-wiki
-description: "Use when operating Originium from the CLI as an agent-maintained knowledge base: answer questions, find evidence, import Source Documents, synthesize Wiki Pages, maintain Citations and Manual Links, inspect Change Logs, and clean up graph state."
+description: "Use when operating Originium from the CLI as an agent-maintained knowledge base: answer questions, find evidence, import Source Documents, synthesize Wiki Pages, maintain Citations and Wiki Page References, inspect Change Logs, and clean up graph state."
 argument-hint: "[subskill] [target]"
 user-invocable: true
 ---
@@ -9,7 +9,7 @@ user-invocable: true
 
 Originium is a CLI-operated knowledge base for agents. It stores trusted source
 material, source metadata, agent-written synthesis, frame assignments,
-citations, explicit links, and edit logs in a graph database. The goal is to
+citations, inline Wiki Page References, and edit logs in a graph database. The goal is to
 turn raw Source Documents into a maintained Graph Wiki that gets more useful
 over time.
 
@@ -37,7 +37,7 @@ For command behavior, error reporting, and session setup, load
 | `source`   | Importing, extracting, reading, searching, or chunking Source Documents | [procedures/source.md](procedures/source.md)           |
 | `index`    | Running an LLM-powered indexing pass over a document, chapter, or theme | [procedures/index.md](procedures/index.md)             |
 | `page`     | Creating, updating, replacing, appending, patching, or ingesting pages  | [procedures/page.md](procedures/page.md)               |
-| `links`    | Adding or inspecting explicit Manual Links                              | [procedures/links.md](procedures/links.md)             |
+| `links`    | Cleaning up deprecated Manual Links and preparing governed relations    | [procedures/links.md](procedures/links.md)             |
 | `repair`   | Inspecting sessions, lint output, citations, duplicates, and stale work | [procedures/repair.md](procedures/repair.md)           |
 | `validate` | Proving a local install with the acceptance workflow                    | [procedures/validate.md](procedures/validate.md)       |
 | `concepts` | Graph Wiki record types and evidence model                              | [standards/concepts.md](standards/concepts.md)         |
@@ -58,6 +58,38 @@ For command behavior, error reporting, and session setup, load
 5. When a CLI command fails, report `error.operation`, `error.input`,
    `error.reason`, and `error.action` directly.
 
+## Citation And Reference Rules
+
+- Citations target Source Documents only. Do not cite Wiki Pages, Source Text
+  Projections, or inline page links as evidence.
+- Citation Markers use keyed footnote-style syntax such as
+  `[^fm1000-enclosure]`. Numbered footnotes may be rendered from those keys in
+  a Projection, but the key remains the canonical handle.
+- Wiki Page References use inline page-link syntax such as
+  `[[Autonomous Operations]]` or `[[Autonomous Operations|autonomous mining
+operations]]`. They are navigation and synthesis context, not evidence.
+- Do not put Wiki Page References in Citation footnote sections.
+- If a page relies on evidence summarized by another Wiki Page, cite the
+  underlying Source Document directly from the current page.
+- Generic Manual Links are disabled or deprecated for new semantic graph edges.
+  Do not create `related` or `related evidence` graph edges.
+- Future semantic graph edges belong in governed Domain Relations with typed
+  predicates, evidence, review status, and lint rules.
+
+Example:
+
+```md
+CURWB networks support autonomous operations [^curwb-autonomy]. See [[Autonomous Operations]] for the synthesized topic.
+```
+
+Non-examples:
+
+```md
+CURWB networks support autonomous operations [^autonomous-operations-page].
+
+[^1]: [[Autonomous Operations]]
+```
+
 ## When To Use Originium
 
 Use this skill when a user asks you to:
@@ -67,6 +99,6 @@ Use this skill when a user asks you to:
 - add or ingest a PDF
 - create or update a durable knowledge page
 - validate or repair citations
-- add explicit relationships between records
+- add inline Wiki Page References or clean up deprecated relationships
 - inspect what a previous agent session read or changed
 - clean up stale, duplicate, or inconsistent graph state

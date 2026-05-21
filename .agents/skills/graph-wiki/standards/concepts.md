@@ -25,15 +25,25 @@ procedure, requirement set, technology component, reference architecture, use
 case, or operational risk. Wiki Pages are the primary place to answer from.
 
 **Page Body**: the prose field of a Wiki Page. It may contain Citation Markers
-such as `[^network-architecture]`, but it should not contain raw record IDs,
-file bucket pointers, page ranges, or source metadata.
+such as `[^network-architecture]` and inline Wiki Page References such as
+`[[Autonomous Operations]]`, but it should not contain raw record IDs, file
+bucket pointers, page ranges, or source metadata.
 
-**Citation Marker**: an inline marker in a Page Body. It is only a handle.
+**Citation Marker**: an inline keyed footnote-style marker in a Page Body. It
+is only a handle. Renderers may project markers as numbered footnotes, but the
+key remains canonical.
 
 **Citation**: a graph relation from a Wiki Page to a Source Document. The
 Citation `key` must match the Page Body Citation Marker key. Page ranges,
 quotes, context, projection IDs, text hashes, and supported-claim details live
-as citation-local locator metadata.
+as citation-local locator metadata. Citations target Source Documents only; do
+not cite Wiki Pages or Source Text Projections.
+
+**Wiki Page Reference**: an inline Page Body link to another Wiki Page, using
+`[[Page Title]]` or `[[Page Title|label]]`. It is navigation and synthesis
+context, not evidence. Do not place Wiki Page References in Citation footnote
+sections. If the current page depends on another Wiki Page's evidence, cite the
+underlying Source Document directly.
 
 **Domain Frame**: an advisory Source Document class or Wiki Page role that
 defines useful metadata slots. Frames guide classification and linting; they do
@@ -46,10 +56,13 @@ rather than forcing a poor fit.
 **Frame Metadata**: sparse record metadata scoped by the assigned Domain Frame.
 Do not put frame metadata in the Page Body.
 
-**Manual Link**: an explicit graph relationship between records. Create one only
-when the user asks for a relationship and you can state the navigation reason.
-Use Citations for evidence support and frame metadata for semantic
-classification.
+**Manual Link**: a deprecated generic graph relationship. Do not create new
+Manual Links for semantic edges. Use Wiki Page References for page navigation,
+Citations for evidence support, and frame metadata for classification.
+
+**Domain Relation**: a future governed semantic graph edge with a typed
+predicate, evidence, review status, and lint rules. Generic `related` edges are
+non-examples.
 
 **Agent Session**: a bounded unit of agent work. Start one for every meaningful
 task.

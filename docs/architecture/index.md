@@ -34,12 +34,14 @@ projections for humans, agents, and retrieval.
 4. Ingestion reads source text through Source Text Projections or one-off
    projections from the stored Source Document and processes one page range,
    chapter, theme, or Ingestion Chunk at a time.
-5. Agents write Wiki Pages, Citations, Manual Links, Agent Sessions, and Change Logs into SurrealDB.
+5. Agents write Wiki Pages, Citations, inline Wiki Page References, Agent
+   Sessions, and Change Logs into SurrealDB.
    Source Document provenance and Wiki Page semantic roles are stored as
    frame-guided metadata, not Page Body frontmatter.
 6. Retrieval uses SurrealDB hybrid candidate search across Wiki Pages, Source
    Documents, and Source Text Projections, then applies graph-aware reranking
-   from Citation relations, Manual Links, and local graph neighborhoods.
+   from Citation relations, Wiki Page References, future governed Domain
+   Relations, and local graph neighborhoods.
 7. During the POC, the CLI renders agent-facing Projections and Surrealist is
    used for database-management inspection and manual validation.
 8. `apps/web` serves browser-facing route shells and backend seams for Source
@@ -62,7 +64,8 @@ Retrieval has four separate jobs:
 - Evidence search inspects Source Documents and Source Text Projections with
   page-range provenance.
 - Graph neighborhood inspection traverses known records through Citations,
-  Manual Links, Agent Sessions, and nearby Wiki Pages or cited Source Documents.
+  Wiki Page References, Agent Sessions, future governed Domain Relations, and
+  nearby Wiki Pages or cited Source Documents.
 
 Contradictions should be represented as cited disagreement in Wiki Page prose
 and retrieval output until repeated workflows justify a dedicated contradiction
