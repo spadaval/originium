@@ -37,20 +37,6 @@ Audit mode identifies problems, not fixes. For each finding, report:
 Be specific.
 Recommend an implementation only if a solution is obvious.
 
-## Agent Process Audits
-
-When auditing agent readiness, evaluate the role interface:
-
-- the orchestrator can assign a clear subskill to each subagent;
-- the central subskill table makes role boundaries explicit;
-- subskill references contain task-specific procedure and constraints;
-- shared docs stay focused on repository-wide principles and do not duplicate
-  role-specific procedure.
-
-Flag process findings only when subskill boundaries are ambiguous, stale,
-overlapping in a way that misassigns work, or inconsistent with the mapped agent
-instructions, current ADRs, or bead notes.
-
 ## Value Discipline
 
 Ignore implementation effort when deciding whether the architecture problem is

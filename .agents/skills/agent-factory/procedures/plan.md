@@ -25,7 +25,7 @@ bd show <id>
 
 Read parent epics, siblings, blockers, relevant ADRs, and existing decision
 beads before changing meaning or sequencing. Use
-[beads.md](beads.md) for tracker standards and command mechanics.
+[beads.md](../standards/beads.md) for tracker standards and command mechanics.
 
 ## Planning Flow
 

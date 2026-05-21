@@ -18,7 +18,7 @@ subskills so agents operate from durable repository state, not private chat hist
   subagent. A subagent loads only the assigned subskill reference unless the
   assignment says otherwise.
 - Beads are the durable work queue. Use explicit `bd` commands. See
-  [beads.md](reference/beads.md) for tracker mechanics, including the
+  [standards/beads.md](standards/beads.md) for tracker mechanics, including the
   prohibition on interactive commands such as `bd edit`.
 - Planning and execution are separate concerns. Do not reshape the bead graph
   while implementing unless graph management is the assigned subskill.
@@ -27,18 +27,19 @@ subskills so agents operate from durable repository state, not private chat hist
 
 ## Subskills
 
-| Subskill      | Use For                                                                                   | Load                                                 |
-| ------------- | ----------------------------------------------------------------------------------------- | ---------------------------------------------------- |
-| `install`     | Installing agent-factory in a repository and creating required bindings/scaffolding       | [reference/install.md](reference/install.md)         |
-| `plan`        | Creating, splitting, sequencing, clarifying, or cleaning up beads                         | [reference/plan.md](reference/plan.md)               |
-| `orchestrate` | Running an epic or multi-bead workstream and assigning subagents                          | [reference/orchestrate.md](reference/orchestrate.md) |
-| `implement`   | Executing one ordinary assigned bead or owned slice                                       | [reference/implement.md](reference/implement.md)     |
-| `migrate`     | Demolition, reconnect, closeout, or other intentional temporary breakage                  | [reference/migrate.md](reference/migrate.md)         |
-| `review`      | Adversarial diff, code, design, architecture, security, or test-quality review            | [reference/review.md](reference/review.md)           |
-| `validate`    | Scenario-centered product, operator, browser, runtime, integration, or preservation proof | [reference/validate.md](reference/validate.md)       |
-| `docs`        | Documentation refresh, reconciliation, or docs/process drift cleanup                      | [reference/docs.md](reference/docs.md)               |
-| `audit`       | Evidence-backed architecture or process-quality findings without implementing fixes       | [reference/audit.md](reference/audit.md)             |
-| `beads`       | Beads command mechanics, issue standards, dependency rules, and tracker sync              | [reference/beads.md](reference/beads.md)             |
+| Subskill      | Use For                                                                                   | Load                                                              |
+| ------------- | ----------------------------------------------------------------------------------------- | ----------------------------------------------------------------- |
+| `install`     | Installing agent-factory in a repository and creating required bindings/scaffolding       | [procedures/install.md](procedures/install.md)         |
+| `plan`        | Creating, splitting, sequencing, clarifying, or cleaning up beads                         | [procedures/plan.md](procedures/plan.md)               |
+| `orchestrate` | Running an epic or multi-bead workstream and assigning subagents                          | [procedures/orchestrate.md](procedures/orchestrate.md) |
+| `implement`   | Executing one ordinary assigned bead or owned slice                                       | [procedures/implement.md](procedures/implement.md)     |
+| `migrate`     | Demolition, reconnect, closeout, or other intentional temporary breakage                  | [procedures/migrate.md](procedures/migrate.md)         |
+| `review`      | Adversarial diff, code, design, architecture, security, or test-quality review            | [procedures/review.md](procedures/review.md)           |
+| `validate`    | Scenario-centered product, operator, browser, runtime, integration, or preservation proof | [procedures/validate.md](procedures/validate.md)       |
+| `docs`        | Documentation refresh, reconciliation, or docs/process drift cleanup                      | [procedures/docs.md](procedures/docs.md)               |
+| `audit`       | Evidence-backed architecture-quality findings without implementing fixes                  | [procedures/audit.md](procedures/audit.md)             |
+| `readiness`   | Assessing whether a repository is legible and operable by agents                         | [procedures/readiness.md](procedures/readiness.md)     |
+| `beads`       | Beads command mechanics, issue standards, dependency rules, and tracker sync              | [standards/beads.md](standards/beads.md)             |
 
 ## Subskill Rules
 

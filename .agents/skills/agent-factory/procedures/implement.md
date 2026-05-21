@@ -73,7 +73,7 @@ Create follow-up beads for bugs, missing validation, cleanup work, decision
 gaps, or newly discovered ordering constraints. Keep the current bead focused
 unless the user explicitly broadens scope.
 
-Do not use `bd edit`; see [beads.md](beads.md) for tracker command conventions.
+Do not use `bd edit`; see [beads.md](../standards/beads.md) for tracker command conventions.
 
 ## Handoff
 

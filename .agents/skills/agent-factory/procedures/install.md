@@ -10,48 +10,19 @@ paths and commands; it does not negotiate the operating model.
 ## Target Repository Shape
 
 An agent-factory-ready repository has durable places for intent, scope,
-decisions, proof, and handoff. A fresh agent must be able to answer these
-questions without private chat history:
+decisions, proof, and handoff. See [repo-shape.md](../standards/repo-shape.md) for the
+complete intended shape, file expectations, and quality heuristics.
 
-- **What is this repository for?** Product intent names users, purpose, and
-  observable target behaviors.
-- **What words mean what?** Domain context defines core nouns and records
-  ambiguity decisions.
-- **Where do I start reading?** A docs map routes agents to product,
-  architecture, quality, validation, operations, and agent-process sources.
-- **What decisions are durable?** ADRs record choices that are costly,
-  surprising, or repeatedly relevant.
-- **How do I prove work?** A validation router maps checks and proof methods to
-  the behavior or quality they own.
-- **How is work tracked?** Beads holds scope, acceptance criteria, dependencies,
-  status, and handoff. Dolt sync keeps tracker state durable across machines.
-- **How does agent-factory bind to this repo?** `AGENTFACTORY.md` maps the
-  generic operating model to concrete files, commands, checks, tracker backup,
-  and product-specific skills.
+A fresh agent must be able to answer these questions without private chat
+history:
 
-The expected shape is:
-
-```text
-.
-├── AGENTS.md
-├── AGENTFACTORY.md
-├── CONTEXT.md
-├── SPEC.md
-├── docs/
-│   ├── index.md
-│   ├── adr/
-│   └── architecture/
-│       ├── index.md
-│       └── quality/
-│           ├── index.md
-│           ├── architecture-quality.md
-│           ├── standards.md
-│           └── validation.md
-├── .agents/
-│   └── skills/
-│       └── <product-specific skills>
-└── .beads/
-```
+- **What is this repository for?**
+- **What words mean what?**
+- **Where do I start reading?**
+- **What decisions are durable?**
+- **How do I prove work?**
+- **How is work tracked?**
+- **How does agent-factory bind to this repo?**
 
 Exact names differ only when `AGENTFACTORY.md` binds the equivalent source
 clearly. Missing equivalents are installation gaps, not harmless omissions.
@@ -258,6 +229,22 @@ git diff --check
 If any required source is intentionally deferred, create a bead that names the
 missing source, why it matters, and which subskill creates it.
 
+## Readiness Verification
+
+After creating or updating sources, spot-check against
+[repo-shape.md](../standards/repo-shape.md):
+
+- `AGENTS.md` exists and is ≤150 lines.
+- Every source listed in `AGENTFACTORY.md` points to an existing file.
+- Every check listed in `AGENTFACTORY.md` is runnable.
+- `docs/index.md` routes to all primary durable sources.
+- At least one validation gate runs without error.
+- No committed secrets or credentials.
+
+If a criterion fails, name the gap in the handoff report. Do not block
+installation on non-critical gaps, but do create a follow-up bead for any
+gap that would mislead a fresh agent.
+
 ## Handoff
 
 Report:
@@ -266,4 +253,4 @@ Report:
 - required sources created, reused, or deferred;
 - Beads/Dolt setup status;
 - checks run and failures;
-- follow-up bead IDs.
+- readiness gaps found and follow-up bead IDs.
