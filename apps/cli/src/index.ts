@@ -46,6 +46,10 @@ import {
   sourceDocumentBucketName,
   sourceDocumentBucketSurql,
 } from "@originium/surreal";
+// biome-ignore lint/correctness/noUnresolvedImports: Bun and TypeScript resolve Gunshi package exports; Biome does not follow this package export layout.
+import { type Command, type CommandContext, cli as runGunshi } from "gunshi/bone";
+// biome-ignore lint/correctness/noUnresolvedImports: Bun and TypeScript resolve Gunshi package exports; Biome does not follow this package export layout.
+import { define } from "gunshi/definition";
 
 type CliSuccess = {
   readonly ok: true;
@@ -72,6 +76,13 @@ type CliFailure = {
 export type CliResult = CliSuccess | CliFailure;
 
 type CommandHandler = (argv: readonly string[]) => Promise<CliResult> | CliResult;
+type CliCommandModule = {
+  readonly group: string;
+  readonly summary: string;
+  readonly handler: CommandHandler;
+  readonly subcommands: readonly string[];
+};
+type CliKernelContext = CommandContext;
 
 type HelpTopic = {
   readonly group: string;
@@ -145,26 +156,6 @@ type RankedRetrievalCandidate = {
 type OllamaEmbeddingConfig = {
   readonly url: string;
   readonly model: string;
-};
-
-const routeGroups: Record<string, CommandHandler> = {
-  acceptance: routeAcceptance,
-  activity: routeActivity,
-  cite: routeCitation,
-  citation: routeCitation,
-  db: routeDb,
-  help: routeHelp,
-  ingest: routeIngest,
-  link: routeLink,
-  log: routeLog,
-  page: routePage,
-  refactor: routeRefactor,
-  graph: routeGraph,
-  frame: routeFrame,
-  retrieval: routeRetrieval,
-  session: routeSession,
-  source: routeSource,
-  workflow: routeWorkflow,
 };
 
 const helpTopics: Record<string, HelpTopic> = {
@@ -499,6 +490,75 @@ const helpTopics: Record<string, HelpTopic> = {
   },
 };
 
+const commandModules: readonly CliCommandModule[] = [
+  { group: "acceptance", summary: helpTopics.acceptance.summary, handler: routeAcceptance, subcommands: ["poc"] },
+  { group: "activity", summary: helpTopics.activity.summary, handler: routeActivity, subcommands: ["record", "list"] },
+  { group: "cite", summary: helpTopics.cite.summary, handler: routeCitation, subcommands: ["create"] },
+  {
+    group: "citation",
+    summary: helpTopics.citation.summary,
+    handler: routeCitation,
+    subcommands: ["add", "create", "list", "validate", "narrow", "repair"],
+  },
+  {
+    group: "db",
+    summary: helpTopics.db.summary,
+    handler: routeDb,
+    subcommands: ["start", "stop", "status", "doctor", "apply-schema"],
+  },
+  {
+    group: "frame",
+    summary: helpTopics.frame.summary,
+    handler: routeFrame,
+    subcommands: ["list", "show", "assign", "validate"],
+  },
+  { group: "graph", summary: helpTopics.graph.summary, handler: routeGraph, subcommands: ["lint", "neighborhood"] },
+  { group: "ingest", summary: helpTopics.ingest.summary, handler: routeIngest, subcommands: ["chapter"] },
+  { group: "link", summary: helpTopics.link.summary, handler: routeLink, subcommands: ["add", "list"] },
+  { group: "log", summary: helpTopics.log.summary, handler: routeLog, subcommands: ["show"] },
+  {
+    group: "page",
+    summary: helpTopics.page.summary,
+    handler: routePage,
+    subcommands: ["create", "read", "update", "replace", "patch", "append", "search", "candidates"],
+  },
+  { group: "refactor", summary: helpTopics.refactor.summary, handler: routeRefactor, subcommands: ["rename-page"] },
+  {
+    group: "retrieval",
+    summary: helpTopics.retrieval.summary,
+    handler: routeRetrieval,
+    subcommands: ["search", "embed"],
+  },
+  { group: "session", summary: helpTopics.session.summary, handler: routeSession, subcommands: ["start", "current"] },
+  {
+    group: "source",
+    summary: helpTopics.source.summary,
+    handler: routeSource,
+    subcommands: [
+      "import-pdf",
+      "list",
+      "find",
+      "outline",
+      "projections",
+      "evidence",
+      "locate",
+      "diagnostics",
+      "promote",
+      "chunk",
+      "read",
+      "search",
+    ],
+  },
+  {
+    group: "workflow",
+    summary: helpTopics.workflow.summary,
+    handler: routeWorkflow,
+    subcommands: ["answer-context", "page-upsert"],
+  },
+];
+
+const commandGroupNames = commandModules.map((command) => command.group);
+
 const wikiPageKinds = ["concept", "workflow", "evidence", "decision", "question"] as const;
 
 export async function runCli(argv: readonly string[] = process.argv.slice(2)): Promise<CliResult> {
@@ -508,19 +568,79 @@ export async function runCli(argv: readonly string[] = process.argv.slice(2)): P
   if (!group || group === "--help" || group === "-h") return helpResult(routedArgv, undefined);
   if (group === "help") return routeHelp(routedArgv);
 
-  const handler = routeGroups[group];
   if (routedArgv[1] === "--help" || routedArgv[1] === "-h") return helpResult(routedArgv, group);
-  if (!handler) {
+  if (!commandGroupNames.includes(group)) {
     return usageFailure({
       command: group,
       operation: "cli.route",
       input: routedArgv.join(" "),
       reason: `Unknown command group '${group}'.`,
-      action: `Choose one of: ${Object.keys(routeGroups).join(", ")}.`,
+      action: `Choose one of: ${commandGroupNames.join(", ")}.`,
     });
   }
 
-  return handler(routedArgv);
+  let result: CliResult | undefined;
+  const entry = define({
+    name: "originium",
+    description: "Originium Graph Wiki CLI.",
+    run: () => {
+      result = helpResult(routedArgv, undefined);
+    },
+  });
+
+  await runGunshi([...routedArgv], entry, {
+    name: "originium",
+    subCommands: commandMap((next) => {
+      result = next;
+    }),
+    usageSilent: true,
+    renderHeader: null,
+    renderUsage: null,
+    renderValidationErrors: null,
+  });
+
+  return (
+    result ??
+    usageFailure({
+      command: group,
+      operation: "cli.route",
+      input: routedArgv.join(" "),
+      reason: `Command group '${group}' did not return a CliResult.`,
+      action: "Report this as a CLI framework adapter bug.",
+    })
+  );
+}
+
+function commandMap(setResult: (result: CliResult) => void): Record<string, Command> {
+  return Object.fromEntries(commandModules.map((module) => [module.group, commandDefinition(module, setResult)]));
+}
+
+function commandDefinition(module: CliCommandModule, setResult: (result: CliResult) => void): Command {
+  return define({
+    name: module.group,
+    description: module.summary,
+    run: async (ctx: CliKernelContext) => {
+      setResult(await module.handler(withoutOutputFlags(ctx._)));
+    },
+    subCommands: Object.fromEntries(
+      module.subcommands.map((subcommand) => [
+        subcommand,
+        define({
+          name: subcommand,
+          description: commandSummary(module.group, subcommand),
+          run: async (ctx: CliKernelContext) => {
+            setResult(await module.handler(withoutOutputFlags(ctx._)));
+          },
+        }),
+      ]),
+    ),
+  });
+}
+
+function commandSummary(group: string, subcommand: string): string {
+  const topic = helpTopics[group];
+  const command = topic?.commands.find((candidate) => candidate.usage.split(/\s+/)[1] === subcommand);
+  return command?.summary ?? `${group} ${subcommand}`;
 }
 
 export async function main(argv: readonly string[] = process.argv.slice(2)): Promise<string> {

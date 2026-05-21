@@ -20,5 +20,8 @@
     "@originium/domain": "workspace:*",
     "@originium/pdf-ingest": "workspace:*",
     "@originium/surreal": "workspace:*"
+  },
+  "dependencies": {
+    "gunshi": "^0.32.0"
   }
 }

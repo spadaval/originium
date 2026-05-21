@@ -84,6 +84,9 @@
   imports.
 - Command failures should include the operation, relevant input or record ID,
   concrete reason, and next useful action.
+- Command groups should be declared as typed command definitions in the Gunshi
+  CLI kernel. Keep `CliResult`, human rendering, `--json`, and Graph Wiki
+  semantics in Originium-owned code.
 - Keep source-mode commands for development convenience, but use the bundled CLI
   as the proof surface when testing agent workflows.
 
