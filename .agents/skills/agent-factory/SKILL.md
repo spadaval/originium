@@ -20,6 +20,10 @@ subskills so agents operate from durable repository state, not private chat hist
 - Beads are the durable work queue. Use explicit `bd` commands. See
   [standards/beads.md](standards/beads.md) for tracker mechanics, including the
   prohibition on interactive commands such as `bd edit`.
+- Shared git/worktree lifecycle rules live in
+  [standards/repo-workflow.md](standards/repo-workflow.md). Procedure docs
+  should link there instead of repeating the same start, checkpoint, and
+  handoff blocks.
 - Planning and execution are separate concerns. Do not reshape the bead graph
   while implementing unless graph management is the assigned subskill.
 - Use the mapped repo docs for code, architecture, validation, product, and

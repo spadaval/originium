@@ -8,8 +8,11 @@ closeout work, independent validation, or read-only review.
 
 ## Start Gate
 
+Follow [repository workflow](../standards/repo-workflow.md) for the shared git
+start and checkpoint rules, and [beads.md](../standards/beads.md) for tracker
+mechanics and Dolt sync.
+
 ```bash
-git status --short --branch
 bd show <id>
 ```
 

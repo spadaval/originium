@@ -69,4 +69,5 @@ Each subskill is a self-contained procedure loaded by a subagent when assigned w
 ## Shared References
 
 - [Beads](beads.md): tracker mechanics, standards, and command conventions referenced by multiple subskills.
+- [Repository Workflow](repo-workflow.md): shared git/worktree start, checkpoint, and handoff hygiene.
 - [Repository Shape](repo-shape.md): the intended shape of an agent-ready repository, shared by `install` and `readiness`.

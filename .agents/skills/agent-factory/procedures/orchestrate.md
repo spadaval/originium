@@ -9,8 +9,11 @@ this subskill.
 
 Before assigning work, prove the local repo and tracker can absorb a long run:
 
+Follow [repository workflow](../standards/repo-workflow.md) for the shared git
+start and checkpoint rules, and [beads.md](../standards/beads.md) for tracker
+mechanics and Dolt sync.
+
 ```bash
-git status --short --branch
 bd dolt status
 bd dolt pull
 bd dolt push
@@ -22,33 +25,6 @@ bd show <epic-or-candidate>
 If Dolt pull or push fails, stop orchestration and fix tracker sync first. If
 the worktree is dirty, classify each change before continuing and preserve
 unrelated user changes.
-
-## Execution Flow
-
-```text
-Ready Beads
-      |
-      v
-[ Dolt preflight ] -- Sync tracker, verify graph is executable
-      |
-      v
-[ Scope and assign ] -- Pick coherent slice, shape worker prompt
-      |
-      v
-[ Worker executes ] -- One owned slice with clear boundaries
-      |
-      v
-[ Review / Validate ] -- Independent verification
-      |
-      v
-[ Integrate or recover ] -- Checkpoint, commit, decide next step
-      |
-      v
-[ Closeout ] -- Prove epic criteria, reconcile docs, push tracker
-```
-
-Planning and execution are different concerns. Do not reshape the bead graph
-while implementing unless that is the assigned work.
 
 ## Orchestration Checklist
 
@@ -70,15 +46,15 @@ while implementing unless that is the assigned work.
 
 ## Subagent Delegation
 
-Assign one coherent owned slice per worker, usually one to three beads. Do not
-run parallel implementation unless write sets are clearly disjoint. Parallel
-read-only exploration, standards validation, or review is safe when the
-questions are separate.
+Perform all real work through subagents.
+Assign one coherent owned slice per worker, usually one to three beads.
+Be careful with parallel subagents. Use them only when readers are parallel or
+writers are clearly disjoint.
 
-Each worker prompt includes:
+Each worker prompt should include:
 
 - exact bead IDs and parent epic;
-- assigned agent-factory subskill;
+- assigned agent-factory role/subskill;
 - owned files, modules, workflows, or architectural seam;
 - what not to change;
 - whether downstream breakage is expected;
@@ -90,7 +66,8 @@ Each worker prompt includes:
 - instruction to list changed files, checks run, bead state changes, risks, and
   follow-up needs.
 
-If your next step requires the answer, do it yourself instead of delegating it.
+
+Perform high-context actions yourself; A good guideline is if a subagent would require more than ~500 words of context to understand what to do.
 
 ## Review And Validation
 
@@ -104,16 +81,8 @@ understand expected behavior.
 
 ## Checkpoint Commits
 
-Commit after each approved subtask, bead, or small coherent bead group:
-
-```bash
-git status --short
-git diff --check
-<focused validation>
-git add <source/docs/tests>
-git commit -m "<message>"
-```
-
+Commit after each approved subtask, bead, or small coherent bead group using
+the [repository workflow](../standards/repo-workflow.md) checkpoint pattern.
 When tracker changes update the mapped tracker backup, stage it explicitly.
 Before assigning the next worker, make sure the previous checkpoint is either
 committed or deliberately reverted.
@@ -129,7 +98,7 @@ Before closing an epic:
 - reconcile docs, ADRs, glossary, and bead notes with the implemented state;
 - run `bd dolt push`;
 - commit remaining tracker backup changes;
-- verify `git status --short --branch` is clean.
+- verify the worktree is clean per [repository workflow](../standards/repo-workflow.md).
 
 Final handoff names completed epic, commits, closed beads, validation
 commands, residual breakage, follow-up beads, and tracker/Dolt status.

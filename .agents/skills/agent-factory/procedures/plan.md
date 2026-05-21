@@ -10,8 +10,11 @@ code bead.
 Start with enough read-only context to prevent duplicate or contradictory graph
 changes:
 
+Follow [repository workflow](../standards/repo-workflow.md) for the shared git
+start and checkpoint rules, and [beads.md](../standards/beads.md) for tracker
+mechanics and Dolt sync. Then inspect the tracker and graph:
+
 ```bash
-git status --short --branch
 bd dolt status
 bd dolt pull
 bd dolt push

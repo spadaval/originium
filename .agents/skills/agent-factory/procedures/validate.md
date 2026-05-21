@@ -6,8 +6,11 @@ not from the diff.
 
 ## Start Gate
 
+Follow [repository workflow](../standards/repo-workflow.md) for the shared git
+start and checkpoint rules, and [beads.md](../standards/beads.md) for tracker
+mechanics and Dolt sync.
+
 ```bash
-git status --short --branch
 bd show <validation-or-closeout-id>
 bd show <parent-epic-id>
 ```

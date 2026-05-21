@@ -31,8 +31,11 @@ clearly. Missing equivalents are installation gaps, not harmless omissions.
 
 Inspect the repository before writing:
 
+Follow [repository workflow](../standards/repo-workflow.md) for the shared git
+start and checkpoint rules, and [beads.md](../standards/beads.md) for tracker
+mechanics and Dolt sync. Then run the repository discovery commands below:
+
 ```bash
-git status --short --branch
 find . -maxdepth 3 -type f \( -name AGENTS.md -o -name AGENTFACTORY.md -o -name CONTEXT.md -o -name SPEC.md \)
 find docs -maxdepth 3 -type f 2>/dev/null
 find . -maxdepth 3 -type d \( -name adr -o -name .beads \)
