@@ -4,10 +4,7 @@ import { createFileRoute, Link, useRouter } from "@tanstack/react-router";
 import { createServerFn } from "@tanstack/react-start";
 import { type FormEvent, useEffect, useState, useTransition } from "react";
 import { readWebRuntimeConfig } from "../config.ts";
-import {
-  type CodexWorkspaceTurnData,
-  runCodexWorkspaceTurn,
-} from "../server/codex-app-server.ts";
+import { type CodexWorkspaceTurnData, runCodexWorkspaceTurn } from "../server/codex-app-server.ts";
 import {
   type AgentSessionRecord,
   type ChangeLogRecord,
@@ -58,9 +55,7 @@ type WorkspacePageData = {
   readonly changeLogError?: WorkspaceDataError;
 };
 
-type PageCitationValidation = ReturnType<
-  typeof validatePageBodyCitationMarkers
->;
+type PageCitationValidation = ReturnType<typeof validatePageBodyCitationMarkers>;
 
 type WorkspaceCitationRecord = {
   readonly key: string;
@@ -110,10 +105,7 @@ const workspaceKey = "default";
 const getWorkspacePageData = createServerFn({ method: "GET" })
   .inputValidator(
     (input: WorkspaceSearch | undefined): WorkspaceSearch => ({
-      recordId:
-        typeof input?.recordId === "string" && input.recordId.length > 0
-          ? input.recordId
-          : undefined,
+      recordId: typeof input?.recordId === "string" && input.recordId.length > 0 ? input.recordId : undefined,
       tab: input?.tab === "page" ? "page" : "graph",
     }),
   )
@@ -124,32 +116,18 @@ const getWorkspacePageData = createServerFn({ method: "GET" })
     const listResult = await listWikiPages();
     const session = sessionResult.ok ? sessionResult.data.session : undefined;
     const sessionError = sessionResult.ok ? undefined : sessionResult.error;
-    const activityResult = session
-      ? await listAgentActivity({ sessionId: session.id })
-      : undefined;
-    const changeLogResult = session
-      ? await listChangeLogs({ sessionId: session.id })
-      : undefined;
+    const activityResult = session ? await listAgentActivity({ sessionId: session.id }) : undefined;
+    const changeLogResult = session ? await listChangeLogs({ sessionId: session.id }) : undefined;
     if (!listResult.ok) {
       return {
         session,
         pages: [],
-        agentActivity: activityResult?.ok
-          ? activityResult.data.map(serializableActivityRecord)
-          : [],
-        changeLogs: changeLogResult?.ok
-          ? changeLogResult.data.map(serializableChangeLogRecord)
-          : [],
+        agentActivity: activityResult?.ok ? activityResult.data.map(serializableActivityRecord) : [],
+        changeLogs: changeLogResult?.ok ? changeLogResult.data.map(serializableChangeLogRecord) : [],
         sessionError,
         listError: listResult.error,
-        activityError:
-          activityResult && !activityResult.ok
-            ? activityResult.error
-            : undefined,
-        changeLogError:
-          changeLogResult && !changeLogResult.ok
-            ? changeLogResult.error
-            : undefined,
+        activityError: activityResult && !activityResult.ok ? activityResult.error : undefined,
+        changeLogError: changeLogResult && !changeLogResult.ok ? changeLogResult.error : undefined,
       };
     }
 
@@ -158,21 +136,11 @@ const getWorkspacePageData = createServerFn({ method: "GET" })
       return {
         session,
         pages: listResult.data,
-        agentActivity: activityResult?.ok
-          ? activityResult.data.map(serializableActivityRecord)
-          : [],
-        changeLogs: changeLogResult?.ok
-          ? changeLogResult.data.map(serializableChangeLogRecord)
-          : [],
+        agentActivity: activityResult?.ok ? activityResult.data.map(serializableActivityRecord) : [],
+        changeLogs: changeLogResult?.ok ? changeLogResult.data.map(serializableChangeLogRecord) : [],
         sessionError,
-        activityError:
-          activityResult && !activityResult.ok
-            ? activityResult.error
-            : undefined,
-        changeLogError:
-          changeLogResult && !changeLogResult.ok
-            ? changeLogResult.error
-            : undefined,
+        activityError: activityResult && !activityResult.ok ? activityResult.error : undefined,
+        changeLogError: changeLogResult && !changeLogResult.ok ? changeLogResult.error : undefined,
       };
     }
 
@@ -185,22 +153,12 @@ const getWorkspacePageData = createServerFn({ method: "GET" })
         session,
         pages: listResult.data,
         selectedRecordId,
-        agentActivity: activityResult?.ok
-          ? activityResult.data.map(serializableActivityRecord)
-          : [],
-        changeLogs: changeLogResult?.ok
-          ? changeLogResult.data.map(serializableChangeLogRecord)
-          : [],
+        agentActivity: activityResult?.ok ? activityResult.data.map(serializableActivityRecord) : [],
+        changeLogs: changeLogResult?.ok ? changeLogResult.data.map(serializableChangeLogRecord) : [],
         sessionError,
         graphError: graphResult.error,
-        activityError:
-          activityResult && !activityResult.ok
-            ? activityResult.error
-            : undefined,
-        changeLogError:
-          changeLogResult && !changeLogResult.ok
-            ? changeLogResult.error
-            : undefined,
+        activityError: activityResult && !activityResult.ok ? activityResult.error : undefined,
+        changeLogError: changeLogResult && !changeLogResult.ok ? changeLogResult.error : undefined,
       };
     }
 
@@ -215,22 +173,12 @@ const getWorkspacePageData = createServerFn({ method: "GET" })
         pages: listResult.data,
         selectedRecordId,
         graph: graphResult.data,
-        agentActivity: activityResult?.ok
-          ? activityResult.data.map(serializableActivityRecord)
-          : [],
-        changeLogs: changeLogResult?.ok
-          ? changeLogResult.data.map(serializableChangeLogRecord)
-          : [],
+        agentActivity: activityResult?.ok ? activityResult.data.map(serializableActivityRecord) : [],
+        changeLogs: changeLogResult?.ok ? changeLogResult.data.map(serializableChangeLogRecord) : [],
         sessionError,
         pageError: pageResult.error,
-        activityError:
-          activityResult && !activityResult.ok
-            ? activityResult.error
-            : undefined,
-        changeLogError:
-          changeLogResult && !changeLogResult.ok
-            ? changeLogResult.error
-            : undefined,
+        activityError: activityResult && !activityResult.ok ? activityResult.error : undefined,
+        changeLogError: changeLogResult && !changeLogResult.ok ? changeLogResult.error : undefined,
       };
     }
 
@@ -268,30 +216,18 @@ const getWorkspacePageData = createServerFn({ method: "GET" })
       graph: graphResult.data,
       page,
       pageValidation,
-      agentActivity: activityResult?.ok
-        ? activityResult.data.map(serializableActivityRecord)
-        : [],
-      changeLogs: changeLogResult?.ok
-        ? changeLogResult.data.map(serializableChangeLogRecord)
-        : [],
+      agentActivity: activityResult?.ok ? activityResult.data.map(serializableActivityRecord) : [],
+      changeLogs: changeLogResult?.ok ? changeLogResult.data.map(serializableChangeLogRecord) : [],
       sessionError,
-      activityError:
-        activityResult && !activityResult.ok ? activityResult.error : undefined,
-      changeLogError:
-        changeLogResult && !changeLogResult.ok
-          ? changeLogResult.error
-          : undefined,
+      activityError: activityResult && !activityResult.ok ? activityResult.error : undefined,
+      changeLogError: changeLogResult && !changeLogResult.ok ? changeLogResult.error : undefined,
     };
   });
 
 const savePageBody = createServerFn({ method: "POST" })
   .inputValidator((input: unknown): SavePageBodyInput => {
-    const candidate =
-      input && typeof input === "object"
-        ? (input as Partial<SavePageBodyInput>)
-        : {};
-    const pageId =
-      typeof candidate.pageId === "string" ? candidate.pageId.trim() : "";
+    const candidate = input && typeof input === "object" ? (input as Partial<SavePageBodyInput>) : {};
+    const pageId = typeof candidate.pageId === "string" ? candidate.pageId.trim() : "";
     return {
       pageId,
       body: typeof candidate.body === "string" ? candidate.body : "",
@@ -319,13 +255,9 @@ const savePageBody = createServerFn({ method: "POST" })
 
 const sendWorkspaceMessage = createServerFn({ method: "POST" })
   .inputValidator((input: unknown): SendWorkspaceMessageInput => {
-    const candidate =
-      input && typeof input === "object"
-        ? (input as Partial<SendWorkspaceMessageInput>)
-        : {};
+    const candidate = input && typeof input === "object" ? (input as Partial<SendWorkspaceMessageInput>) : {};
     return {
-      prompt:
-        typeof candidate.prompt === "string" ? candidate.prompt.trim() : "",
+      prompt: typeof candidate.prompt === "string" ? candidate.prompt.trim() : "",
     };
   })
   .handler(async ({ data }): Promise<SendWorkspaceMessageResult> => {
@@ -334,8 +266,7 @@ const sendWorkspaceMessage = createServerFn({ method: "POST" })
       prompt: data.prompt,
       purpose: "Codex-powered Agent Workspace",
     });
-    if (!result.ok)
-      return { ok: false, error: serializableCodexFailure(result.error) };
+    if (!result.ok) return { ok: false, error: serializableCodexFailure(result.error) };
     return { ok: true, data: result.data };
   });
 
@@ -361,13 +292,10 @@ function WorkspaceRoute() {
   const [messageText, setMessageText] = useState("");
   const [chatMessages, setChatMessages] = useState<readonly ChatMessage[]>([]);
   const [sendError, setSendError] = useState<WorkspaceTurnError | undefined>();
-  const [turnSummary, setTurnSummary] = useState<
-    CodexWorkspaceTurnData | undefined
-  >();
+  const [turnSummary, setTurnSummary] = useState<CodexWorkspaceTurnData | undefined>();
   const [isSending, startSending] = useTransition();
   const timelineItems = mergeTimeline(data.agentActivity, data.changeLogs);
-  const canSend =
-    Boolean(session) && messageText.trim().length > 0 && !isSending;
+  const canSend = Boolean(session) && messageText.trim().length > 0 && !isSending;
 
   function handleSendMessage(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -462,44 +390,25 @@ function WorkspaceRoute() {
       </header>
 
       <div className="workspace-layout">
-        <section
-          className="panel conversation-panel"
-          aria-labelledby="session-heading"
-          aria-busy="false"
-        >
+        <section className="panel conversation-panel" aria-labelledby="session-heading" aria-busy="false">
           <div className="panel-toolbar">
             <div>
               <h2 id="session-heading">Chat</h2>
-              <span className="quiet-label">
-                {session?.id ?? "Agent Session unavailable"}
-              </span>
+              <span className="quiet-label">{session?.id ?? "Agent Session unavailable"}</span>
             </div>
-            <span
-              className={
-                isSending ? "status-pill warning" : "status-pill neutral"
-              }
-            >
+            <span className={isSending ? "status-pill warning" : "status-pill neutral"}>
               {isSending ? "Turn running" : session ? "Ready" : "Offline"}
             </span>
           </div>
 
           {data.sessionError ? (
-            <WorkspaceDataErrorPanel
-              title="Agent Session startup failed"
-              error={data.sessionError}
-            />
+            <WorkspaceDataErrorPanel title="Agent Session startup failed" error={data.sessionError} />
           ) : null}
 
-          <section
-            className="chat-transcript"
-            aria-label="Workspace chat transcript"
-            aria-live="polite"
-          >
+          <section className="chat-transcript" aria-label="Workspace chat transcript" aria-live="polite">
             {chatMessages.length === 0 ? (
               <div className="empty-state compact-empty">
-                <strong>
-                  {session ? "Ask the workspace agent" : "No Agent Session"}
-                </strong>
+                <strong>{session ? "Ask the workspace agent" : "No Agent Session"}</strong>
                 <p>
                   {session
                     ? "Messages run through the mapped Codex thread. Runtime events and Graph Wiki mutations appear below."
@@ -509,18 +418,11 @@ function WorkspaceRoute() {
             ) : (
               <ol className="message-list">
                 {chatMessages.map((message) => (
-                  <li
-                    key={message.id}
-                    className={`message-row ${message.role}`}
-                  >
-                    <span className="message-role">
-                      {message.role === "user" ? "You" : "Codex"}
-                    </span>
+                  <li key={message.id} className={`message-row ${message.role}`}>
+                    <span className="message-role">{message.role === "user" ? "You" : "Codex"}</span>
                     <div className="message-bubble">
                       <p>{message.text}</p>
-                      <span className={`message-status ${message.status}`}>
-                        {messageStatusLabel(message.status)}
-                      </span>
+                      <span className={`message-status ${message.status}`}>{messageStatusLabel(message.status)}</span>
                     </div>
                   </li>
                 ))}
@@ -532,38 +434,18 @@ function WorkspaceRoute() {
             <div className="turn-summary" role="status">
               <span>thread {turnSummary.threadId}</span>
               <span>turn {turnSummary.turnId}</span>
-              <span>
-                {formatCount(turnSummary.streamedEventCount, "streamed event")}
-              </span>
-              <span>
-                {formatCount(
-                  turnSummary.activityRecordCount,
-                  "activity record",
-                )}
-              </span>
+              <span>{formatCount(turnSummary.streamedEventCount, "streamed event")}</span>
+              <span>{formatCount(turnSummary.activityRecordCount, "activity record")}</span>
             </div>
           ) : null}
 
-          {sendError ? (
-            <WorkspaceTurnErrorPanel
-              title="Message send failed"
-              error={sendError}
-            />
-          ) : null}
+          {sendError ? <WorkspaceTurnErrorPanel title="Message send failed" error={sendError} /> : null}
 
-          <form
-            className="composer"
-            aria-label="Session message composer"
-            onSubmit={handleSendMessage}
-          >
+          <form className="composer" aria-label="Session message composer" onSubmit={handleSendMessage}>
             <label htmlFor="session-message">Message</label>
             <textarea
               id="session-message"
-              placeholder={
-                session
-                  ? "Send a task, question, or inspection request"
-                  : "Agent Session unavailable"
-              }
+              placeholder={session ? "Send a task, question, or inspection request" : "Agent Session unavailable"}
               disabled={!session || isSending}
               value={messageText}
               onChange={(event) => setMessageText(event.currentTarget.value)}
@@ -578,49 +460,29 @@ function WorkspaceRoute() {
             </div>
           </form>
 
-          <section
-            className="activity-region"
-            aria-labelledby="activity-heading"
-          >
+          <section className="activity-region" aria-labelledby="activity-heading">
             <div className="panel-heading tight">
               <h3 id="activity-heading">Activity</h3>
-              <span className="quiet-label">
-                {formatCount(timelineItems.length, "record")}
-              </span>
+              <span className="quiet-label">{formatCount(timelineItems.length, "record")}</span>
             </div>
             {data.activityError ? (
-              <WorkspaceDataErrorPanel
-                title="Agent Activity read failed"
-                error={data.activityError}
-              />
+              <WorkspaceDataErrorPanel title="Agent Activity read failed" error={data.activityError} />
             ) : null}
             {data.changeLogError ? (
-              <WorkspaceDataErrorPanel
-                title="Change Log read failed"
-                error={data.changeLogError}
-              />
+              <WorkspaceDataErrorPanel title="Change Log read failed" error={data.changeLogError} />
             ) : null}
             <ActivityTimeline items={timelineItems} />
           </section>
         </section>
 
-        <section
-          className="panel context-panel"
-          aria-labelledby="graph-heading"
-        >
-          <div
-            className="tabbar"
-            role="tablist"
-            aria-label="Workspace projection"
-          >
+        <section className="panel context-panel" aria-labelledby="graph-heading">
+          <div className="tabbar" role="tablist" aria-label="Workspace projection">
             <Link
               to="/workspace"
               search={{ recordId: data.selectedRecordId, tab: "graph" }}
               role="tab"
               aria-selected={activeTab === "graph"}
-              className={
-                activeTab === "graph" ? "tab-button active" : "tab-button"
-              }
+              className={activeTab === "graph" ? "tab-button active" : "tab-button"}
             >
               Graph
             </Link>
@@ -629,9 +491,7 @@ function WorkspaceRoute() {
               search={{ recordId: data.selectedRecordId, tab: "page" }}
               role="tab"
               aria-selected={activeTab === "page"}
-              className={
-                activeTab === "page" ? "tab-button active" : "tab-button"
-              }
+              className={activeTab === "page" ? "tab-button active" : "tab-button"}
             >
               Wiki Page
             </Link>
@@ -656,10 +516,7 @@ function WorkspaceRoute() {
           )}
 
           {data.graphError ? (
-            <WorkspaceDataErrorPanel
-              title="Graph neighborhood failed"
-              error={data.graphError}
-            />
+            <WorkspaceDataErrorPanel title="Graph neighborhood failed" error={data.graphError} />
           ) : null}
         </section>
       </div>
@@ -681,9 +538,7 @@ function PageTab({
   const router = useRouter();
   const [body, setBody] = useState(page?.body ?? "");
   const [baseBody, setBaseBody] = useState(page?.body ?? "");
-  const [saveResult, setSaveResult] = useState<
-    SavePageBodyResult | undefined
-  >();
+  const [saveResult, setSaveResult] = useState<SavePageBodyResult | undefined>();
   const [saveError, setSaveError] = useState<string | undefined>();
   const [isPending, startTransition] = useTransition();
   const selectedPageId = page?.id;
@@ -697,9 +552,7 @@ function PageTab({
     setSaveError(undefined);
   }, [selectedPageId, selectedPageBody]);
 
-  const activeValidation = saveResult?.ok
-    ? saveResult.validation
-    : pageValidation;
+  const activeValidation = saveResult?.ok ? saveResult.validation : pageValidation;
   const isDirty = page !== undefined && body !== baseBody;
 
   function handleSave(event: FormEvent<HTMLFormElement>) {
@@ -716,11 +569,7 @@ function PageTab({
           await router.invalidate();
         }
       } catch (error) {
-        setSaveError(
-          error instanceof Error
-            ? error.message
-            : "Unknown Page Body save failure.",
-        );
+        setSaveError(error instanceof Error ? error.message : "Unknown Page Body save failure.");
       }
     });
   }
@@ -732,10 +581,7 @@ function PageTab({
           <h2 id="page-heading">Wiki Page</h2>
           <span className="status-pill warning">Read failed</span>
         </div>
-        <WorkspaceDataErrorPanel
-          title="Wiki Page read failed"
-          error={pageError}
-        />
+        <WorkspaceDataErrorPanel title="Wiki Page read failed" error={pageError} />
       </section>
     );
   }
@@ -746,18 +592,13 @@ function PageTab({
         <div className="panel-heading">
           <div>
             <h2 id="page-heading">Wiki Page</h2>
-            <span className="quiet-label">
-              {selectedRecordId ?? "No selection"}
-            </span>
+            <span className="quiet-label">{selectedRecordId ?? "No selection"}</span>
           </div>
           <span className="status-pill neutral">Read only</span>
         </div>
         <div className="empty-state inline-empty" role="status">
           <strong>No Wiki Page selected</strong>
-          <p>
-            Select a Wiki Page in graph focus before reading or editing Page
-            Body text.
-          </p>
+          <p>Select a Wiki Page in graph focus before reading or editing Page Body text.</p>
         </div>
       </section>
     );
@@ -768,47 +609,24 @@ function PageTab({
       <div className="panel-heading">
         <div>
           <h2 id="page-heading">{page.title || page.id}</h2>
-          <span className="quiet-label">
-            {page.slug ? `/${page.slug}` : page.id}
-          </span>
+          <span className="quiet-label">{page.slug ? `/${page.slug}` : page.id}</span>
         </div>
-        <span
-          className={
-            activeValidation?.issues.length
-              ? "status-pill warning"
-              : "status-pill"
-          }
-        >
-          {activeValidation?.issues.length
-            ? "Citation issues"
-            : "Citations valid"}
+        <span className={activeValidation?.issues.length ? "status-pill warning" : "status-pill"}>
+          {activeValidation?.issues.length ? "Citation issues" : "Citations valid"}
         </span>
       </div>
 
-      <WikiPageCitationPanel
-        citations={page.citations}
-        validation={activeValidation}
-      />
+      <WikiPageCitationPanel citations={page.citations} validation={activeValidation} />
       <WikiPageFramePanel page={page} />
 
       <form className="page-editor" onSubmit={handleSave}>
         <label htmlFor="page-body-editor">Page Body</label>
-        <textarea
-          id="page-body-editor"
-          value={body}
-          onChange={(event) => setBody(event.currentTarget.value)}
-        />
+        <textarea id="page-body-editor" value={body} onChange={(event) => setBody(event.currentTarget.value)} />
         <div className="page-editor-actions">
           <span className="quiet-label">
-            {isDirty
-              ? `Unsaved edit, ${body.length} characters`
-              : `Saved body, ${baseBody.length} characters`}
+            {isDirty ? `Unsaved edit, ${body.length} characters` : `Saved body, ${baseBody.length} characters`}
           </span>
-          <button
-            type="submit"
-            className="button-link small"
-            disabled={!isDirty || isPending}
-          >
+          <button type="submit" className="button-link small" disabled={!isDirty || isPending}>
             {isPending ? "Saving" : "Save"}
           </button>
         </div>
@@ -816,21 +634,16 @@ function PageTab({
 
       {saveResult?.ok ? (
         <div className="state-panel success-state slim" role="status">
-          <strong>
-            {saveResult.changed ? "Page Body saved" : "No body changes"}
-          </strong>
+          <strong>{saveResult.changed ? "Page Body saved" : "No body changes"}</strong>
           <p>
-            Validation passed for {page.id}. Body length changed from{" "}
-            {saveResult.beforeLength} to {saveResult.afterLength} characters.
+            Validation passed for {page.id}. Body length changed from {saveResult.beforeLength} to{" "}
+            {saveResult.afterLength} characters.
           </p>
         </div>
       ) : null}
 
       {saveResult && !saveResult.ok ? (
-        <WorkspaceDataErrorPanel
-          title="Page Body save failed"
-          error={saveResult.error}
-        />
+        <WorkspaceDataErrorPanel title="Page Body save failed" error={saveResult.error} />
       ) : null}
 
       {saveError ? (
@@ -849,9 +662,7 @@ function WikiPageFramePanel({ page }: { readonly page: WorkspaceWikiPage }) {
       <strong>Frame metadata</strong>
       <p>
         {recordLabel(page.frame) || "No frame assigned"} ·{" "}
-        {page.frame_metadata
-          ? JSON.stringify(page.frame_metadata)
-          : "No sparse frame metadata"}
+        {page.frame_metadata ? JSON.stringify(page.frame_metadata) : "No sparse frame metadata"}
       </p>
     </div>
   );
@@ -859,13 +670,7 @@ function WikiPageFramePanel({ page }: { readonly page: WorkspaceWikiPage }) {
 
 function recordLabel(value: unknown): string | undefined {
   if (typeof value === "string") return value;
-  if (
-    value &&
-    typeof value === "object" &&
-    "id" in value &&
-    typeof value.id === "string"
-  )
-    return value.id;
+  if (value && typeof value === "object" && "id" in value && typeof value.id === "string") return value.id;
   return undefined;
 }
 
@@ -877,15 +682,10 @@ function WikiPageCitationPanel({
   readonly validation?: PageCitationValidation;
 }) {
   return (
-    <section
-      className="citation-panel"
-      aria-labelledby="citation-panel-heading"
-    >
+    <section className="citation-panel" aria-labelledby="citation-panel-heading">
       <div className="panel-heading tight">
         <h3 id="citation-panel-heading">Citations</h3>
-        <span className="quiet-label">
-          {formatCount(citations.length, "graph citation")}
-        </span>
+        <span className="quiet-label">{formatCount(citations.length, "graph citation")}</span>
       </div>
 
       {validation && validation.issues.length > 0 ? (
@@ -905,10 +705,7 @@ function WikiPageCitationPanel({
       ) : (
         <div className="state-panel success-state slim" role="status">
           <strong>Citation markers match graph Citation keys</strong>
-          <p>
-            Page Body saves only update the Wiki Page body and Change Log
-            through backend semantics.
-          </p>
+          <p>Page Body saves only update the Wiki Page body and Change Log through backend semantics.</p>
         </div>
       )}
 
@@ -917,43 +714,28 @@ function WikiPageCitationPanel({
           {citations.map((citation) => (
             <li key={citation.key}>
               <code>[^{citation.key}]</code>
-              <span>
-                {citation.label || citation.quote || "Graph Citation"}
-              </span>
+              <span>{citation.label || citation.quote || "Graph Citation"}</span>
             </li>
           ))}
         </ol>
       ) : (
-        <div
-          className="empty-state inline-empty compact-graph-empty"
-          role="status"
-        >
+        <div className="empty-state inline-empty compact-graph-empty" role="status">
           <strong>No graph Citations</strong>
-          <p>
-            This page can be saved without citation markers, but relation
-            editing stays outside this workspace tab.
-          </p>
+          <p>This page can be saved without citation markers, but relation editing stays outside this workspace tab.</p>
         </div>
       )}
     </section>
   );
 }
 
-function serializableActivityRecord(
-  record: AgentActivityRecord,
-): WorkspaceAgentActivityRecord {
+function serializableActivityRecord(record: AgentActivityRecord): WorkspaceAgentActivityRecord {
   return {
     ...record,
-    metadata:
-      record.metadata === undefined
-        ? undefined
-        : JSON.stringify(record.metadata),
+    metadata: record.metadata === undefined ? undefined : JSON.stringify(record.metadata),
   };
 }
 
-function serializableChangeLogRecord(
-  record: ChangeLogRecord,
-): WorkspaceChangeLogRecord {
+function serializableChangeLogRecord(record: ChangeLogRecord): WorkspaceChangeLogRecord {
   return {
     id: record.id,
     agent_session: record.agent_session,
@@ -978,24 +760,14 @@ function serializableCodexFailure(error: {
     kind: error.kind,
     operation: error.operation,
     target: error.target,
-    input: Object.fromEntries(
-      Object.entries(error.input).map(([key, value]) => [
-        key,
-        serializableScalar(value),
-      ]),
-    ),
+    input: Object.fromEntries(Object.entries(error.input).map(([key, value]) => [key, serializableScalar(value)])),
     reason: error.reason,
     action: error.action,
   };
 }
 
 function serializableScalar(value: unknown): string | number | boolean | null {
-  if (
-    typeof value === "string" ||
-    typeof value === "number" ||
-    typeof value === "boolean" ||
-    value === null
-  ) {
+  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean" || value === null) {
     return value;
   }
   if (value === undefined) return null;
@@ -1036,10 +808,7 @@ function WorkspaceError() {
       </header>
       <div className="state-panel error-state" role="alert">
         <strong>Workspace route failed</strong>
-        <p>
-          Reload /workspace. If it fails again, inspect the Vite server log for
-          the route render error.
-        </p>
+        <p>Reload /workspace. If it fails again, inspect the Vite server log for the route render error.</p>
       </div>
     </section>
   );

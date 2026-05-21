@@ -26,7 +26,7 @@ report file unless the user asks for one.
 
 1. Load [repo-shape.md](../standards/repo-shape.md) and `AGENTFACTORY.md` (if it exists).
 2. Inspect the repository file structure against the intended shape.
-3. For each file, verify it matches the *intent* described in `repo-shape.md`,
+3. For each file, verify it matches the _intent_ described in `repo-shape.md`,
    not just existence. Use the quality heuristics and anti-patterns as a guide.
 4. Check basic hygiene (gitignore, secrets, CODEOWNERS).
 5. Skip any criterion that does not apply to the repository type.

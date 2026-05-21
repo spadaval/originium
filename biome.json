@@ -13,7 +13,9 @@
       "!!**/.claude",
       "!!**/.originium",
       "!!**/.agents/plugins",
-      "!!**/plugins"
+      "!!**/plugins",
+      "!!.agents/skills/impeccable/scripts/modern-screenshot.umd.js",
+      "!!apps/web/src/routeTree.gen.ts"
     ]
   },
   "formatter": {
@@ -53,5 +55,13 @@
       "semicolons": "always",
       "trailingCommas": "all"
     }
-  }
+  },
+  "overrides": [
+    {
+      "includes": ["apps/web/src/routeTree.gen.ts", ".agents/skills/impeccable/scripts/modern-screenshot.umd.js"],
+      "formatter": { "enabled": false },
+      "linter": { "enabled": false },
+      "assist": { "enabled": false }
+    }
+  ]
 }

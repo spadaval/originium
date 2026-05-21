@@ -5,29 +5,39 @@
  * booting the full overlay UI. Served before live-browser.js and attached to
  * window.__IMPECCABLE_LIVE_SESSION__.
  */
-(function (root) {
-  'use strict';
-
+((root) => {
   function createLiveBrowserSessionState({ prefix, storage, idFactory }) {
-    if (!prefix) throw new Error('prefix required');
+    if (!prefix) throw new Error("prefix required");
     const store = storage || root.localStorage;
-    const makeId = idFactory || function () { return Math.random().toString(16).slice(2, 10); };
-    const sessionKey = prefix + '-session';
-    const handledKey = sessionKey + '-handled';
-    const scrollKey = sessionKey + '-scroll';
+    const makeId = idFactory || (() => Math.random().toString(16).slice(2, 10));
+    const sessionKey = `${prefix}-session`;
+    const handledKey = `${sessionKey}-handled`;
+    const scrollKey = `${sessionKey}-scroll`;
     let checkpointRevision = 0;
     const owner = makeId();
 
     function safeRead(key) {
-      try { return store.getItem(key); } catch { return null; }
+      try {
+        return store.getItem(key);
+      } catch {
+        return null;
+      }
     }
 
     function safeWrite(key, value) {
-      try { store.setItem(key, value); } catch { /* quota exceeded or private mode */ }
+      try {
+        store.setItem(key, value);
+      } catch {
+        /* quota exceeded or private mode */
+      }
     }
 
     function safeRemove(key) {
-      try { store.removeItem(key); } catch { /* unavailable storage */ }
+      try {
+        store.removeItem(key);
+      } catch {
+        /* unavailable storage */
+      }
     }
 
     function loadSession() {
@@ -39,11 +49,13 @@
           checkpointRevision = Math.max(checkpointRevision, parsed.checkpointRevision);
         }
         return parsed;
-      } catch { return null; }
+      } catch {
+        return null;
+      }
     }
 
     function saveSession(session) {
-      if (!session || !session.id) return;
+      if (!session?.id) return;
       const payload = {
         ...session,
         checkpointRevision,
@@ -92,7 +104,7 @@
       const raw = safeRead(scrollKey);
       if (raw == null) return null;
       const n = parseFloat(raw);
-      return isFinite(n) ? n : null;
+      return Number.isFinite(n) ? n : null;
     }
 
     function clearScrollY() {
@@ -120,4 +132,4 @@
   }
 
   root.__IMPECCABLE_LIVE_SESSION__ = { createLiveBrowserSessionState };
-})(typeof window !== 'undefined' ? window : globalThis);
+})(typeof window !== "undefined" ? window : globalThis);

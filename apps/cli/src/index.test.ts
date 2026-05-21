@@ -402,6 +402,34 @@ test("bundled page update validates frame metadata JSON before database access",
   assert.match(output.error.reason, /Invalid frame metadata JSON/);
 });
 
+test("bundled frame commands validate scope and metadata before database access", () => {
+  const badScope = spawnSync(bundledCli, ["frame", "list", "--scope", "anything", "--json"], { encoding: "utf8" });
+  assert.equal(badScope.status, 1);
+  const badScopeOutput = JSON.parse(badScope.stdout);
+  assert.equal(badScopeOutput.error.operation, "frame.list");
+  assert.match(badScopeOutput.error.reason, /Unsupported Domain Frame scope/);
+
+  const badMetadata = spawnSync(
+    bundledCli,
+    [
+      "frame",
+      "assign",
+      "--record",
+      "wiki_page:curwb",
+      "--frame",
+      "source_backed_concept",
+      "--metadata-json",
+      "[]",
+      "--json",
+    ],
+    { encoding: "utf8" },
+  );
+  assert.equal(badMetadata.status, 1);
+  const badMetadataOutput = JSON.parse(badMetadata.stdout);
+  assert.equal(badMetadataOutput.error.operation, "frame.assign");
+  assert.match(badMetadataOutput.error.reason, /Invalid frame metadata JSON/);
+});
+
 test("bundled citation create reports locator validation failures before database access", () => {
   const result = spawnSync(
     bundledCli,

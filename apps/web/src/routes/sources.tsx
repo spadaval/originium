@@ -24,9 +24,7 @@ type SourcesPageData = {
   readonly outlineError?: SourceDataError;
 };
 
-type SourceDataError =
-  | WebGraphWikiOperationFailure
-  | WebGraphWikiValidationFailure;
+type SourceDataError = WebGraphWikiOperationFailure | WebGraphWikiValidationFailure;
 
 const sourcePdfRoutePrefix = "/sources/pdf";
 
@@ -34,8 +32,7 @@ const getSourcesPageData = createServerFn({ method: "GET" })
   .inputValidator(
     (input: SourcesSearch | undefined): SourcesSearch => ({
       sourceDocumentId:
-        typeof input?.sourceDocumentId === "string" &&
-        input.sourceDocumentId.length > 0
+        typeof input?.sourceDocumentId === "string" && input.sourceDocumentId.length > 0
           ? input.sourceDocumentId
           : undefined,
     }),
@@ -58,12 +55,8 @@ const getSourcesPageData = createServerFn({ method: "GET" })
       };
     }
 
-    const selectedFromList = listResult.data.find(
-      (document) => document.id === selectedDocumentId,
-    );
-    const detailResult = selectedFromList
-      ? undefined
-      : await readSourceDocument(selectedDocumentId);
+    const selectedFromList = listResult.data.find((document) => document.id === selectedDocumentId);
+    const detailResult = selectedFromList ? undefined : await readSourceDocument(selectedDocumentId);
     if (detailResult && !detailResult.ok) {
       return {
         documents: listResult.data,
@@ -103,10 +96,7 @@ const getSourcesPageData = createServerFn({ method: "GET" })
 
 export const Route = createFileRoute("/sources")({
   validateSearch: (search: Record<string, unknown>): SourcesSearch => ({
-    sourceDocumentId:
-      typeof search.sourceDocumentId === "string"
-        ? search.sourceDocumentId
-        : undefined,
+    sourceDocumentId: typeof search.sourceDocumentId === "string" ? search.sourceDocumentId : undefined,
   }),
   loaderDeps: ({ search }) => ({ sourceDocumentId: search.sourceDocumentId }),
   loader: ({ deps }) => getSourcesPageData({ data: deps }),
@@ -118,13 +108,9 @@ export const Route = createFileRoute("/sources")({
 function SourcesRoute() {
   const data = Route.useLoaderData();
   const selectedDocument = data.selectedDocument;
-  const selectedStatus = selectedDocument
-    ? formatStatus(selectedDocument.extraction_status)
-    : "No selection";
+  const selectedStatus = selectedDocument ? formatStatus(selectedDocument.extraction_status) : "No selection";
   const pdfSrc =
-    selectedDocument && isPdfSourceDocument(selectedDocument)
-      ? sourcePdfUrl(selectedDocument.id)
-      : undefined;
+    selectedDocument && isPdfSourceDocument(selectedDocument) ? sourcePdfUrl(selectedDocument.id) : undefined;
 
   return (
     <section className="route-stack" aria-labelledby="sources-title">
@@ -144,16 +130,11 @@ function SourcesRoute() {
       </header>
 
       <div className="sources-layout">
-        <section
-          className="panel source-list-panel"
-          aria-labelledby="source-list-heading"
-        >
+        <section className="panel source-list-panel" aria-labelledby="source-list-heading">
           <div className="panel-toolbar">
             <div>
               <h2 id="source-list-heading">Inventory</h2>
-              <span className="quiet-label">
-                {formatCount(data.documents.length, "Source Document")}
-              </span>
+              <span className="quiet-label">{formatCount(data.documents.length, "Source Document")}</span>
             </div>
             <label className="search-field">
               <span>Search</span>
@@ -162,17 +143,11 @@ function SourcesRoute() {
           </div>
 
           {data.listError ? (
-            <SourceDataErrorPanel
-              title="Source Document list failed"
-              error={data.listError}
-            />
+            <SourceDataErrorPanel title="Source Document list failed" error={data.listError} />
           ) : data.documents.length === 0 ? (
             <div className="empty-state compact-empty" role="status">
               <strong>No Source Documents</strong>
-              <p>
-                Import a source through the CLI or importer workflow to populate
-                this list.
-              </p>
+              <p>Import a source through the CLI or importer workflow to populate this list.</p>
             </div>
           ) : (
             <ul className="source-list" aria-label="Source Document list">
@@ -182,18 +157,14 @@ function SourcesRoute() {
                     to="/sources"
                     search={{ sourceDocumentId: document.id }}
                     className={
-                      document.id === data.selectedDocumentId
-                        ? "source-row source-row-selected"
-                        : "source-row"
+                      document.id === data.selectedDocumentId ? "source-row source-row-selected" : "source-row"
                     }
                   >
                     <span>
                       <strong>{document.title || document.id}</strong>
                       <small>{sourceRowMeta(document)}</small>
                     </span>
-                    <span
-                      className={statusClassName(document.extraction_status)}
-                    >
+                    <span className={statusClassName(document.extraction_status)}>
                       {formatStatus(document.extraction_status)}
                     </span>
                   </Link>
@@ -203,40 +174,22 @@ function SourcesRoute() {
           )}
         </section>
 
-        <section
-          className="panel source-detail-panel"
-          aria-labelledby="source-detail-heading"
-        >
+        <section className="panel source-detail-panel" aria-labelledby="source-detail-heading">
           <div className="detail-grid">
             <div className="metadata-pane">
               <div className="panel-heading">
                 <h2 id="source-detail-heading">Metadata</h2>
-                <span
-                  className={statusPillClassName(
-                    selectedDocument?.extraction_status,
-                  )}
-                >
-                  {selectedStatus}
-                </span>
+                <span className={statusPillClassName(selectedDocument?.extraction_status)}>{selectedStatus}</span>
               </div>
 
               {data.detailError ? (
-                <SourceDataErrorPanel
-                  title="Source Document detail failed"
-                  error={data.detailError}
-                />
+                <SourceDataErrorPanel title="Source Document detail failed" error={data.detailError} />
               ) : selectedDocument ? (
-                <SourceMetadata
-                  document={selectedDocument}
-                  outlineCount={data.outline.length}
-                />
+                <SourceMetadata document={selectedDocument} outlineCount={data.outline.length} />
               ) : data.selectedDocumentId ? (
                 <div className="state-panel slim" role="status">
                   <strong>Source Document not found</strong>
-                  <p>
-                    {data.selectedDocumentId} was not returned by the Graph Wiki
-                    database.
-                  </p>
+                  <p>{data.selectedDocumentId} was not returned by the Graph Wiki database.</p>
                 </div>
               ) : (
                 <div className="empty-state inline-empty" role="status">
@@ -250,44 +203,25 @@ function SourcesRoute() {
               <div className="panel-heading">
                 <h2 id="pdf-heading">PDF</h2>
                 {pdfSrc ? (
-                  <a
-                    href={pdfSrc}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="button-link secondary small"
-                  >
+                  <a href={pdfSrc} target="_blank" rel="noreferrer" className="button-link secondary small">
                     Open
                   </a>
                 ) : (
-                  <button
-                    type="button"
-                    className="button-link secondary small"
-                    disabled
-                  >
+                  <button type="button" className="button-link secondary small" disabled>
                     Open
                   </button>
                 )}
               </div>
-              <SourcePdfPane
-                document={selectedDocument}
-                pdfSrc={pdfSrc}
-                selectedDocumentId={data.selectedDocumentId}
-              />
+              <SourcePdfPane document={selectedDocument} pdfSrc={pdfSrc} selectedDocumentId={data.selectedDocumentId} />
             </section>
 
-            <section
-              className="headings-pane"
-              aria-labelledby="headings-heading"
-            >
+            <section className="headings-pane" aria-labelledby="headings-heading">
               <div className="panel-heading tight">
                 <h3 id="headings-heading">Document Outline</h3>
                 <span className="quiet-label">{data.outline.length}</span>
               </div>
               {data.outlineError ? (
-                <SourceDataErrorPanel
-                  title="Document outline failed"
-                  error={data.outlineError}
-                />
+                <SourceDataErrorPanel title="Document outline failed" error={data.outlineError} />
               ) : data.outline.length > 0 ? (
                 <ol className="heading-list">
                   {data.outline.map((entry) => (
@@ -303,9 +237,7 @@ function SourcesRoute() {
               ) : (
                 <div className="empty-state inline-empty" role="status">
                   <strong>No document outline</strong>
-                  <p>
-                    Outline projection metadata will appear after extraction.
-                  </p>
+                  <p>Outline projection metadata will appear after extraction.</p>
                 </div>
               )}
             </section>
@@ -336,16 +268,8 @@ function SourcePdfPane({
         >
           <div className="state-panel slim pdf-unavailable-state" role="status">
             <strong>PDF unavailable</strong>
-            <p>
-              The backend stream did not return an embeddable PDF for this
-              Source Document.
-            </p>
-            <a
-              href={pdfSrc}
-              target="_blank"
-              rel="noreferrer"
-              className="button-link secondary small"
-            >
+            <p>The backend stream did not return an embeddable PDF for this Source Document.</p>
+            <a href={pdfSrc} target="_blank" rel="noreferrer" className="button-link secondary small">
               Open stream response
             </a>
           </div>
@@ -360,8 +284,8 @@ function SourcePdfPane({
         <strong>No PDF file for this Source Document</strong>
         <p>
           {document.title || document.id} is recorded as{" "}
-          {document.kind || document.mime_type || "an unknown source type"}. PDF
-          preview is only available for PDF Source Documents.
+          {document.kind || document.mime_type || "an unknown source type"}. PDF preview is only available for PDF
+          Source Documents.
         </p>
       </div>
     );
@@ -371,9 +295,7 @@ function SourcePdfPane({
     return (
       <div className="state-panel slim pdf-state" role="status">
         <strong>PDF unavailable</strong>
-        <p>
-          Select a valid PDF Source Document before opening the backend stream.
-        </p>
+        <p>Select a valid PDF Source Document before opening the backend stream.</p>
       </div>
     );
   }
@@ -412,10 +334,7 @@ function SourceMetadata({
     { label: "MIME type", value: document.mime_type || "Unknown" },
     {
       label: "Pages",
-      value:
-        document.page_count === undefined
-          ? "Unknown"
-          : String(document.page_count),
+      value: document.page_count === undefined ? "Unknown" : String(document.page_count),
     },
     { label: "Outline entries", value: String(outlineCount) },
     { label: "SHA-256", value: document.sha256 || "Unknown" },
@@ -436,13 +355,7 @@ function SourceMetadata({
   );
 }
 
-function SourceDataErrorPanel({
-  title,
-  error,
-}: {
-  readonly title: string;
-  readonly error: SourceDataError;
-}) {
+function SourceDataErrorPanel({ title, error }: { readonly title: string; readonly error: SourceDataError }) {
   return (
     <div className="state-panel error-state slim" role="alert">
       <strong>{title}</strong>
@@ -495,42 +408,25 @@ function SourcesError({ error }: { readonly error: Error }) {
 }
 
 function sourceRowMeta(document: SourceDocumentRecord): string {
-  const pages =
-    document.page_count === undefined
-      ? "unknown pages"
-      : formatCount(document.page_count, "page");
-  const updated = document.updated_at
-    ? `updated ${formatDate(document.updated_at)}`
-    : "not timestamped";
+  const pages = document.page_count === undefined ? "unknown pages" : formatCount(document.page_count, "page");
+  const updated = document.updated_at ? `updated ${formatDate(document.updated_at)}` : "not timestamped";
   return `${document.corpus || document.document_class || document.kind || "source"} - ${pages} - ${updated}`;
 }
 
 function recordLabel(value: unknown): string | undefined {
   if (typeof value === "string") return value;
-  if (
-    value &&
-    typeof value === "object" &&
-    "id" in value &&
-    typeof value.id === "string"
-  )
-    return value.id;
+  if (value && typeof value === "object" && "id" in value && typeof value.id === "string") return value.id;
   return undefined;
 }
 
 function outlineMeta(entry: SourceOutlineRecord): string {
-  const endPage =
-    entry.end_page && entry.end_page !== entry.start_page
-      ? `-${entry.end_page}`
-      : "";
+  const endPage = entry.end_page && entry.end_page !== entry.start_page ? `-${entry.end_page}` : "";
   const projection = entry.projection_version ?? entry.extraction_method;
   return `Page ${entry.start_page}${endPage} - ${projection}`;
 }
 
 function outlineTitle(entry: SourceOutlineRecord): string {
-  const endPage =
-    entry.end_page && entry.end_page !== entry.start_page
-      ? `-${entry.end_page}`
-      : "";
+  const endPage = entry.end_page && entry.end_page !== entry.start_page ? `-${entry.end_page}` : "";
   return `Source Text Projection ${entry.start_page}${endPage}`;
 }
 
@@ -576,12 +472,7 @@ function statusPillClassName(status: string | undefined): string {
 
 function statusTone(status: string | undefined): "ok" | "warning" | "neutral" {
   const normalized = status?.toLowerCase() ?? "";
-  if (
-    ["complete", "completed", "ready", "indexed", "extracted"].includes(
-      normalized,
-    )
-  )
-    return "ok";
+  if (["complete", "completed", "ready", "indexed", "extracted"].includes(normalized)) return "ok";
   if (["failed", "error", "blocked"].includes(normalized)) return "warning";
   return "neutral";
 }

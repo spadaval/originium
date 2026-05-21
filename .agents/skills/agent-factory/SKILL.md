@@ -27,8 +27,8 @@ subskills so agents operate from durable repository state, not private chat hist
 
 ## Subskills
 
-| Subskill      | Use For                                                                                   | Load                                                              |
-| ------------- | ----------------------------------------------------------------------------------------- | ----------------------------------------------------------------- |
+| Subskill      | Use For                                                                                   | Load                                                   |
+| ------------- | ----------------------------------------------------------------------------------------- | ------------------------------------------------------ |
 | `install`     | Installing agent-factory in a repository and creating required bindings/scaffolding       | [procedures/install.md](procedures/install.md)         |
 | `plan`        | Creating, splitting, sequencing, clarifying, or cleaning up beads                         | [procedures/plan.md](procedures/plan.md)               |
 | `orchestrate` | Running an epic or multi-bead workstream and assigning subagents                          | [procedures/orchestrate.md](procedures/orchestrate.md) |
@@ -38,8 +38,8 @@ subskills so agents operate from durable repository state, not private chat hist
 | `validate`    | Scenario-centered product, operator, browser, runtime, integration, or preservation proof | [procedures/validate.md](procedures/validate.md)       |
 | `docs`        | Documentation refresh, reconciliation, or docs/process drift cleanup                      | [procedures/docs.md](procedures/docs.md)               |
 | `audit`       | Evidence-backed architecture-quality findings without implementing fixes                  | [procedures/audit.md](procedures/audit.md)             |
-| `readiness`   | Assessing whether a repository is legible and operable by agents                         | [procedures/readiness.md](procedures/readiness.md)     |
-| `beads`       | Beads command mechanics, issue standards, dependency rules, and tracker sync              | [standards/beads.md](standards/beads.md)             |
+| `readiness`   | Assessing whether a repository is legible and operable by agents                          | [procedures/readiness.md](procedures/readiness.md)     |
+| `beads`       | Beads command mechanics, issue standards, dependency rules, and tracker sync              | [standards/beads.md](standards/beads.md)               |
 
 ## Subskill Rules
 

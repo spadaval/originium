@@ -160,6 +160,7 @@ const routeGroups: Record<string, CommandHandler> = {
   page: routePage,
   refactor: routeRefactor,
   graph: routeGraph,
+  frame: routeFrame,
   retrieval: routeRetrieval,
   session: routeSession,
   source: routeSource,
@@ -285,6 +286,34 @@ const helpTopics: Record<string, HelpTopic> = {
       },
     ],
     workflows: ["Use focused lint after citation, source, page, or refactor mutations."],
+  },
+  frame: {
+    group: "frame",
+    summary: "Inspect Domain Frames and assign sparse frame metadata.",
+    commands: [
+      {
+        usage: "frame list [--scope source_document|wiki_page]",
+        summary: "List advisory Domain Frames and their scope.",
+        example: "originium frame list --scope wiki_page --json",
+      },
+      {
+        usage: "frame show <domain-frame-id>",
+        summary: "Show a Domain Frame and metadata slot definitions.",
+        example: "originium frame show domain_frame:source_backed_concept --json",
+      },
+      {
+        usage: "frame assign --record <record-id> --frame <frame-id-or-name> [--metadata-json <json>]",
+        summary: "Assign a frame to a Source Document or Wiki Page with sparse metadata.",
+        example:
+          'originium frame assign --record wiki_page:curwb --frame source_backed_concept --metadata-json \'{"industries":["mining"]}\' --json',
+      },
+      {
+        usage: "frame validate --record <record-id> [--metadata-json <json>]",
+        summary: "Validate frame metadata shape and report missing metadata as advisory.",
+        example: "originium frame validate --record wiki_page:curwb --json",
+      },
+    ],
+    workflows: ["Frame metadata is advisory by default; sparse records are allowed but visible."],
   },
   help: {
     group: "help",
@@ -1875,6 +1904,97 @@ async function routeGraph(argv: readonly string[]): Promise<CliResult> {
   });
 }
 
+async function routeFrame(argv: readonly string[]): Promise<CliResult> {
+  const [, command] = argv;
+  if (!command) return missingGroupCommand("frame", argv, "Use one of: list, show, assign, validate.");
+  if (command === "list") {
+    const scope = valueAfter(argv, "--scope");
+    if (scope && !["source_document", "wiki_page"].includes(scope)) {
+      return operationFailure(
+        "frame list",
+        "frame.list",
+        argv,
+        `Unsupported Domain Frame scope "${scope}".`,
+        "Use --scope source_document or --scope wiki_page, or omit --scope.",
+      );
+    }
+    const where = scope ? ` WHERE record_scope = "${scope}"` : "";
+    return queryCommand(
+      "frame list",
+      "frame.list",
+      argv,
+      `SELECT id, name, scope_note, record_scope, status, examples, non_examples, created_at, updated_at FROM domain_frame${where} ORDER BY record_scope ASC, name ASC;`,
+      "Listed Domain Frames.",
+      { scope: scope ?? "all" },
+      { kind: "read", targetRecords: ["domain_frame"] },
+    );
+  }
+  if (command === "show") {
+    const frame = argv[2] ?? valueAfter(argv, "--frame");
+    if (!frame) return missingArgument("frame show", "frame.show", argv, "<domain-frame-id>");
+    const frameId = frameRecordId(frame);
+    return queryCommand(
+      "frame show",
+      "frame.show",
+      argv,
+      `SELECT * FROM ${frameId}; SELECT * FROM metadata_slot_definition WHERE domain_frame = ${frameId} ORDER BY presence ASC, name ASC;`,
+      `Read Domain Frame ${frameId}.`,
+      { id: frameId },
+      { kind: "read", targetRecords: [frameId] },
+    );
+  }
+  if (command === "assign") {
+    const record = valueAfter(argv, "--record") ?? argv[2];
+    const frame = valueAfter(argv, "--frame");
+    if (!record) return missingArgument("frame assign", "frame.assign", argv, "--record <record-id>");
+    if (!frame) return missingArgument("frame assign", "frame.assign", argv, "--frame <frame-id-or-name>");
+    if (!isRecordId(record, "source_document") && !isRecordId(record, "wiki_page")) {
+      return operationFailure(
+        "frame assign",
+        "frame.assign",
+        argv,
+        `Unsupported frame assignment record "${record}".`,
+        "Pass a Source Document or Wiki Page record ID.",
+      );
+    }
+    const metadata = frameMetadataFromArgv(argv, "frame assign", "frame.assign");
+    if (!metadata.ok) return metadata.failure;
+    const frameId = frameRecordId(frame);
+    const metadataSet = metadata.value === undefined ? "" : `, frame_metadata = ${surrealObject(metadata.value)}`;
+    return queryCommand(
+      "frame assign",
+      "frame.assign",
+      argv,
+      `UPDATE ${record} SET frame = ${frameId}${metadataSet}, updated_at = time::now(); SELECT id, frame, frame_metadata FROM ${record};`,
+      `Assigned Domain Frame ${frameId} to ${record}.`,
+      { record, frame: frameId, metadata: metadata.value },
+      {
+        kind: "write",
+        targetRecords: [record, frameId],
+        beforeQuery: `SELECT * FROM ${record}`,
+        afterQuery: `SELECT * FROM ${record}`,
+        relateEditedTargets: [record],
+      },
+    );
+  }
+  if (command === "validate") {
+    const record = valueAfter(argv, "--record") ?? argv[2];
+    if (!record) return missingArgument("frame validate", "frame.validate", argv, "--record <record-id>");
+    const metadata = frameMetadataFromArgv(argv, "frame validate", "frame.validate");
+    if (!metadata.ok) return metadata.failure;
+    return queryCommand(
+      "frame validate",
+      "frame.validate",
+      argv,
+      `SELECT id, frame, frame_metadata FROM ${record};`,
+      `Validated frame metadata shape for ${record}; missing recommended slots remain advisory.`,
+      { record, providedMetadata: metadata.value, advisory: true },
+      { kind: "read", targetRecords: [record] },
+    );
+  }
+  return unknownCommand("frame", command, argv, "Use one of: list, show, assign, validate.");
+}
+
 async function graphNeighborhood(argv: readonly string[]): Promise<CliResult> {
   const recordId = argv[2] ?? valueAfter(argv, "--record");
   if (!recordId) return missingArgument("graph neighborhood", "graph.neighborhood", argv, "<record-id>");
@@ -1980,10 +2100,10 @@ async function routeWorkflow(argv: readonly string[]): Promise<CliResult> {
     const limit = Number.parseInt(valueAfter(argv, "--limit") ?? "5", 10);
     const escaped = escapeSurrealString(query);
     const answerQuery = [
-      `LET $pages = (SELECT id, title, slug, body, updated_at FROM wiki_page WHERE title CONTAINS "${escaped}" OR body CONTAINS "${escaped}" ORDER BY updated_at DESC LIMIT ${limit});`,
+      `LET $pages = (SELECT id, title, slug, page_kind, frame, frame_metadata, body, updated_at FROM wiki_page WHERE title CONTAINS "${escaped}" OR body CONTAINS "${escaped}" OR frame_metadata CONTAINS "${escaped}" ORDER BY updated_at DESC LIMIT ${limit});`,
       "SELECT * FROM $pages;",
       "SELECT id, in, out, key, label, claim, locator_kind, page_range, location_hint, quote, context, projection_id, text_hash, validation_status, confidence FROM cites WHERE in IN (SELECT VALUE id FROM $pages) FETCH out;",
-      `SELECT id, source_document, start_page, end_page, text_hash, projection_status, string::slice(text, 0, 700) AS snippet FROM source_text_projection WHERE text CONTAINS "${escaped}" ORDER BY start_page ASC LIMIT ${limit};`,
+      `SELECT id, source_document, start_page, end_page, text_hash, extraction_method, projection_version, projection_status, string::slice(text, 0, 700) AS snippet FROM source_text_projection WHERE text CONTAINS "${escaped}" ORDER BY start_page ASC LIMIT ${limit} FETCH source_document;`,
     ].join("\n");
     const result = await executeSurrealQuery(
       readSurrealConfig(),
@@ -3885,6 +4005,8 @@ function retrievalCandidatesFromStatements(
           aliases: record.aliases,
           scopeNote: record.scope_note,
           pageKind: record.page_kind,
+          frame: record.frame,
+          frameMetadata: record.frame_metadata,
           dbVectorScore: record.db_vector_score,
         },
       });
@@ -3901,6 +4023,20 @@ function retrievalCandidatesFromStatements(
         citedEvidence: [],
         metadata: {
           sourceDocument: record.source_document,
+          sourceDocumentMetadata: fetchedSourceDocument
+            ? {
+                corpus: fetchedSourceDocument.corpus,
+                publisher: fetchedSourceDocument.publisher,
+                documentClass: fetchedSourceDocument.document_class,
+                industries: fetchedSourceDocument.industries,
+                productFamilies: fetchedSourceDocument.product_families,
+                version: fetchedSourceDocument.version,
+                publicationDate: fetchedSourceDocument.publication_date,
+                trustStatus: fetchedSourceDocument.trust_status,
+                frame: fetchedSourceDocument.frame,
+                frameMetadata: fetchedSourceDocument.frame_metadata,
+              }
+            : undefined,
           startPage: record.start_page,
           endPage: record.end_page,
           textHash: record.text_hash,

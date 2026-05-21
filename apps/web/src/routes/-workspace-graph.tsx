@@ -6,11 +6,7 @@ import type {
   GraphNeighborhoodNode,
   WikiPageRecord,
 } from "../server/graph-wiki.ts";
-import {
-  formatCount,
-  type WorkspaceDataError,
-  WorkspaceDataErrorPanel,
-} from "./-workspace-activity.tsx";
+import { formatCount, type WorkspaceDataError, WorkspaceDataErrorPanel } from "./-workspace-activity.tsx";
 
 const graphPositions = [
   { x: 50, y: 18 },
@@ -44,20 +40,12 @@ export function GraphTab({
       <div className="panel-heading">
         <div>
           <h2 id="graph-heading">Graph focus</h2>
-          <span className="quiet-label">
-            {selectedNode ? nodeMeta(selectedNode) : "No projection"}
-          </span>
+          <span className="quiet-label">{selectedNode ? nodeMeta(selectedNode) : "No projection"}</span>
         </div>
-        <span className="status-pill neutral">
-          {graph ? boundedCount(graph) : "Read only"}
-        </span>
+        <span className="status-pill neutral">{graph ? boundedCount(graph) : "Read only"}</span>
       </div>
 
-      <WikiPageFocusList
-        pages={pages}
-        selectedRecordId={selectedRecordId}
-        listError={listError}
-      />
+      <WikiPageFocusList pages={pages} selectedRecordId={selectedRecordId} listError={listError} />
 
       {graph ? (
         graph.nodes.length > 0 ? (
@@ -74,10 +62,7 @@ export function GraphTab({
       ) : listError || graphError ? null : (
         <div className="empty-state inline-empty" role="status">
           <strong>No Wiki Pages</strong>
-          <p>
-            Create or import Graph Wiki records before opening a graph
-            neighborhood.
-          </p>
+          <p>Create or import Graph Wiki records before opening a graph neighborhood.</p>
         </div>
       )}
     </section>
@@ -93,20 +78,11 @@ function WikiPageFocusList({
   readonly selectedRecordId?: string;
   readonly listError?: WorkspaceDataError;
 }) {
-  if (listError)
-    return (
-      <WorkspaceDataErrorPanel
-        title="Wiki Page list failed"
-        error={listError}
-      />
-    );
+  if (listError) return <WorkspaceDataErrorPanel title="Wiki Page list failed" error={listError} />;
   if (pages.length === 0) return null;
 
   return (
-    <section
-      className="graph-focus-picker"
-      aria-labelledby="graph-focus-picker-heading"
-    >
+    <section className="graph-focus-picker" aria-labelledby="graph-focus-picker-heading">
       <div className="panel-heading tight">
         <h3 id="graph-focus-picker-heading">Wiki Page focus</h3>
         <span className="quiet-label">{formatCount(pages.length, "page")}</span>
@@ -117,11 +93,7 @@ function WikiPageFocusList({
             key={page.id}
             to="/workspace"
             search={{ recordId: page.id, tab: "graph" }}
-            className={
-              page.id === selectedRecordId
-                ? "focus-chip selected"
-                : "focus-chip"
-            }
+            className={page.id === selectedRecordId ? "focus-chip selected" : "focus-chip"}
           >
             {page.title || page.id}
           </Link>
@@ -133,25 +105,12 @@ function WikiPageFocusList({
 
 function GraphCanvas({ graph }: { readonly graph: GraphNeighborhoodData }) {
   const visibleNodes = graph.nodes.slice(0, graphPositions.length);
-  const positionById = new Map(
-    visibleNodes.map((node, index) => [node.id, graphPositions[index]]),
-  );
-  const visibleEdges = graph.edges.filter(
-    (edge) => positionById.has(edge.from) && positionById.has(edge.to),
-  );
+  const positionById = new Map(visibleNodes.map((node, index) => [node.id, graphPositions[index]]));
+  const visibleEdges = graph.edges.filter((edge) => positionById.has(edge.from) && positionById.has(edge.to));
 
   return (
-    <div
-      className="graph-canvas"
-      role="img"
-      aria-label={`Bounded graph neighborhood for ${graph.selectedRecordId}`}
-    >
-      <svg
-        className="graph-svg"
-        viewBox="0 0 100 100"
-        aria-hidden="true"
-        focusable="false"
-      >
+    <div className="graph-canvas" role="img" aria-label={`Bounded graph neighborhood for ${graph.selectedRecordId}`}>
+      <svg className="graph-svg" viewBox="0 0 100 100" aria-hidden="true" focusable="false">
         {visibleEdges.map((edge) => {
           const from = positionById.get(edge.from);
           const to = positionById.get(edge.to);
@@ -161,11 +120,7 @@ function GraphCanvas({ graph }: { readonly graph: GraphNeighborhoodData }) {
           return (
             <g key={edge.id}>
               <line
-                className={
-                  edge.kind === "citation"
-                    ? "graph-line citation"
-                    : "graph-line"
-                }
+                className={edge.kind === "citation" ? "graph-line citation" : "graph-line"}
                 x1={from.x}
                 y1={from.y}
                 x2={to.x}
@@ -225,14 +180,11 @@ function GraphCanvas({ graph }: { readonly graph: GraphNeighborhoodData }) {
 function GraphEdgeList({ graph }: { readonly graph: GraphNeighborhoodData }) {
   if (graph.edges.length === 0) {
     return (
-      <div
-        className="empty-state inline-empty compact-graph-empty"
-        role="status"
-      >
+      <div className="empty-state inline-empty compact-graph-empty" role="status">
         <strong>No linked neighbors</strong>
         <p>
-          {graph.selectedRecordId} exists, but no Citation, Wiki Page Reference,
-          or legacy Manual Link edges were returned.
+          {graph.selectedRecordId} exists, but no Citation, Wiki Page Reference, or legacy Manual Link edges were
+          returned.
         </p>
       </div>
     );
@@ -243,17 +195,12 @@ function GraphEdgeList({ graph }: { readonly graph: GraphNeighborhoodData }) {
     <section className="edge-list-region" aria-labelledby="edge-list-heading">
       <div className="panel-heading tight">
         <h3 id="edge-list-heading">Edges</h3>
-        <span className="quiet-label">
-          {formatCount(graph.edges.length, "edge")}
-        </span>
+        <span className="quiet-label">{formatCount(graph.edges.length, "edge")}</span>
       </div>
       <ol className="graph-edge-list">
         {graph.edges.map((edge) => (
           <li key={edge.id}>
-            <GraphRecordChip
-              node={nodesById.get(edge.from)}
-              recordId={edge.from}
-            />
+            <GraphRecordChip node={nodesById.get(edge.from)} recordId={edge.from} />
             <span className="edge-label">{edgeLabel(edge)}</span>
             <GraphRecordChip node={nodesById.get(edge.to)} recordId={edge.to} />
           </li>
@@ -263,31 +210,17 @@ function GraphEdgeList({ graph }: { readonly graph: GraphNeighborhoodData }) {
   );
 }
 
-function GraphRecordChip({
-  node,
-  recordId,
-}: {
-  readonly node?: GraphNeighborhoodNode;
-  readonly recordId: string;
-}) {
+function GraphRecordChip({ node, recordId }: { readonly node?: GraphNeighborhoodNode; readonly recordId: string }) {
   if (!node) return <span className="record-chip muted">{recordId}</span>;
   if (node.kind === "source_document") {
     return (
-      <Link
-        to="/sources"
-        search={{ sourceDocumentId: node.id }}
-        className="record-chip"
-      >
+      <Link to="/sources" search={{ sourceDocumentId: node.id }} className="record-chip">
         {node.label || node.id}
       </Link>
     );
   }
   return (
-    <Link
-      to="/workspace"
-      search={{ recordId: node.id, tab: "graph" }}
-      className="record-chip"
-    >
+    <Link to="/workspace" search={{ recordId: node.id, tab: "graph" }} className="record-chip">
       {node.label || node.id}
     </Link>
   );
@@ -320,17 +253,12 @@ function boundedCount(graph: GraphNeighborhoodData): string {
 
 function edgeLabel(edge: GraphNeighborhoodEdge): string {
   const label =
-    edge.label && edge.label.length > 0
-      ? edge.label
-      : edge.kind === "citation"
-        ? "Citation"
-        : edgeKindLabel(edge.kind);
+    edge.label && edge.label.length > 0 ? edge.label : edge.kind === "citation" ? "Citation" : edgeKindLabel(edge.kind);
   return `${edgeKindLabel(edge.kind)}: ${label}`;
 }
 
 function edgeShortLabel(edge: GraphNeighborhoodEdge): string {
-  const label =
-    edge.label && edge.label.length > 0 ? edge.label : edgeKindLabel(edge.kind);
+  const label = edge.label && edge.label.length > 0 ? edge.label : edgeKindLabel(edge.kind);
   return label.length > 18 ? `${label.slice(0, 17)}...` : label;
 }
 
