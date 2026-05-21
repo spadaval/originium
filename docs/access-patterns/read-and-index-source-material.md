@@ -3,15 +3,16 @@
 This access pattern covers an agent reading a page, section, or chapter of a
 trusted source and turning important material into maintained graph knowledge.
 
-The goal is not to create a Wiki Page for every heading. The goal is to promote
-high-value concepts, requirements, procedures, architectures, components, and
-use cases into durable graph records with precise enough evidence to audit.
+The goal is not to create a Wiki Page for every source section or projection
+span. The goal is to promote high-value concepts, requirements, procedures,
+architectures, components, and use cases into durable graph records with precise
+enough evidence to audit.
 
 ## Agent And CLI Split
 
 The agent decides what the source material means and what deserves durable
-promotion. The CLI should perform the exact source lookup, page matching,
-citation construction, validation, and index updates.
+promotion. The CLI should perform the exact source lookup, projection lookup,
+page matching, citation construction, validation, and index updates.
 
 Agent judgment:
 
@@ -26,8 +27,8 @@ Agent judgment:
 
 CLI responsibility:
 
-- locate the Source Document, Source Heading, page range, projection, and text
-  hash for the material being read
+- locate the Source Document, document-local page range, projection span, and
+  text hash for the material being read
 - search candidate Wiki Pages and aliases before writes
 - create citations from source locators and validate that markers, graph edges,
   page ranges, quotes, and projections agree
@@ -36,16 +37,18 @@ CLI responsibility:
 - reindex changed pages and projections after writes
 
 The agent should not manually assemble citation records beyond supplying the
-source locator, supported claim, and selected excerpt. The CLI should turn that
-input into a validated Citation edge and locator payload.
+Source Document locator, supported claim, and selected excerpt. The CLI should
+turn that input into a validated Citation edge and locator payload. Extracted
+headings, outline paths, and page-section labels may be stored in the locator
+payload or projection metadata, but they should not be Citation targets.
 
 ## Default Flow
 
 1. CLI identifies or verifies the source context:
    - Source Document
-   - containing Source Heading
-   - page range being read
-   - Source Text Projection or ingestion chunk, if available
+   - page range or quote/context being read
+   - containing outline path or section label, if extraction found one
+   - Source Text Projection span or ingestion chunk, if available
 2. Agent extracts candidate knowledge objects:
    - source-backed concepts
    - requirement sets
@@ -64,7 +67,7 @@ input into a validated Citation edge and locator payload.
    - no durable graph object yet
 5. CLI creates citation-local evidence records from agent-supplied locator
    input:
-   - Source Heading target
+   - Source Document target
    - page range
    - claim being supported
    - short quote or normalized excerpt when available
@@ -81,7 +84,8 @@ Pages from an untrusted local file or memory.
 Expected behavior:
 
 - import the Source Document if the user has provided it as trusted material
-- extract headings before creating citations
+- extract or rebuild projection/outline metadata before creating citations when
+  that metadata is needed to validate the locator
 - if import is out of scope, report that the graph cannot yet cite the source
 - do not create placeholder citations to nonexistent records
 
@@ -89,35 +93,37 @@ CLI support needed:
 
 - `source find` by file path, title, fingerprint, and corpus
 - `source import` with clear trust/corpus metadata
-- `source headings` with page coverage reporting
+- `source diagnostics` with page/projection coverage reporting
 
 This is a hard stop for source-backed claims.
 
-## Case: Source Document Exists But Headings Are Missing
+## Case: Source Document Exists But Projection Metadata Is Missing
 
-The document may be imported while heading extraction has not run or failed.
+The document may be imported while projection, outline, or page-section
+extraction has not run or failed.
 
 Expected behavior:
 
-- run heading extraction for the document
+- run projection or outline extraction for the document
 - verify page coverage before creating citations
-- if headings cannot be extracted, create a concrete follow-up issue or report
-  the operation and failure reason
+- if useful section metadata cannot be extracted, create a concrete follow-up
+  issue or report the operation and failure reason
 
 CLI support needed:
 
-- heading extraction that reports missing page ranges, duplicate headings, and
-  extraction confidence
-- a lint rule that blocks heading-backed citations when no heading covers the
-  cited page
+- source diagnostics that report missing page ranges, duplicate outline labels,
+  and extraction confidence
+- a lint rule that blocks citation locators when the cited page range is outside
+  the Source Document or cannot be validated against available projection
+  metadata
 
-Do not cite the whole Source Document as a substitute unless the CLI explicitly
+Do not use a whole-document citation as a substitute unless the CLI explicitly
 supports document-level citations and the source is very short.
 
-## Case: Heading Exists But Projection Is Missing
+## Case: Source Document Exists But Projection Is Missing
 
-The agent can still cite the Source Heading, but search and locator validation
-will be weaker.
+The agent can still cite the Source Document with page range and quote/context,
+but search and locator validation will be weaker.
 
 Expected behavior:
 
@@ -130,26 +136,27 @@ Expected behavior:
 
 This should be a warning, not a blocker.
 
-## Case: Heading Exists But Is Too Broad
+## Case: Locator Is Too Broad
 
-Many current headings span several pages or entire sections. A citation to such
-a heading is usable but too coarse without locator fields.
+Many current source sections span several pages or entire chapters. A citation
+to the whole Source Document or broad section label is usable only when the
+citation-local locator carries enough detail.
 
 Expected behavior:
 
-- cite the containing Source Heading
+- cite the Source Document
 - add citation-local page range
 - add quote/context or evidence note
 - add the exact claim supported by that citation
 - do not create a separate evidence node unless the evidence becomes reusable
 
-Lint should warn when a multi-page heading citation has no page range or
-locator.
+Lint should warn when a citation has no page range, claim, quote/context, or
+projection locator and the target Source Document is longer than a short note.
 
 CLI support needed:
 
-- a `cite` flow that accepts a Source Heading plus page, paragraph, or quote
-  locator and produces the citation payload
+- a `cite` flow that accepts a Source Document plus page, paragraph, quote, or
+  context locator and produces the citation payload
 - a citation narrowing command that upgrades broad citations when the agent
   later supplies a better locator
 
@@ -187,7 +194,7 @@ Expected behavior:
   or teach later
 - set `page_kind = concept`
 - add a scope note and aliases
-- cite the source heading with page-local locator fields
+- cite the Source Document with citation-local locator fields
 - frame it as a source-backed concept when Domain Model tools exist
 
 The agent should not automatically add prerequisites or contrast edges unless
@@ -201,8 +208,8 @@ CLI support needed:
 
 ## Case: The Candidate Is Not A Concept
 
-Many useful headings are procedures, components, requirement sets, or reference
-material rather than concepts.
+Many useful source sections are procedures, components, requirement sets, or
+reference material rather than concepts.
 
 Examples:
 
@@ -259,6 +266,6 @@ It should not produce:
 
 - uncited source-backed claims
 - duplicate pages for the same concept
-- broad heading citations without locator fields when page-local evidence is
-  known
+- broad Source Document citations without locator fields when page-local
+  evidence is known
 - Domain Model changes unless a repeated shape cannot fit existing frames

@@ -1,8 +1,8 @@
 # Answer A Question
 
 This access pattern covers an agent answering a user question from maintained
-Graph Wiki knowledge. The answer should use Wiki Pages first, then cited source
-evidence, then source search when the maintained graph is incomplete.
+Graph Wiki knowledge. The answer should use Wiki Pages first, then cited Source
+Document evidence, then source search when the maintained graph is incomplete.
 
 The key decision is whether the answer can be produced from existing graph
 state, or whether the agent should create/update Wiki Pages before answering.
@@ -49,8 +49,8 @@ repeatable when the graph is incomplete.
 3. CLI reads the strongest Wiki Page candidates and citation sets.
 4. CLI validates citations for any page used.
 5. Agent decides whether the existing graph answers the question.
-6. If no adequate Wiki Page exists, CLI searches Source Headings and Source Text
-   Projections.
+6. If no adequate Wiki Page exists, CLI searches Source Documents and Source
+   Text Projections.
 7. Agent decides whether to answer directly from source evidence or
    create/update a Wiki Page first.
 8. If new durable knowledge is created, CLI creates precise citations, runs
@@ -73,7 +73,7 @@ validation is enough.
 CLI support needed:
 
 - an answer-read bundle that returns page body, citation validation status,
-  source locators, and graph neighborhood in one inspectable result
+  Source Document locators, and graph neighborhood in one inspectable result
 - citation severity levels so the agent can decide whether a warning blocks the
   answer
 
@@ -105,7 +105,7 @@ CLI support needed:
 
 Expected behavior:
 
-- identify the relevant Source Heading and page range
+- identify the relevant Source Document, page range, and projection span
 - decide whether the topic is important enough for durable synthesis
 - if yes, create a Wiki Page before answering
 - if no, answer from source evidence and say the graph has source material but
@@ -120,7 +120,7 @@ The threshold for creating a page should be lower when:
 
 CLI support needed:
 
-- source-to-page promotion that starts from selected Source Headings,
+- source-to-page promotion that starts from selected Source Documents,
   projection snippets, or page locators
 - citation-aware page creation that fails if the cited source locator cannot be
   validated
@@ -140,15 +140,16 @@ knowledge.
 
 CLI support needed:
 
-- corpus/source search that clearly distinguishes missing sources, imported but
-  unindexed sources, and indexed sources with no matching evidence
+- corpus/source search that clearly distinguishes missing Source Documents,
+  imported but unindexed Source Documents, and indexed sources with no matching
+  evidence
 
 ## Case: Source Exists But Evidence Search Is Inconclusive
 
 Expected behavior:
 
 - report the search operations and inputs
-- name the closest Source Headings or Wiki Pages found
+- name the closest Source Documents, projection spans, or Wiki Pages found
 - explain why they do not answer the question
 - avoid creating speculative pages
 
@@ -204,8 +205,8 @@ Examples:
 
 Expected behavior:
 
-- search for procedure-like headings and pages
-- cite the procedure source heading with page-local locator fields
+- search for procedure-like source sections, projection spans, and pages
+- cite the Source Document with page-local locator fields
 - preserve ordered steps
 - distinguish prerequisites, steps, validation, and warnings when possible
 - do not convert the procedure into a concept unless there is a separate concept
@@ -215,7 +216,7 @@ CLI support needed:
 
 - procedure-aware retrieval that preserves step order and warning context
 - citation tooling that can attach locators to individual steps instead of only
-  the whole procedure page
+  the whole procedure source range
 
 ## Case: The Question Asks For Learning Guidance
 

@@ -1,8 +1,8 @@
 # Maintain The Graph
 
 This access pattern covers deliberate graph maintenance: reading through graph
-state, merging pages, tightening citations, adjusting links, and evolving the
-Domain Model.
+state, merging pages, tightening citations, adjusting links, simplifying source
+structure, and evolving the Domain Model.
 
 Maintenance differs from ordinary indexing or question answering. The agent is
 allowed to change structure, but should make each structural decision explicit
@@ -45,7 +45,7 @@ then let the CLI execute and validate the mechanical work.
 1. Choose a maintenance target:
    - duplicate pages
    - weak Manual Links
-   - broad citations
+   - broad or stale citation locators
    - stale projections or embeddings
    - unframed records
    - confusing page scope
@@ -134,8 +134,10 @@ CLI support needed:
 
 ## Case: Citation Is Too Broad
 
-The current graph cites Source Headings directly. This is fine as the default,
-but a multi-page heading citation should carry citation-local locator fields.
+Legacy graph records may cite Source Headings directly. The target model is
+simpler: Citations point to Source Documents and carry citation-local locator
+fields. Any heading, outline path, or source section label should be treated as
+metadata on the locator or Source Text Projection, not as a graph target.
 
 Expected behavior:
 
@@ -144,6 +146,8 @@ Expected behavior:
 - add short quote/context when available
 - attach Source Text Projection ID and text hash when available
 - do not create a separate evidence node by default
+- migrate legacy heading-level citations to Source Document targets when the
+  locator fields are precise enough to preserve the supported claim
 
 Promote evidence into a reusable evidence object only when it has independent
 value across multiple pages, claims, or maintenance workflows.
@@ -151,7 +155,7 @@ value across multiple pages, claims, or maintenance workflows.
 CLI support needed:
 
 - citation lint for missing page range, missing claim, missing quote/context,
-  projection mismatch, and over-broad heading targets
+  projection mismatch, and over-broad Source Document locators
 - citation narrowing that updates locator fields without changing the supported
   claim
 - bulk reports sorted by citation risk and retrieval impact
@@ -162,9 +166,8 @@ Expected behavior:
 
 - verify whether the citation marker still exists in the page body
 - verify that the Citation key matches the marker
-- verify the Source Heading exists
-- verify page range is inside the heading range when the heading has an
-  `end_page`
+- verify the Source Document exists
+- verify page range is inside the Source Document page count when available
 - verify quote/context against the referenced projection when possible
 - repair the locator or citation target rather than weakening evidence
 
@@ -172,8 +175,8 @@ If the source no longer supports the claim, remove or rewrite the claim.
 
 CLI support needed:
 
-- citation repair commands that retarget citations, update locators, or mark a
-  claim unsupported
+- citation repair commands that retarget citations, update locator fields, or
+  mark a claim unsupported
 - page-body/citation reconciliation so marker edits cannot leave dangling
   Citation edges
 
@@ -181,9 +184,9 @@ CLI support needed:
 
 Examples:
 
-- duplicate Source Headings from an old import path
-- missing `end_page`
-- headings attached to a missing Source Document
+- duplicate outline entries or section labels from an old import path
+- missing page coverage in projection metadata
+- projections attached to a missing Source Document
 - Source Text Projection has no embedding
 - projection text hash no longer matches the locator
 
@@ -198,8 +201,9 @@ This should usually be a maintenance task, not part of answer generation.
 
 CLI support needed:
 
-- extraction lint that finds headings without documents, missing page coverage,
-  duplicate headings, stale projections, and missing embeddings
+- extraction lint that finds projections without documents, missing page
+  coverage, duplicate outline/section metadata, stale projections, and missing
+  embeddings
 - rebuild commands for projections and embeddings with before/after hashes and
   affected retrieval records
 
@@ -212,9 +216,10 @@ Expected behavior:
 
 - frame obvious records using existing frames
 - leave uncertain records unframed with a proposal or note
-- prioritize framed assignment for cited pages, cited headings, and high-rank
-  retrieval results
-- avoid bulk-framing all headings just because the title matches a keyword
+- prioritize framed assignment for cited Wiki Pages, cited source regions, and
+  high-rank retrieval results
+- avoid bulk-framing all source sections just because the title matches a
+  keyword
 
 Frame assignment is a semantic claim and should be auditable.
 
@@ -253,8 +258,8 @@ CLI support needed:
 
 - frame proposal commands that attach concrete graph examples, non-examples,
   expected slots, allowed edges, and affected lint behavior
-- model-impact reports showing which pages, headings, links, citations, and
-  retrieval queries would change if the proposal is accepted
+- model-impact reports showing which pages, source locator patterns, links,
+  citations, and retrieval queries would change if the proposal is accepted
 
 ## Case: Frame Or Relation Vocabulary Needs Tightening
 

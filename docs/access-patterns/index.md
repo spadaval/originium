@@ -5,10 +5,12 @@ Originium before the Domain Model, frame, citation, and schema-lint design is
 finalized.
 
 The current graph is source-heavy and synthesis-light: many Source Documents,
-many Source Headings, a smaller set of Source Text Projections, and only a few
-Wiki Pages, Citations, and Manual Links. The access patterns should therefore
-optimize for disciplined promotion from source material into durable graph
-knowledge.
+a smaller set of Source Text Projections, and only a few Wiki Pages,
+Citations, and Manual Links. Extracted document headings, outline entries, and
+page-section labels are useful projection metadata, but they are not durable
+graph entities. The access patterns should therefore optimize for disciplined
+promotion from source material into durable graph knowledge without forcing
+agents to manage document structure as ontology.
 
 ## Agent And CLI Split
 
@@ -31,8 +33,8 @@ The agent is responsible for:
 
 The CLI is responsible for:
 
-- finding candidate pages, headings, projections, citations, links, frames, and
-  neighborhoods without relying on the agent's memory
+- finding candidate pages, source projection spans, citations, links, frames,
+  and neighborhoods without relying on the agent's memory
 - creating citations from source locators with stable validation fields instead
   of expecting the agent to hand-write perfect citation records
 - linting pages, citations, links, frames, and source projections before and
@@ -50,10 +52,11 @@ index consistency, or repeated validation, the CLI must own it.
 
 These access patterns imply a few high-leverage CLI families:
 
-- Search tools: page candidate search, evidence search, frame/role search,
-  graph-neighborhood search, duplicate detection, and projection lookup.
+- Search tools: page candidate search, evidence search over Source Documents and
+  projections, frame/role search, graph-neighborhood search, duplicate
+  detection, and projection lookup.
 - Citation tools: create a citation from a source locator, validate citation
-  markers, narrow a broad heading citation, retarget citations during page
+  markers, narrow a broad document-local locator, retarget citations during page
   refactors, and report unsupported claims.
 - Lint tools: page lint, citation lint, link lint, frame lint, source extraction
   lint, stale projection lint, and graph consistency lint.
@@ -77,11 +80,14 @@ These access patterns imply a few high-leverage CLI families:
 
 ## Cross-Cutting Rules
 
-- Source Documents and Source Headings are evidence inventory, not compiled
-  knowledge.
+- Source Documents are canonical evidence inventory, not compiled knowledge.
+- Extracted headings, outline paths, page ranges, and projection spans are
+  locator metadata. They should help agents read and cite sources, but should
+  not become first-class graph records.
 - Wiki Pages are the maintained synthesis layer.
 - Citations are claim-to-evidence edges. Citation-local locators should carry
-  page range, quote/context, projection hash, and claim metadata when available.
+  Source Document target, page range, quote/context, projection identity/hash,
+  and claim metadata when available.
 - The Domain Model should guide classification, linting, and extraction. It
   should not be casually changed during ordinary question answering.
 - A frame assignment is a semantic claim. If uncertain, propose or flag rather
@@ -91,17 +97,20 @@ These access patterns imply a few high-leverage CLI families:
 
 ## Current Example Shapes
 
-The current source corpus already suggests useful first frames:
+The current source corpus already suggests useful first frames. These examples
+should be recognized from Source Document titles, outline metadata, projection
+spans, and Wiki Page synthesis rather than from first-class Source Heading
+records:
 
 - Source-backed concept: `wiki_page:autonomous_operations`
-- Requirement set: headings such as `System Requirements`, `Quality of Service
+- Requirement set: source sections such as `System Requirements`, `Quality of Service
 (QoS) Requirements`, and `Network Requirements`
-- Use case: headings such as `Mining Use-Cases and Requirements` and `Offshore
+- Use case: source sections such as `Mining Use-Cases and Requirements` and `Offshore
 Wind Farm Use Cases`
-- Reference architecture: headings such as `Rail CBTC and Safety Reference
+- Reference architecture: source sections such as `Rail CBTC and Safety Reference
 Architecture` and `Cisco Substation Automation Reference Architecture`
-- Procedure: headings such as `Configure the FAN REP Ring Using the REP
+- Procedure: source sections such as `Configure the FAN REP Ring Using the REP
 Workflow` and `CURWB Device Initial Setup and Configuration`
-- Technology component: headings such as `Cisco Ultra-Reliable Wireless Backhaul
+- Technology component: source sections such as `Cisco Ultra-Reliable Wireless Backhaul
 (CURWB) Overview`, `Wireless Network Components`, and `Cisco IE3x00 Rugged
 Industrial Switches`
