@@ -135,6 +135,28 @@ test("core schema represents frame assignments for Source Documents and Wiki Pag
   );
 });
 
+test("core schema stores sparse frame metadata on Source Documents and Wiki Pages", () => {
+  const schema = readFileSync(coreSchemaPath, "utf8");
+
+  for (const field of [
+    "corpus",
+    "publisher",
+    "document_class",
+    "industries",
+    "product_families",
+    "version",
+    "publication_date",
+    "trust_status",
+    "frame",
+    "frame_metadata",
+  ]) {
+    assert.match(schema, new RegExp(`DEFINE FIELD IF NOT EXISTS ${field} ON (?:TABLE )?source_document `));
+  }
+
+  assert.match(schema, /DEFINE FIELD IF NOT EXISTS frame ON wiki_page TYPE option<record<domain_frame>>;/);
+  assert.match(schema, /DEFINE FIELD IF NOT EXISTS frame_metadata ON TABLE wiki_page TYPE option<object> FLEXIBLE;/);
+});
+
 test("core schema explicitly defers broader Domain Model governance", () => {
   const schema = readFileSync(coreSchemaPath, "utf8");
 

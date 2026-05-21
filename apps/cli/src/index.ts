@@ -314,8 +314,7 @@ const helpTopics: Record<string, HelpTopic> = {
       {
         usage: "link add --from <record-id> --to <record-id> --label <label> --reason <reason>",
         summary: "Disabled for the frame workflow MVP; use inline Wiki Page References or Citations instead.",
-        example:
-          'originium link add --from wiki_page:a --to wiki_page:b --label "uses" --reason "deprecated" --json',
+        example: 'originium link add --from wiki_page:a --to wiki_page:b --label "uses" --reason "deprecated" --json',
       },
       {
         usage: "link list [--record <record-id>]",
@@ -646,12 +645,13 @@ async function routeSource(argv: readonly string[]): Promise<CliResult> {
       "source list",
       "source.list",
       argv,
-      "SELECT id, title, kind, sha256, mime_type, page_count, source_uri, extraction_status, updated_at FROM source_document ORDER BY updated_at DESC;",
+      "SELECT id, title, kind, sha256, mime_type, page_count, source_uri, corpus, publisher, document_class, industries, product_families, version, publication_date, trust_status, frame, frame_metadata, extraction_status, updated_at FROM source_document ORDER BY updated_at DESC;",
       "Listed imported Source Documents.",
       {},
       { kind: "read", targetRecords: ["source_document"] },
     );
   }
+  if (command === "metadata") return sourceMetadata(argv);
   if (command === "find") return findSourceDocuments(argv);
 
   if (command === "import-pdf") {
@@ -666,9 +666,11 @@ async function routeSource(argv: readonly string[]): Promise<CliResult> {
       const bucketPath = join(config.bucketDir, fileKey);
       mkdirSync(dirname(bucketPath), { recursive: true });
       copyFileSync(path, bucketPath);
+      const metadata = sourceMetadataFromArgv(argv);
+      if (!metadata.ok) return metadata.failure;
       const query = [
         sourceDocumentBucketSurql(config),
-        `UPSERT ${id} SET title = "${escapeSurrealString(draft.title)}", kind = "pdf", file = { bucket: "${sourceDocumentBucketName}", key: "/${escapeSurrealString(fileKey)}", pointer: "f\\"${escapeSurrealString(filePointer)}\\"" }, sha256 = "${draft.sha256}", mime_type = "${draft.mimeType}", page_count = ${draft.pageCount ?? "NONE"}, source_uri = "${escapeSurrealString(draft.sourceUri ?? path)}", extraction_status = "imported", updated_at = time::now();`,
+        `UPSERT ${id} SET title = "${escapeSurrealString(draft.title)}", kind = "pdf", file = { bucket: "${sourceDocumentBucketName}", key: "/${escapeSurrealString(fileKey)}", pointer: "f\\"${escapeSurrealString(filePointer)}\\"" }, sha256 = "${draft.sha256}", mime_type = "${draft.mimeType}", page_count = ${draft.pageCount ?? "NONE"}, source_uri = "${escapeSurrealString(draft.sourceUri ?? path)}", extraction_status = "imported"${metadata.setClause}, updated_at = time::now();`,
         `SELECT * FROM ${id};`,
       ].join("\n");
       const result = await executeSurrealQuery(
@@ -688,7 +690,14 @@ async function routeSource(argv: readonly string[]): Promise<CliResult> {
         operation: "source.import-pdf",
         input: argv,
         message: `Imported Source Document ${id} into file bucket ${sourceDocumentBucketName}.`,
-        data: { id, filePointer, sha256: draft.sha256, pageCount: draft.pageCount, result: result.result },
+        data: {
+          id,
+          filePointer,
+          sha256: draft.sha256,
+          pageCount: draft.pageCount,
+          metadata: metadata.data,
+          result: result.result,
+        },
       });
     } catch (error) {
       return operationFailure(
@@ -995,12 +1004,12 @@ function findSourceDocuments(argv: readonly string[]): Promise<CliResult> {
   const escaped = escapeSurrealString(queryText);
   const where = sourceId
     ? `id = ${sourceId}`
-    : `title CONTAINS "${escaped}" OR source_uri CONTAINS "${escaped}" OR sha256 = "${escaped}" OR kind CONTAINS "${escaped}"`;
+    : `title CONTAINS "${escaped}" OR source_uri CONTAINS "${escaped}" OR sha256 = "${escaped}" OR kind CONTAINS "${escaped}" OR corpus CONTAINS "${escaped}" OR document_class CONTAINS "${escaped}" OR publisher CONTAINS "${escaped}"`;
   return queryCommand(
     "source find",
     "source.find",
     argv,
-    `SELECT id, title, kind, sha256, mime_type, page_count, source_uri, extraction_status, updated_at FROM source_document WHERE ${where} ORDER BY updated_at DESC, title ASC LIMIT ${limit};`,
+    `SELECT id, title, kind, sha256, mime_type, page_count, source_uri, corpus, publisher, document_class, industries, product_families, version, publication_date, trust_status, frame, frame_metadata, extraction_status, updated_at FROM source_document WHERE ${where} ORDER BY updated_at DESC, title ASC LIMIT ${limit};`,
     `Resolved Source Documents for '${queryText}'.`,
     { query: queryText, limit },
     { kind: "read", targetRecords: [sourceId ?? "source_document"] },
@@ -1195,6 +1204,53 @@ async function promoteSourceLocator(argv: readonly string[]): Promise<CliResult>
       result: result.result,
     },
   });
+}
+
+function sourceMetadata(argv: readonly string[]): Promise<CliResult> {
+  const sourceId = valueAfter(argv, "--source") ?? argv[2];
+  if (!sourceId)
+    return Promise.resolve(
+      missingArgument("source metadata", "source.metadata", argv, "--source <source-document-id>"),
+    );
+  if (!isRecordId(sourceId, "source_document")) {
+    return Promise.resolve(
+      operationFailure(
+        "source metadata",
+        "source.metadata",
+        argv,
+        `Invalid Source Document metadata target "${sourceId}".`,
+        "Pass a Source Document record ID such as source_document:example.",
+      ),
+    );
+  }
+  const metadata = sourceMetadataFromArgv(argv);
+  if (!metadata.ok) return Promise.resolve(metadata.failure);
+  if (metadata.setClause.length === 0) {
+    return queryCommand(
+      "source metadata",
+      "source.metadata",
+      argv,
+      `SELECT id, title, corpus, publisher, document_class, industries, product_families, version, publication_date, source_uri, trust_status, frame, frame_metadata FROM ${sourceId};`,
+      `Read Source Document metadata for ${sourceId}.`,
+      { id: sourceId },
+      { kind: "read", targetRecords: [sourceId] },
+    );
+  }
+  return queryCommand(
+    "source metadata",
+    "source.metadata",
+    argv,
+    `UPDATE ${sourceId} SET ${metadata.setClause.slice(2)}, updated_at = time::now(); SELECT id, title, corpus, publisher, document_class, industries, product_families, version, publication_date, source_uri, trust_status, frame, frame_metadata FROM ${sourceId};`,
+    `Updated Source Document metadata for ${sourceId}.`,
+    { id: sourceId, metadata: metadata.data },
+    {
+      kind: "write",
+      targetRecords: [sourceId],
+      beforeQuery: `SELECT * FROM ${sourceId}`,
+      afterQuery: `SELECT * FROM ${sourceId}`,
+      relateEditedTargets: [sourceId],
+    },
+  );
 }
 
 function deprecatedSourceAnchorCommand(argv: readonly string[]): CliFailure {
@@ -1617,14 +1673,16 @@ async function routeLink(argv: readonly string[]): Promise<CliResult> {
     if (!from) return missingArgument("link add", "link.add", argv, "--from <record-id>");
     if (!to) return missingArgument("link add", "link.add", argv, "--to <record-id>");
     if (!reason) return missingArgument("link add", "link.add", argv, "--reason <reason>");
-    return Promise.resolve(operationFailure(
-      "link add",
-      "link.add",
-      argv,
-      `Manual Link writes are disabled for '${from}' -> '${to}' with label '${label}'. Generic Manual Links are deprecated for the frame workflow MVP.`,
-      "Use an inline Wiki Page Reference such as [[Page Title]] for page-to-page navigation, use a Citation to a Source Document for evidence, or file a Domain Relation design follow-up for governed semantic edges.",
-      { from, to, label, reason },
-    ));
+    return Promise.resolve(
+      operationFailure(
+        "link add",
+        "link.add",
+        argv,
+        `Manual Link writes are disabled for '${from}' -> '${to}' with label '${label}'. Generic Manual Links are deprecated for the frame workflow MVP.`,
+        "Use an inline Wiki Page Reference such as [[Page Title]] for page-to-page navigation, use a Citation to a Source Document for evidence, or file a Domain Relation design follow-up for governed semantic edges.",
+        { from, to, label, reason },
+      ),
+    );
   }
 
   if (command === "list") {
@@ -1823,7 +1881,7 @@ async function graphNeighborhood(argv: readonly string[]): Promise<CliResult> {
 
   const query = [
     `LET $record = ${recordId};`,
-    `SELECT id, title, slug, aliases, scope_note, page_kind, ->cites AS outgoing_citations, <-cites AS incoming_citations, ->manual_link AS outgoing_links, <-manual_link AS incoming_links FROM ONLY $record;`,
+    `SELECT id, title, slug, aliases, scope_note, page_kind, frame, frame_metadata, ->cites AS outgoing_citations, <-cites AS incoming_citations, ->manual_link AS outgoing_links, <-manual_link AS incoming_links FROM ONLY $record;`,
     `SELECT id, in, out, key, label, quote FROM cites WHERE in = $record OR out = $record;`,
     `SELECT id, in, out, label, reason FROM manual_link WHERE in = $record OR out = $record;`,
     `SELECT id, title, slug FROM wiki_page WHERE ->cites->source_document CONTAINS $record OR <-cites<-wiki_page CONTAINS $record LIMIT 20;`,
@@ -2307,6 +2365,9 @@ async function writePage(argv: readonly string[], command: "create" | "update"):
   const aliases = valuesAfter(argv, "--alias");
   const scopeNote = valueAfter(argv, "--scope-note");
   const pageKind = valueAfter(argv, "--kind") as WikiPageKind | undefined;
+  const frameId = valueAfter(argv, "--frame");
+  const frameMetadata = frameMetadataFromArgv(argv, `page ${command}`, `page.${command}`);
+  if (!frameMetadata.ok) return frameMetadata.failure;
   if (pageKind && !wikiPageKinds.includes(pageKind)) {
     return operationFailure(
       `page ${command}`,
@@ -2317,16 +2378,28 @@ async function writePage(argv: readonly string[], command: "create" | "update"):
     );
   }
   const pageKindSet = pageKind ? `, page_kind = "${escapeSurrealString(pageKind)}"` : "";
+  const frameSet = frameId ? `, frame = ${frameRecordId(frameId)}` : "";
+  const frameMetadataSet =
+    frameMetadata.value === undefined ? "" : `, frame_metadata = ${surrealObject(frameMetadata.value)}`;
   const aliasesSet = aliases.length > 0 ? `, aliases = ${surrealArray(aliases)}` : "";
   const scopeSet = scopeNote ? `, scope_note = "${escapeSurrealString(scopeNote)}"` : "";
-  const query = `UPSERT ${id} SET title = "${escapeSurrealString(title)}", slug = "${slug}", body = "${escapeSurrealString(body)}"${aliasesSet}${scopeSet}${pageKindSet}, updated_at = time::now();`;
+  const query = `UPSERT ${id} SET title = "${escapeSurrealString(title)}", slug = "${slug}", body = "${escapeSurrealString(body)}"${aliasesSet}${scopeSet}${pageKindSet}${frameSet}${frameMetadataSet}, updated_at = time::now();`;
   return queryCommand(
     `page ${command}`,
     `page.${command}`,
     argv,
     query,
     `${command === "create" ? "Created" : "Updated"} Wiki Page ${id}.`,
-    { id, slug, aliases, scopeNote, pageKind, pageReferenceValidation },
+    {
+      id,
+      slug,
+      aliases,
+      scopeNote,
+      pageKind,
+      frame: frameId,
+      frameMetadata: frameMetadata.value,
+      pageReferenceValidation,
+    },
     {
       kind: "write",
       targetRecords: [id],
@@ -2343,8 +2416,8 @@ async function pageCandidates(argv: readonly string[]): Promise<CliResult> {
   const limit = Number.parseInt(valueAfter(argv, "--limit") ?? "10", 10);
   const slug = wikiPageSlugFromTitle(queryText);
   const query = [
-    `LET $exact = (SELECT id, title, slug, aliases, scope_note, page_kind, body, ->cites->source_document AS cited_evidence, <-manual_link<-wiki_page AS inbound_links, ->manual_link->wiki_page AS outbound_links FROM wiki_page WHERE slug = "${escapeSurrealString(slug)}" OR title = "${escapeSurrealString(queryText)}");`,
-    `LET $text = (SELECT id, title, slug, aliases, scope_note, page_kind, body, ->cites->source_document AS cited_evidence, <-manual_link<-wiki_page AS inbound_links, ->manual_link->wiki_page AS outbound_links FROM wiki_page WHERE title CONTAINS "${escapeSurrealString(queryText)}" OR body CONTAINS "${escapeSurrealString(queryText)}" OR aliases CONTAINS "${escapeSurrealString(queryText)}" LIMIT ${limit});`,
+    `LET $exact = (SELECT id, title, slug, aliases, scope_note, page_kind, frame, frame_metadata, body, ->cites->source_document AS cited_evidence, <-manual_link<-wiki_page AS inbound_links, ->manual_link->wiki_page AS outbound_links FROM wiki_page WHERE slug = "${escapeSurrealString(slug)}" OR title = "${escapeSurrealString(queryText)}");`,
+    `LET $text = (SELECT id, title, slug, aliases, scope_note, page_kind, frame, frame_metadata, body, ->cites->source_document AS cited_evidence, <-manual_link<-wiki_page AS inbound_links, ->manual_link->wiki_page AS outbound_links FROM wiki_page WHERE title CONTAINS "${escapeSurrealString(queryText)}" OR body CONTAINS "${escapeSurrealString(queryText)}" OR aliases CONTAINS "${escapeSurrealString(queryText)}" OR frame_metadata CONTAINS "${escapeSurrealString(queryText)}" LIMIT ${limit});`,
     "RETURN array::distinct(array::concat($exact, $text));",
   ].join("\n");
   const result = await executeSurrealQuery(
@@ -2685,7 +2758,7 @@ async function searchPages(argv: readonly string[]): Promise<CliResult> {
       argv,
       [
         `LET $query_embedding = ${surrealNumberArray(queryEmbedding.embedding)};`,
-        `LET $wiki = (SELECT id, title, slug, aliases, scope_note, page_kind, body, embedding, embedded_text_hash, vector::similarity::cosine(embedding, $query_embedding) AS db_vector_score, ->cites->source_document AS cited_evidence FROM wiki_page WHERE embedding != NONE AND (title CONTAINS "${lexical}" OR body CONTAINS "${lexical}" OR aliases CONTAINS "${lexical}") ORDER BY db_vector_score DESC LIMIT 50);`,
+        `LET $wiki = (SELECT id, title, slug, aliases, scope_note, page_kind, frame, frame_metadata, body, embedding, embedded_text_hash, vector::similarity::cosine(embedding, $query_embedding) AS db_vector_score, ->cites->source_document AS cited_evidence FROM wiki_page WHERE embedding != NONE AND (title CONTAINS "${lexical}" OR body CONTAINS "${lexical}" OR aliases CONTAINS "${lexical}" OR frame_metadata CONTAINS "${lexical}") ORDER BY db_vector_score DESC LIMIT 50);`,
         `LET $evidence = (SELECT id, source_document, start_page, end_page, text, text_hash, embedding, embedded_text_hash, extraction_method, projection_version, projection_status, vector::similarity::cosine(embedding, $query_embedding) AS db_vector_score FROM source_text_projection WHERE embedding != NONE AND text CONTAINS "${lexical}" ORDER BY db_vector_score DESC LIMIT 50 FETCH source_document);`,
         "RETURN { wiki: $wiki, evidence: $evidence };",
       ].join("\n"),
@@ -3272,6 +3345,8 @@ type GraphLintIssue = {
     | "duplicate-wiki-page-reference"
     | "unresolved-wiki-page-reference"
     | "self-wiki-page-reference"
+    | "missing-page-frame"
+    | "missing-frame-metadata"
     | "duplicate-ish-page"
     | "orphan-page"
     | "stub-wiki-page"
@@ -3415,6 +3490,24 @@ export function lintGraphWikiStatements(
       });
     }
 
+    if (page.frame === undefined && page.page_kind === undefined) {
+      issues.push({
+        kind: "missing-page-frame",
+        severity: "warning",
+        recordId: id,
+        message: `Wiki Page ${id} has no Domain Frame assignment or legacy page_kind.`,
+        suggestion: `Run page update --title "${title ?? id}" --frame <domain-frame-id-or-name> --metadata-json <json> when the page role is known.`,
+      });
+    } else if (page.frame !== undefined && page.frame_metadata === undefined) {
+      issues.push({
+        kind: "missing-frame-metadata",
+        severity: "warning",
+        recordId: id,
+        message: `Wiki Page ${id} has a Domain Frame assignment but no sparse frame metadata.`,
+        suggestion: `Run page update --title "${title ?? id}" --frame <domain-frame-id-or-name> --metadata-json <json> with high-value frame slots when known.`,
+      });
+    }
+
     const duplicateKey = toSlug(slug || title || id);
     const duplicateSet = pagesByDuplicateKey.get(duplicateKey) ?? [];
     duplicateSet.push(page);
@@ -3513,6 +3606,7 @@ function graphLintIssueFamily(kind: GraphLintIssue["kind"]): NonNullable<GraphLi
   if (kind.includes("citation")) return "citation";
   if (kind === "broad-citation-target") return "citation";
   if (kind === "deprecated-manual-link") return "link";
+  if (kind === "missing-page-frame" || kind === "missing-frame-metadata") return "page";
   return "page";
 }
 
@@ -3529,7 +3623,9 @@ function graphLintRetrievalImpact(kind: GraphLintIssue["kind"]): "none" | "low" 
     kind === "orphan-page" ||
     kind === "duplicate-ish-page" ||
     kind.includes("wiki-page-reference") ||
-    kind === "deprecated-manual-link"
+    kind === "deprecated-manual-link" ||
+    kind === "missing-page-frame" ||
+    kind === "missing-frame-metadata"
   )
     return "low";
   return "none";
@@ -4334,6 +4430,100 @@ function citationPageRangeObject(pageRange: NonNullable<CitationDraft["pageRange
   return `{ start_page: ${pageRange.startPage}, end_page: ${pageRange.endPage}, label: "${formatCitationPageRange(pageRange)}" }`;
 }
 
+type MetadataParseResult =
+  | {
+      readonly ok: true;
+      readonly value: Record<string, unknown> | undefined;
+      readonly setClause: string;
+      readonly data: Record<string, unknown>;
+    }
+  | { readonly ok: false; readonly failure: CliFailure };
+
+function sourceMetadataFromArgv(argv: readonly string[]): MetadataParseResult {
+  const frameMetadata = frameMetadataFromArgv(argv, "source metadata", "source.metadata");
+  if (!frameMetadata.ok) return frameMetadata;
+  const data: Record<string, unknown> = {};
+  const fields: string[] = [];
+  for (const [flag, field] of [
+    ["--corpus", "corpus"],
+    ["--publisher", "publisher"],
+    ["--document-class", "document_class"],
+    ["--version", "version"],
+    ["--publication-date", "publication_date"],
+    ["--source-url", "source_uri"],
+  ] as const) {
+    const value = valueAfter(argv, flag);
+    if (value !== undefined) {
+      data[field] = value;
+      fields.push(`${field} = "${escapeSurrealString(value)}"`);
+    }
+  }
+  for (const [flag, field] of [
+    ["--industry", "industries"],
+    ["--product-family", "product_families"],
+  ] as const) {
+    const values = valuesAfter(argv, flag).flatMap(commaList);
+    if (values.length > 0) {
+      data[field] = values;
+      fields.push(`${field} = ${surrealArray(values)}`);
+    }
+  }
+  const trustStatus = valueAfter(argv, "--trust-status");
+  if (trustStatus !== undefined) {
+    if (!["trusted", "superseded", "draft", "unknown"].includes(trustStatus)) {
+      return {
+        ok: false,
+        failure: operationFailure(
+          "source metadata",
+          "source.metadata",
+          argv,
+          `Invalid Source Document trust status "${trustStatus}".`,
+          "Use --trust-status trusted, superseded, draft, or unknown.",
+        ),
+      };
+    }
+    data.trust_status = trustStatus;
+    fields.push(`trust_status = "${trustStatus}"`);
+  }
+  const frame = valueAfter(argv, "--frame");
+  if (frame !== undefined) {
+    data.frame = frame;
+    fields.push(`frame = ${frameRecordId(frame)}`);
+  }
+  if (frameMetadata.value !== undefined) {
+    data.frame_metadata = frameMetadata.value;
+    fields.push(`frame_metadata = ${surrealObject(frameMetadata.value)}`);
+  }
+  return { ok: true, value: frameMetadata.value, setClause: fields.length === 0 ? "" : `, ${fields.join(", ")}`, data };
+}
+
+function frameMetadataFromArgv(
+  commandArgv: readonly string[],
+  command: string,
+  operation: string,
+): MetadataParseResult {
+  const raw = valueAfter(commandArgv, "--metadata-json") ?? valueAfter(commandArgv, "--frame-metadata-json");
+  if (raw === undefined) return { ok: true, value: undefined, setClause: "", data: {} };
+  const parsed = parseMetadataJson(raw);
+  if (parsed instanceof Error) {
+    return {
+      ok: false,
+      failure: operationFailure(
+        command,
+        operation,
+        commandArgv,
+        `Invalid frame metadata JSON: ${parsed.message}.`,
+        'Pass a JSON object such as --metadata-json \'{"industries":["mining"]}\'.',
+      ),
+    };
+  }
+  return { ok: true, value: parsed, setClause: `, frame_metadata = ${surrealObject(parsed)}`, data: parsed };
+}
+
+function frameRecordId(input: string): string {
+  return isRecordId(input, "domain_frame") ? input : `domain_frame:${toSurrealIdPart(toSlug(input))}`;
+}
+
 function optionalSurrealString(value: string | undefined): string {
   return value === undefined || value.length === 0 ? "NONE" : `"${escapeSurrealString(value)}"`;
 }
@@ -4424,6 +4614,17 @@ function toSurrealIdPart(input: string): string {
 
 function surrealArray(values: readonly string[]): string {
   return `[${values.map((value) => `"${escapeSurrealString(value)}"`).join(", ")}]`;
+}
+
+function surrealObject(value: Record<string, unknown>): string {
+  return JSON.stringify(value);
+}
+
+function commaList(value: string): readonly string[] {
+  return value
+    .split(",")
+    .map((entry) => entry.trim())
+    .filter(Boolean);
 }
 
 function surrealNumberArray(values: readonly number[]): string {

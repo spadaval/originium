@@ -364,6 +364,44 @@ test("bundled source locate prepares citation-local locators without database ac
   assert.deepEqual(output.data.locator.pageRange, { startPage: 12, endPage: 13 });
 });
 
+test("bundled source metadata validates trust status before database access", () => {
+  const result = spawnSync(
+    bundledCli,
+    ["source", "metadata", "--source", "source_document:ia", "--trust-status", "maybe", "--json"],
+    { encoding: "utf8" },
+  );
+
+  assert.equal(result.status, 1);
+  const output = JSON.parse(result.stdout);
+  assert.equal(output.ok, false);
+  assert.equal(output.error.operation, "source.metadata");
+  assert.match(output.error.reason, /Invalid Source Document trust status/);
+});
+
+test("bundled page update validates frame metadata JSON before database access", () => {
+  const result = spawnSync(
+    bundledCli,
+    [
+      "page",
+      "update",
+      "--title",
+      "Reference Architecture",
+      "--frame",
+      "reference_architecture",
+      "--metadata-json",
+      "[]",
+      "--json",
+    ],
+    { encoding: "utf8" },
+  );
+
+  assert.equal(result.status, 1);
+  const output = JSON.parse(result.stdout);
+  assert.equal(output.ok, false);
+  assert.equal(output.error.operation, "page.update");
+  assert.match(output.error.reason, /Invalid frame metadata JSON/);
+});
+
 test("bundled citation create reports locator validation failures before database access", () => {
   const result = spawnSync(
     bundledCli,
@@ -394,17 +432,7 @@ test("bundled citation create rejects non-Source Document targets before databas
   for (const source of ["wiki_page:autonomous_operations", "source_text_projection:ia_p1", "manual_link:legacy"]) {
     const result = spawnSync(
       bundledCli,
-      [
-        "citation",
-        "add",
-        "--page",
-        "wiki_page:curwb",
-        "--source",
-        source,
-        "--key",
-        "source",
-        "--json",
-      ],
+      ["citation", "add", "--page", "wiki_page:curwb", "--source", source, "--key", "source", "--json"],
       { encoding: "utf8" },
     );
 
@@ -615,7 +643,8 @@ test("Graph Wiki lint reports empty uncited residue pages", () => {
   assert.equal(result.summary["empty-wiki-page"], 1);
   assert.equal(result.summary["uncited-wiki-page"], 1);
   assert.equal(result.summary["orphan-page"], 1);
-  assert.equal(result.issueCount, 3);
+  assert.equal(result.summary["missing-page-frame"], 1);
+  assert.equal(result.issueCount, 4);
 });
 
 test("Graph Wiki lint reports Wiki Page References separately from citations", () => {

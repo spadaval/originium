@@ -1,5 +1,11 @@
 import { randomUUID } from "node:crypto";
-import { toSlug, validatePageBodyCitationMarkers, wikiPageRecordId, wikiPageSlugFromTitle } from "@originium/domain";
+import {
+  parseWikiPageReferences,
+  toSlug,
+  validatePageBodyCitationMarkers,
+  wikiPageRecordId,
+  wikiPageSlugFromTitle,
+} from "@originium/domain";
 import {
   type AgentActivityDraft,
   type AgentActivityRecord,
@@ -57,6 +63,16 @@ export type SourceDocumentRecord = {
   readonly mime_type: string;
   readonly page_count?: number;
   readonly source_uri?: string;
+  readonly corpus?: string;
+  readonly publisher?: string;
+  readonly document_class?: string;
+  readonly industries?: readonly string[];
+  readonly product_families?: readonly string[];
+  readonly version?: string;
+  readonly publication_date?: string;
+  readonly trust_status?: string;
+  readonly frame?: string;
+  readonly frame_metadata?: OperationInput;
   readonly extraction_status?: string;
   readonly created_at?: string;
   readonly updated_at?: string;
@@ -77,6 +93,8 @@ export type WikiPageRecord = {
   readonly title: string;
   readonly slug: string;
   readonly body: string;
+  readonly frame?: string;
+  readonly frame_metadata?: OperationInput;
   readonly created_at?: string;
   readonly updated_at?: string;
 };
@@ -125,7 +143,7 @@ export type GraphNeighborhoodNode = {
 
 export type GraphNeighborhoodEdge = {
   readonly id: string;
-  readonly kind: "citation" | "manual_link";
+  readonly kind: "citation" | "manual_link" | "wiki_page_reference";
   readonly from: string;
   readonly to: string;
   readonly label?: string;
@@ -210,7 +228,7 @@ export async function listSourceDocuments(
   dependencies: WebGraphWikiDependencies = {},
 ): Promise<WebGraphWikiResult<readonly SourceDocumentRecord[]>> {
   const operation = "web.graph.source_document.list";
-  const query = `${sourceDocumentBucketSurql(resolveConfig(dependencies))}\nSELECT id, title, kind, sha256, mime_type, page_count, source_uri, extraction_status, created_at, updated_at FROM source_document ORDER BY updated_at DESC, title ASC;`;
+  const query = `${sourceDocumentBucketSurql(resolveConfig(dependencies))}\nSELECT id, title, kind, sha256, mime_type, page_count, source_uri, corpus, publisher, document_class, industries, product_families, version, publication_date, trust_status, frame, frame_metadata, extraction_status, created_at, updated_at FROM source_document ORDER BY updated_at DESC, title ASC;`;
   return queryRows(operation, query, { table: "source_document" }, dependencies, "source_document");
 }
 
@@ -221,7 +239,7 @@ export async function readSourceDocument(
   const operation = "web.graph.source_document.read";
   return querySingle(
     operation,
-    `${sourceDocumentBucketSurql(resolveConfig(dependencies))}\nSELECT id, title, kind, sha256, mime_type, page_count, source_uri, extraction_status, created_at, updated_at FROM ${recordId(id, "source_document")};`,
+    `${sourceDocumentBucketSurql(resolveConfig(dependencies))}\nSELECT id, title, kind, sha256, mime_type, page_count, source_uri, corpus, publisher, document_class, industries, product_families, version, publication_date, trust_status, frame, frame_metadata, extraction_status, created_at, updated_at FROM ${recordId(id, "source_document")};`,
     { id },
     dependencies,
     "source_document",
@@ -248,7 +266,7 @@ export async function listWikiPages(
   const operation = "web.graph.page.list";
   return queryRows(
     operation,
-    "SELECT id, title, slug, body, created_at, updated_at FROM wiki_page ORDER BY updated_at DESC, title ASC;",
+    "SELECT id, title, slug, body, frame, frame_metadata, created_at, updated_at FROM wiki_page ORDER BY updated_at DESC, title ASC;",
     { table: "wiki_page" },
     dependencies,
     "wiki_page",
@@ -263,7 +281,7 @@ export async function readWikiPage(
   const pageId = pageIdFromInput(input);
   const result = await runQuery(
     operation,
-    `SELECT id, title, slug, body, created_at, updated_at FROM ${pageId}; SELECT id, key, label, quote, out AS source_document FROM cites WHERE in = ${pageId} ORDER BY key ASC;`,
+    `SELECT id, title, slug, body, frame, frame_metadata, created_at, updated_at FROM ${pageId}; SELECT id, key, label, quote, out AS source_document FROM cites WHERE in = ${pageId} ORDER BY key ASC;`,
     inputForPage(input, pageId),
     dependencies,
     "Read the Wiki Page from the Graph Wiki database after verifying the record ID or title.",
@@ -808,13 +826,14 @@ function graphLimit(limit: number | undefined): number {
 function wikiPageNeighborhoodQuery(pageId: string, limit: number): string {
   const citedDocuments = `(SELECT VALUE out FROM cites WHERE in = ${pageId} LIMIT ${limit})`;
   return [
-    `SELECT id, title, slug, created_at, updated_at FROM ${pageId} LIMIT ${limit};`,
+    `SELECT id, title, slug, body, frame, frame_metadata, created_at, updated_at FROM ${pageId} LIMIT ${limit};`,
     `SELECT id, in, out, key, label, quote, created_at FROM cites WHERE in = ${pageId} ORDER BY key ASC LIMIT ${limit};`,
     `SELECT id, title, kind, sha256, mime_type, page_count, source_uri, extraction_status, created_at, updated_at FROM source_document WHERE id IN ${citedDocuments} ORDER BY updated_at DESC, title ASC LIMIT ${limit};`,
     `SELECT id, in, out, reason, label, created_session, created_at FROM manual_link WHERE in = ${pageId} OR out = ${pageId} ORDER BY created_at DESC LIMIT ${limit};`,
-    `SELECT id, title, slug, created_at, updated_at FROM wiki_page WHERE id IN (SELECT VALUE out FROM manual_link WHERE in = ${pageId} LIMIT ${limit}) OR id IN (SELECT VALUE in FROM manual_link WHERE out = ${pageId} LIMIT ${limit}) ORDER BY updated_at DESC, title ASC LIMIT ${limit};`,
-    `SELECT id, title, slug, created_at, updated_at FROM wiki_page WHERE id != ${pageId} AND id IN (SELECT VALUE in FROM cites WHERE out IN ${citedDocuments} LIMIT ${limit}) ORDER BY updated_at DESC, title ASC LIMIT ${limit};`,
+    `SELECT id, title, slug, body, frame, frame_metadata, created_at, updated_at FROM wiki_page WHERE id IN (SELECT VALUE out FROM manual_link WHERE in = ${pageId} LIMIT ${limit}) OR id IN (SELECT VALUE in FROM manual_link WHERE out = ${pageId} LIMIT ${limit}) ORDER BY updated_at DESC, title ASC LIMIT ${limit};`,
+    `SELECT id, title, slug, body, frame, frame_metadata, created_at, updated_at FROM wiki_page WHERE id != ${pageId} AND id IN (SELECT VALUE in FROM cites WHERE out IN ${citedDocuments} LIMIT ${limit}) ORDER BY updated_at DESC, title ASC LIMIT ${limit};`,
     `SELECT id, in, out, key, label, quote, created_at FROM cites WHERE in != ${pageId} AND out IN ${citedDocuments} ORDER BY key ASC LIMIT ${limit};`,
+    `SELECT id, title, slug, body, frame, frame_metadata, created_at, updated_at FROM wiki_page ORDER BY updated_at DESC LIMIT ${limit * 4};`,
   ].join("\n");
 }
 
@@ -829,6 +848,7 @@ function wikiPageNeighborhoodData(selectedRecordId: string, limit: number, resul
   addWikiPageNodes(nodes, rowsAt<WikiPageRecord>(result, 4), selectedRecordId);
   addWikiPageNodes(nodes, rowsAt<WikiPageRecord>(result, 5), selectedRecordId);
   addGraphEdges(edges, rowsAt<CitationGraphEdgeRow>(result, 6), "citation");
+  addWikiPageReferenceEdges(nodes, edges, rowsAt<WikiPageRecord>(result, 0), rowsAt<WikiPageRecord>(result, 7));
 
   return {
     selectedRecordId,
@@ -864,6 +884,8 @@ function addWikiPageNodes(
       metadata: compactInput({
         createdAt: record.created_at,
         updatedAt: record.updated_at,
+        frame: graphRecordId(record.frame),
+        frameMetadata: metadataSummary(record.frame_metadata),
       }),
     });
   }
@@ -889,10 +911,45 @@ function addSourceDocumentNodes(
         mimeType: record.mime_type,
         pageCount: record.page_count,
         extractionStatus: record.extraction_status,
+        corpus: record.corpus,
+        documentClass: record.document_class,
+        trustStatus: record.trust_status,
+        frame: graphRecordId(record.frame),
+        frameMetadata: metadataSummary(record.frame_metadata),
         createdAt: record.created_at,
         updatedAt: record.updated_at,
       }),
     });
+  }
+}
+
+function addWikiPageReferenceEdges(
+  nodes: Map<string, GraphNeighborhoodNode>,
+  edges: Map<string, GraphNeighborhoodEdge>,
+  sourcePages: readonly WikiPageRecord[],
+  candidatePages: readonly WikiPageRecord[],
+): void {
+  for (const source of sourcePages) {
+    for (const reference of parseWikiPageReferences(source.body ?? "").references) {
+      const target = candidatePages.find(
+        (page) =>
+          page.id === reference.target || page.slug === toSlug(reference.target) || page.title === reference.target,
+      );
+      if (!target?.id) continue;
+      addWikiPageNodes(nodes, [target], source.id);
+      const id = `${source.id}->wiki_page_reference->${target.id}:${reference.index}`;
+      edges.set(id, {
+        id,
+        kind: "wiki_page_reference",
+        from: source.id,
+        to: target.id,
+        label: reference.label ?? reference.target,
+        metadata: compactInput({
+          marker: reference.marker,
+          index: reference.index,
+        }),
+      });
+    }
   }
 }
 
@@ -942,6 +999,11 @@ function graphRecordId(value: unknown): string | undefined {
   if (typeof value === "string") return value;
   if (value && typeof value === "object" && "id" in value && typeof value.id === "string") return value.id;
   return undefined;
+}
+
+function metadataSummary(value: unknown): string | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  return JSON.stringify(value);
 }
 
 function rowsAt<T>(result: unknown, index: number): readonly T[] {

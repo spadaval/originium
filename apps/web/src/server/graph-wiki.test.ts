@@ -353,7 +353,15 @@ test("reads a bounded Wiki Page graph neighborhood with citations, Manual Links,
       JSON.stringify([
         {
           status: "OK",
-          result: [{ id: "wiki_page:test", title: "Test", slug: "test", updated_at: "2026-05-16T12:00:00Z" }],
+          result: [
+            {
+              id: "wiki_page:test",
+              title: "Test",
+              slug: "test",
+              body: "See [[Related]] for navigation.",
+              updated_at: "2026-05-16T12:00:00Z",
+            },
+          ],
         },
         {
           status: "OK",
@@ -421,6 +429,13 @@ test("reads a bounded Wiki Page graph neighborhood with citations, Manual Links,
             },
           ],
         },
+        {
+          status: "OK",
+          result: [
+            { id: "wiki_page:related", title: "Related", slug: "related", body: "Related body." },
+            { id: "wiki_page:other", title: "Other", slug: "other", body: "Other body." },
+          ],
+        },
       ]),
       { status: 200 },
     );
@@ -452,6 +467,13 @@ test("reads a bounded Wiki Page graph neighborhood with citations, Manual Links,
       ["cites:test_source", "citation", "wiki_page:test", "source_document:source", "Source"],
       ["manual_link:test_related", "manual_link", "wiki_page:test", "wiki_page:related", "Related page"],
       ["cites:nearby_source", "citation", "wiki_page:nearby", "source_document:source", "Shared source"],
+      [
+        "wiki_page:test->wiki_page_reference->wiki_page:related:4",
+        "wiki_page_reference",
+        "wiki_page:test",
+        "wiki_page:related",
+        "Related",
+      ],
     ],
   );
   assert.deepEqual(result.data.nodes[1]?.navigation, {
