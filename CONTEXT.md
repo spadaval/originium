@@ -110,7 +110,9 @@ _Avoid_: file browser, document editor
 
 - "document" can mean raw trusted material or agent-authored synthesis. Resolved: use **Source Document** for raw trusted material and **Wiki Page** for synthesis.
 - "reference" can mean source metadata, a citation, or a graph edge. Resolved: use **Citation** for the relationship from synthesis to Source Document evidence, and keep precise location data as citation-local locator metadata.
-- Extracted headings or sections are not domain concepts. Resolved: do not model **Source Headings** or **Source Anchors** as graph records; store paginated source text as per-page **Source Text Projections**.
+- Extracted headings or sections are not domain concepts. Resolved: keep
+  document structure as locator/projection metadata rather than graph records;
+  store paginated source text as per-page **Source Text Projections**.
 - Wiki Page content should not absorb metadata, citations, or links. Resolved: a **Wiki Page** has a **Page Body** for prose synthesis, while citations, metadata, and links live in graph records and relations.
 - Inline citation syntax is a projection concern. Resolved: a **Citation Marker** appears in the Page Body, while the **Citation** graph relation is canonical.
 - Document linking is deliberately agent-driven for the first proof of concept. Resolved: only create **Manual Links** on explicit trigger.

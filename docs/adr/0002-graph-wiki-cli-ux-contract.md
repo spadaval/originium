@@ -38,10 +38,11 @@ implicit session. Explicit session overrides remain available for automation and
 nested workflows.
 
 Source text exposed through the CLI is a lossy Source Text Projection. Source
-Documents remain the trusted material, Source Headings and agent-maintained
-Source Anchors are stable citation targets, and source text read/search commands
-must report extraction provenance and location context. Durable projection
-caches are allowed for retrieval, but they are rebuildable and non-canonical.
+Documents remain the trusted material and stable citation targets. Citation
+relations must carry document-local locator metadata, and source text
+read/search commands must report extraction provenance and location context.
+Durable projection caches are allowed for retrieval, but they are rebuildable
+and non-canonical.
 
 Graph QA commands use the term graph lint for checks that find empty Wiki Pages,
 uncited pages, citation marker/relation mismatches, duplicate-ish pages, orphan

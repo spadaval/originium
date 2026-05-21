@@ -62,16 +62,14 @@ export type SourceDocumentRecord = {
   readonly updated_at?: string;
 };
 
-export type SourceHeadingRecord = {
+export type SourceOutlineRecord = {
   readonly id: string;
   readonly source_document: string;
-  readonly title: string;
-  readonly heading_path: readonly string[];
-  readonly level: number;
   readonly start_page: number;
   readonly end_page?: number;
-  readonly order: number;
   readonly extraction_method: string;
+  readonly projection_version?: string;
+  readonly projection_status?: string;
 };
 
 export type WikiPageRecord = {
@@ -88,7 +86,7 @@ export type CitationRecord = {
   readonly key: string;
   readonly label?: string;
   readonly quote?: string;
-  readonly source_heading?: unknown;
+  readonly source_document?: unknown;
 };
 
 export type WikiPageWithCitations = WikiPageRecord & {
@@ -108,22 +106,19 @@ export type ManualLinkRecord = {
 export type GraphNeighborhoodInput = {
   readonly recordId?: string;
   readonly pageId?: string;
-  readonly sourceHeadingId?: string;
   readonly title?: string;
   readonly limit?: number;
 };
 
 export type GraphNeighborhoodNode = {
   readonly id: string;
-  readonly kind: "source_heading" | "wiki_page";
+  readonly kind: "source_document" | "wiki_page";
   readonly label: string;
   readonly selected: boolean;
   readonly navigation: {
     readonly recordId: string;
     readonly slug?: string;
     readonly sourceDocumentId?: string;
-    readonly startPage?: number;
-    readonly endPage?: number;
   };
   readonly metadata: OperationInput;
 };
@@ -233,17 +228,17 @@ export async function readSourceDocument(
   );
 }
 
-export async function readSourceHeadings(
+export async function readSourceOutline(
   sourceDocumentId: string,
   dependencies: WebGraphWikiDependencies = {},
-): Promise<WebGraphWikiResult<readonly SourceHeadingRecord[]>> {
-  const operation = "web.graph.source_heading.list";
+): Promise<WebGraphWikiResult<readonly SourceOutlineRecord[]>> {
+  const operation = "web.graph.source_outline.list";
   return queryRows(
     operation,
-    `SELECT id, source_document, title, heading_path, level, start_page, end_page, order, extraction_method FROM source_heading WHERE source_document = ${recordId(sourceDocumentId, "source_document")} ORDER BY order ASC;`,
+    `SELECT id, source_document, start_page, end_page, extraction_method, projection_version, projection_status FROM source_text_projection WHERE source_document = ${recordId(sourceDocumentId, "source_document")} ORDER BY start_page ASC;`,
     { sourceDocumentId },
     dependencies,
-    "source_heading",
+    "source outline projection",
   );
 }
 
@@ -268,7 +263,7 @@ export async function readWikiPage(
   const pageId = pageIdFromInput(input);
   const result = await runQuery(
     operation,
-    `SELECT id, title, slug, body, created_at, updated_at FROM ${pageId}; SELECT id, key, label, quote, out AS source_heading FROM cites WHERE in = ${pageId} ORDER BY key ASC;`,
+    `SELECT id, title, slug, body, created_at, updated_at FROM ${pageId}; SELECT id, key, label, quote, out AS source_document FROM cites WHERE in = ${pageId} ORDER BY key ASC;`,
     inputForPage(input, pageId),
     dependencies,
     "Read the Wiki Page from the Graph Wiki database after verifying the record ID or title.",
@@ -291,7 +286,7 @@ export async function readGraphNeighborhood(
   const selectedKind = graphNodeKind(selectedRecordId);
   const limit = graphLimit(input.limit);
   const queryInput = compactInput(
-    { recordId: input.recordId, pageId: input.pageId, sourceHeadingId: input.sourceHeadingId, title: input.title },
+    { recordId: input.recordId, pageId: input.pageId, title: input.title },
     { selectedRecordId, limit },
   );
 
@@ -302,29 +297,24 @@ export async function readGraphNeighborhood(
         operation,
         config: resolveConfig(dependencies),
         input: queryInput,
-        reason: `Record ${selectedRecordId} is not supported for graph neighborhood reads; expected a wiki_page or source_heading record ID.`,
-        action: "Select a Wiki Page or Source Heading record, then retry the bounded Graph Wiki neighborhood read.",
+        reason: `Record ${selectedRecordId} is not supported for graph neighborhood reads; expected a wiki_page record ID.`,
+        action: "Select a Wiki Page record, then retry the bounded Graph Wiki neighborhood read.",
       }),
     };
   }
 
   const result = await runQuery(
     operation,
-    selectedKind === "wiki_page"
-      ? wikiPageNeighborhoodQuery(selectedRecordId, limit)
-      : sourceHeadingNeighborhoodQuery(selectedRecordId, limit),
+    wikiPageNeighborhoodQuery(selectedRecordId, limit),
     queryInput,
     dependencies,
-    "Read the selected Wiki Page or Source Heading neighborhood, including Citation and Manual Link edges, from the Graph Wiki database.",
+    "Read the selected Wiki Page neighborhood, including Citation and Manual Link edges, from the Graph Wiki database.",
   );
   if (!result.ok) return result;
 
   return {
     ...result,
-    data:
-      selectedKind === "wiki_page"
-        ? wikiPageNeighborhoodData(selectedRecordId, limit, result.data)
-        : sourceHeadingNeighborhoodData(selectedRecordId, limit, result.data),
+    data: wikiPageNeighborhoodData(selectedRecordId, limit, result.data),
   };
 }
 
@@ -769,7 +759,6 @@ function queryId(operation: string, input: OperationInput): string {
     input.id ??
     input.selectedRecordId ??
     input.pageId ??
-    input.sourceHeadingId ??
     input.sourceDocumentId ??
     input.sessionId ??
     input.table ??
@@ -793,7 +782,7 @@ function optionalString(value: string | undefined): string {
 
 function recordId(
   value: string,
-  fallbackTable: "agent_activity" | "agent_session" | "change_log" | "source_document" | "source_heading" | "wiki_page",
+  fallbackTable: "agent_activity" | "agent_session" | "change_log" | "source_document" | "wiki_page",
 ): string {
   if (value.includes(":")) return value;
   const slug = toSlug(value);
@@ -801,7 +790,6 @@ function recordId(
 }
 
 function graphSelectedRecordId(input: GraphNeighborhoodInput): string {
-  if (input.sourceHeadingId) return recordId(input.sourceHeadingId, "source_heading");
   if (input.pageId) return recordId(input.pageId, "wiki_page");
   if (input.recordId) return input.recordId;
   return pageIdFromInput(input);
@@ -809,7 +797,6 @@ function graphSelectedRecordId(input: GraphNeighborhoodInput): string {
 
 function graphNodeKind(recordIdValue: string): GraphNeighborhoodNode["kind"] | undefined {
   if (recordIdValue.startsWith("wiki_page:")) return "wiki_page";
-  if (recordIdValue.startsWith("source_heading:")) return "source_heading";
   return undefined;
 }
 
@@ -819,27 +806,15 @@ function graphLimit(limit: number | undefined): number {
 }
 
 function wikiPageNeighborhoodQuery(pageId: string, limit: number): string {
-  const citedHeadings = `(SELECT VALUE out FROM cites WHERE in = ${pageId} LIMIT ${limit})`;
+  const citedDocuments = `(SELECT VALUE out FROM cites WHERE in = ${pageId} LIMIT ${limit})`;
   return [
     `SELECT id, title, slug, created_at, updated_at FROM ${pageId} LIMIT ${limit};`,
     `SELECT id, in, out, key, label, quote, created_at FROM cites WHERE in = ${pageId} ORDER BY key ASC LIMIT ${limit};`,
-    `SELECT id, source_document, title, heading_path, level, start_page, end_page, order, extraction_method FROM source_heading WHERE id IN ${citedHeadings} ORDER BY order ASC LIMIT ${limit};`,
+    `SELECT id, title, kind, sha256, mime_type, page_count, source_uri, extraction_status, created_at, updated_at FROM source_document WHERE id IN ${citedDocuments} ORDER BY updated_at DESC, title ASC LIMIT ${limit};`,
     `SELECT id, in, out, reason, label, created_session, created_at FROM manual_link WHERE in = ${pageId} OR out = ${pageId} ORDER BY created_at DESC LIMIT ${limit};`,
     `SELECT id, title, slug, created_at, updated_at FROM wiki_page WHERE id IN (SELECT VALUE out FROM manual_link WHERE in = ${pageId} LIMIT ${limit}) OR id IN (SELECT VALUE in FROM manual_link WHERE out = ${pageId} LIMIT ${limit}) ORDER BY updated_at DESC, title ASC LIMIT ${limit};`,
-    `SELECT id, source_document, title, heading_path, level, start_page, end_page, order, extraction_method FROM source_heading WHERE id IN (SELECT VALUE out FROM manual_link WHERE in = ${pageId} LIMIT ${limit}) OR id IN (SELECT VALUE in FROM manual_link WHERE out = ${pageId} LIMIT ${limit}) ORDER BY order ASC LIMIT ${limit};`,
-    `SELECT id, title, slug, created_at, updated_at FROM wiki_page WHERE id != ${pageId} AND id IN (SELECT VALUE in FROM cites WHERE out IN ${citedHeadings} LIMIT ${limit}) ORDER BY updated_at DESC, title ASC LIMIT ${limit};`,
-    `SELECT id, in, out, key, label, quote, created_at FROM cites WHERE in != ${pageId} AND out IN ${citedHeadings} ORDER BY key ASC LIMIT ${limit};`,
-  ].join("\n");
-}
-
-function sourceHeadingNeighborhoodQuery(headingId: string, limit: number): string {
-  return [
-    `SELECT id, source_document, title, heading_path, level, start_page, end_page, order, extraction_method FROM ${headingId} LIMIT ${limit};`,
-    `SELECT id, in, out, key, label, quote, created_at FROM cites WHERE out = ${headingId} ORDER BY key ASC LIMIT ${limit};`,
-    `SELECT id, title, slug, created_at, updated_at FROM wiki_page WHERE id IN (SELECT VALUE in FROM cites WHERE out = ${headingId} LIMIT ${limit}) ORDER BY updated_at DESC, title ASC LIMIT ${limit};`,
-    `SELECT id, in, out, reason, label, created_session, created_at FROM manual_link WHERE in = ${headingId} OR out = ${headingId} ORDER BY created_at DESC LIMIT ${limit};`,
-    `SELECT id, title, slug, created_at, updated_at FROM wiki_page WHERE id IN (SELECT VALUE out FROM manual_link WHERE in = ${headingId} LIMIT ${limit}) OR id IN (SELECT VALUE in FROM manual_link WHERE out = ${headingId} LIMIT ${limit}) ORDER BY updated_at DESC, title ASC LIMIT ${limit};`,
-    `SELECT id, source_document, title, heading_path, level, start_page, end_page, order, extraction_method FROM source_heading WHERE id IN (SELECT VALUE out FROM manual_link WHERE in = ${headingId} LIMIT ${limit}) OR id IN (SELECT VALUE in FROM manual_link WHERE out = ${headingId} LIMIT ${limit}) ORDER BY order ASC LIMIT ${limit};`,
+    `SELECT id, title, slug, created_at, updated_at FROM wiki_page WHERE id != ${pageId} AND id IN (SELECT VALUE in FROM cites WHERE out IN ${citedDocuments} LIMIT ${limit}) ORDER BY updated_at DESC, title ASC LIMIT ${limit};`,
+    `SELECT id, in, out, key, label, quote, created_at FROM cites WHERE in != ${pageId} AND out IN ${citedDocuments} ORDER BY key ASC LIMIT ${limit};`,
   ].join("\n");
 }
 
@@ -848,41 +823,16 @@ function wikiPageNeighborhoodData(selectedRecordId: string, limit: number, resul
   const edges = new Map<string, GraphNeighborhoodEdge>();
 
   addWikiPageNodes(nodes, rowsAt<WikiPageRecord>(result, 0), selectedRecordId);
-  addSourceHeadingNodes(nodes, rowsAt<SourceHeadingRecord>(result, 2), selectedRecordId);
+  addSourceDocumentNodes(nodes, rowsAt<SourceDocumentRecord>(result, 2));
   addGraphEdges(edges, rowsAt<CitationGraphEdgeRow>(result, 1), "citation");
   addGraphEdges(edges, rowsAt<ManualLinkRecord>(result, 3), "manual_link");
   addWikiPageNodes(nodes, rowsAt<WikiPageRecord>(result, 4), selectedRecordId);
-  addSourceHeadingNodes(nodes, rowsAt<SourceHeadingRecord>(result, 5), selectedRecordId);
-  addWikiPageNodes(nodes, rowsAt<WikiPageRecord>(result, 6), selectedRecordId);
-  addGraphEdges(edges, rowsAt<CitationGraphEdgeRow>(result, 7), "citation");
+  addWikiPageNodes(nodes, rowsAt<WikiPageRecord>(result, 5), selectedRecordId);
+  addGraphEdges(edges, rowsAt<CitationGraphEdgeRow>(result, 6), "citation");
 
   return {
     selectedRecordId,
     selectedKind: "wiki_page",
-    limit,
-    nodes: [...nodes.values()],
-    edges: [...edges.values()].filter((edge) => nodes.has(edge.from) && nodes.has(edge.to)),
-  };
-}
-
-function sourceHeadingNeighborhoodData(
-  selectedRecordId: string,
-  limit: number,
-  result: unknown,
-): GraphNeighborhoodData {
-  const nodes = new Map<string, GraphNeighborhoodNode>();
-  const edges = new Map<string, GraphNeighborhoodEdge>();
-
-  addSourceHeadingNodes(nodes, rowsAt<SourceHeadingRecord>(result, 0), selectedRecordId);
-  addGraphEdges(edges, rowsAt<CitationGraphEdgeRow>(result, 1), "citation");
-  addWikiPageNodes(nodes, rowsAt<WikiPageRecord>(result, 2), selectedRecordId);
-  addGraphEdges(edges, rowsAt<ManualLinkRecord>(result, 3), "manual_link");
-  addWikiPageNodes(nodes, rowsAt<WikiPageRecord>(result, 4), selectedRecordId);
-  addSourceHeadingNodes(nodes, rowsAt<SourceHeadingRecord>(result, 5), selectedRecordId);
-
-  return {
-    selectedRecordId,
-    selectedKind: "source_heading",
     limit,
     nodes: [...nodes.values()],
     edges: [...edges.values()].filter((edge) => nodes.has(edge.from) && nodes.has(edge.to)),
@@ -919,34 +869,29 @@ function addWikiPageNodes(
   }
 }
 
-function addSourceHeadingNodes(
+function addSourceDocumentNodes(
   nodes: Map<string, GraphNeighborhoodNode>,
-  records: readonly SourceHeadingRecord[],
-  selectedRecordId: string,
+  records: readonly SourceDocumentRecord[],
 ): void {
   for (const record of records) {
     if (!record.id || nodes.has(record.id)) continue;
     nodes.set(record.id, {
       id: record.id,
-      kind: "source_heading",
+      kind: "source_document",
       label: record.title,
-      selected: record.id === selectedRecordId,
+      selected: false,
       navigation: {
         recordId: record.id,
-        sourceDocumentId: record.source_document,
-        startPage: record.start_page,
-        endPage: record.end_page,
+        sourceDocumentId: record.id,
       },
-      metadata: compactInput(
-        {
-          extractionMethod: record.extraction_method,
-        },
-        {
-          headingPath: record.heading_path,
-          level: record.level,
-          order: record.order,
-        },
-      ),
+      metadata: compactInput({
+        kind: record.kind,
+        mimeType: record.mime_type,
+        pageCount: record.page_count,
+        extractionStatus: record.extraction_status,
+        createdAt: record.created_at,
+        updatedAt: record.updated_at,
+      }),
     });
   }
 }

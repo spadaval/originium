@@ -37,14 +37,14 @@ Start from maintained synthesis, not raw source search.
    originium citation validate <wiki-page-id> --session <session-id>
    ```
 
-4. Answer from the Wiki Page synthesis and cited Source Heading evidence. If a
+4. Answer from the Wiki Page synthesis and cited Source Document evidence. If a
    claim depends on a Source Text Projection snippet, verify it against the
-   cited Source Heading, Source Anchor, or original Source Document before
-   presenting it as fact.
+   Source Document or a trustworthy Source Text Projection before presenting it
+   as fact.
 
-5. If search only finds Source Headings, say that the topic has source material
-   but no maintained Wiki Page yet. Use the Source Headings as context only if
-   that satisfies the user, or create/update a Wiki Page before treating the
+5. If search only finds Source Documents or projections, say that the topic has
+   source material but no maintained Wiki Page yet. Use that source context only
+   if it satisfies the user, or create/update a Wiki Page before treating the
    knowledge as compiled.
 
 6. If relevant pages disagree, are stale, or appear superseded, report that

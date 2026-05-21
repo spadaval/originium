@@ -56,7 +56,7 @@ export function GraphTab({
         ) : (
           <div className="empty-state inline-empty" role="status">
             <strong>No graph records</strong>
-            <p>{selectedRecordId} returned no Wiki Page or Source Heading node.</p>
+            <p>{selectedRecordId} returned no Wiki Page node.</p>
           </div>
         )
       ) : listError || graphError ? null : (
@@ -135,7 +135,13 @@ function GraphCanvas({ graph }: { readonly graph: GraphNeighborhoodData }) {
       </svg>
       {visibleNodes.map((node, index) => {
         const position = graphPositions[index];
-        return (
+        const content = (
+          <>
+            <span>{nodeKindLabel(node.kind)}</span>
+            <strong>{node.label || node.id}</strong>
+          </>
+        );
+        return node.kind === "wiki_page" ? (
           <Link
             key={node.id}
             to="/workspace"
@@ -144,9 +150,17 @@ function GraphCanvas({ graph }: { readonly graph: GraphNeighborhoodData }) {
             style={{ "--graph-x": `${position.x}%`, "--graph-y": `${position.y}%` } as CSSProperties}
             title={`${nodeKindLabel(node.kind)}: ${node.label}`}
           >
-            <span>{nodeKindLabel(node.kind)}</span>
-            <strong>{node.label || node.id}</strong>
+            {content}
           </Link>
+        ) : (
+          <span
+            key={node.id}
+            className={graphNodeClassName(node)}
+            style={{ "--graph-x": `${position.x}%`, "--graph-y": `${position.y}%` } as CSSProperties}
+            title={`${nodeKindLabel(node.kind)}: ${node.label}`}
+          >
+            {content}
+          </span>
         );
       })}
     </div>
@@ -185,6 +199,13 @@ function GraphEdgeList({ graph }: { readonly graph: GraphNeighborhoodData }) {
 
 function GraphRecordChip({ node, recordId }: { readonly node?: GraphNeighborhoodNode; readonly recordId: string }) {
   if (!node) return <span className="record-chip muted">{recordId}</span>;
+  if (node.kind === "source_document") {
+    return (
+      <Link to="/sources" search={{ sourceDocumentId: node.id }} className="record-chip">
+        {node.label || node.id}
+      </Link>
+    );
+  }
   return (
     <Link to="/workspace" search={{ recordId: node.id, tab: "graph" }} className="record-chip">
       {node.label || node.id}
@@ -195,7 +216,7 @@ function GraphRecordChip({ node, recordId }: { readonly node?: GraphNeighborhood
 function graphNodeClassName(node: GraphNeighborhoodNode): string {
   return [
     "graph-map-node",
-    node.kind === "source_heading" ? "source-heading" : "wiki-page",
+    node.kind === "source_document" ? "source-document" : "wiki-page",
     node.selected ? "selected" : "",
   ]
     .filter(Boolean)
@@ -203,13 +224,12 @@ function graphNodeClassName(node: GraphNeighborhoodNode): string {
 }
 
 function nodeKindLabel(kind: GraphNeighborhoodNode["kind"]): string {
-  return kind === "source_heading" ? "Source Heading" : "Wiki Page";
+  return kind === "source_document" ? "Source Document" : "Wiki Page";
 }
 
 function nodeMeta(node: GraphNeighborhoodNode): string {
-  if (node.kind === "source_heading") {
-    const page = node.navigation.startPage ? `page ${node.navigation.startPage}` : "no page";
-    return `${nodeKindLabel(node.kind)} - ${page}`;
+  if (node.kind === "source_document") {
+    return `${nodeKindLabel(node.kind)} - ${node.id}`;
   }
   return `${nodeKindLabel(node.kind)} - ${node.navigation.slug ?? node.id}`;
 }

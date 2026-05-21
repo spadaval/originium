@@ -9,6 +9,12 @@ Document import, Wiki Page writes, Citation creation, Agent Session creation,
 and Change Log creation. Use Surrealist to inspect the resulting raw tables and
 relations during manual validation.
 
+This page documents the legacy POC database shape where `source_heading` records
+and heading-targeted `cites` relations may still exist. Those names are retained
+here only so operators can inspect and migrate existing raw records; the target
+domain model uses Source Documents as Citation targets with citation-local
+locator metadata.
+
 ## Release Cache
 
 The current local Surrealist desktop cache target is:
@@ -79,11 +85,12 @@ Inspect these schemafull tables for the POC:
 - `source_document`: trusted raw document metadata and file bucket reference.
 - `source_text_projection`: lossy, rebuildable extracted-text search cache
   with page range and provenance.
-- `source_heading`: Source Anchors extracted from Source Documents.
+- `source_heading`: legacy extracted heading records from Source Documents.
 - `wiki_page`: agent-authored synthesis and Page Body.
 - `agent_session`: agent run metadata for inspection and undo workflows.
 - `change_log`: durable operation log entries.
-- `cites`: Citation relation from Wiki Page to Source Heading.
+- `cites`: legacy Citation relation from Wiki Page to Source Heading; target
+  citations point to Source Documents with locator metadata.
 - `manual_link`: explicit semantic links requested by a user or agent.
 - `edited_in`: relation from changed records to Agent Session.
 
@@ -104,10 +111,10 @@ LET $page = wiki_page:poc_mining_deployment;
 LET $session = agent_session:replace_with_acceptance_session;
 ```
 
-The fixture acceptance command creates those Source Document, Source Heading,
-Ingestion Chunk, and Wiki Page IDs. Replace `$projection` when inspecting a
-retrieval cache created by indexing work. Replace `$session` with the Agent
-Session ID printed by
+The fixture acceptance command may create those legacy Source Document, Source
+Heading, Ingestion Chunk, and Wiki Page IDs. Replace `$projection` when
+inspecting a retrieval cache created by indexing work. Replace `$session` with
+the Agent Session ID printed by
 `originium acceptance poc fixtures/source-documents/IA-Mining-DG.pdf` or by
 `originium log show --session <session-id>`.
 
@@ -122,7 +129,7 @@ ORDER BY created_at DESC
 LIMIT 20;
 ```
 
-Inspect one Source Document and its extracted headings:
+Inspect one Source Document and its legacy extracted headings:
 
 ```sql
 SELECT * FROM $source;
@@ -152,9 +159,9 @@ SELECT id, source_document, source_heading, page_start, page_end, text, extracti
 FROM $projection;
 ```
 
-## Source Headings
+## Legacy Source Headings
 
-Inspect heading quality and Source Anchor metadata:
+Inspect legacy heading quality and extraction metadata:
 
 ```sql
 SELECT id, source_document, title, heading_path, level, start_page, end_page, order, destination, extraction_method
@@ -210,7 +217,7 @@ ORDER BY created_at DESC
 LIMIT 50;
 ```
 
-Find all Wiki Pages citing one Source Heading:
+Find all Wiki Pages citing one legacy Source Heading:
 
 ```sql
 SELECT id, key, label, quote, in AS wiki_page
@@ -252,7 +259,7 @@ WHERE text CONTAINS "CURWB"
 LIMIT 20;
 ```
 
-Inspect inbound evidence and manual links around a Source Heading:
+Inspect inbound evidence and manual links around a legacy Source Heading:
 
 ```sql
 SELECT

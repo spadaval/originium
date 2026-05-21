@@ -58,7 +58,8 @@ If the Page Body uses Citation Markers, add matching Citation relations:
 ```bash
 originium citation add \
   --page <wiki-page-id> \
-  --heading <source-heading-id> \
+  --source <source-document-id> \
+  --pages <start-end> \
   --key <citation-key> \
   --label "<human label>" \
   --quote "<short supporting quote when useful>" \
@@ -93,13 +94,13 @@ apply edits that make Citation Markers disagree with graph Citations.
 
 ## Ingest A Chapter Into A Wiki Page
 
-Use this when a Source Heading should become or refresh a Wiki Page in one CLI
-operation.
+Use this when a Source Document page range or chapter should become or refresh a
+Wiki Page in one CLI operation.
 
 ```bash
 originium ingest chapter \
   --source <source-document-id> \
-  --heading <source-heading-id> \
+  --pages <start-end> \
   --title "<wiki page title>" \
   --body "<concise synthesis with [^citation-key] marker>" \
   --key <citation-key> \

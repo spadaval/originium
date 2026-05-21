@@ -28,15 +28,15 @@ projections for humans, agents, and retrieval.
 
 1. A Source Document is imported through the CLI.
 2. The PDF binary is stored through SurrealDB file bucket support when configured.
-3. Extraction creates Source Headings and may create Source Text Projections:
-   lossy, rebuildable search caches with page ranges, provenance, and retrieval
+3. Extraction creates outline metadata and per-page Source Text Projections:
+   lossy, rebuildable search caches with page numbers, provenance, and retrieval
    metadata.
 4. Ingestion reads source text through Source Text Projections or one-off
-   projections from the stored Source Document and processes one Source Heading
-   or Ingestion Chunk at a time.
+   projections from the stored Source Document and processes one page range,
+   chapter, theme, or Ingestion Chunk at a time.
 5. Agents write Wiki Pages, Citations, Manual Links, Agent Sessions, and Change Logs into SurrealDB.
 6. Retrieval uses SurrealDB hybrid candidate search across Wiki Pages, Source
-   Headings, and Source Text Projections, then applies graph-aware reranking
+   Documents, and Source Text Projections, then applies graph-aware reranking
    from Citation relations, Manual Links, and local graph neighborhoods.
 7. During the POC, the CLI renders agent-facing Projections and Surrealist is
    used for database-management inspection and manual validation.
@@ -48,8 +48,8 @@ Source Documents remain immutable canonical evidence. Source Text Projections
 are durable only as derived caches: they may be indexed, embedded, deleted, and
 rebuilt without changing the evidence record. Projection text may lose
 formatting, diagrams, emphasis, tables, layout, and exact reading order, so
-citations still target Source Headings or other Source Anchors rather than
-projection rows.
+citations target Source Documents with citation-local locator metadata rather
+than projection rows.
 
 Retrieval has four separate jobs:
 
@@ -57,10 +57,10 @@ Retrieval has four separate jobs:
   synthesis.
 - Answer retrieval finds synthesized Wiki Page context and follows Citations to
   evidence.
-- Evidence search inspects Source Headings and Source Text Projections with
+- Evidence search inspects Source Documents and Source Text Projections with
   page-range provenance.
 - Graph neighborhood inspection traverses known records through Citations,
-  Manual Links, Agent Sessions, and nearby Source Headings.
+  Manual Links, Agent Sessions, and nearby Wiki Pages or cited Source Documents.
 
 Contradictions should be represented as cited disagreement in Wiki Page prose
 and retrieval output until repeated workflows justify a dedicated contradiction

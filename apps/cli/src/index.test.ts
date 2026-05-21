@@ -63,6 +63,52 @@ test("bundled CLI reports structured unknown command failures", () => {
   assert.match(output.error.action, /Choose one of:/);
 });
 
+test("bundled CLI shows top-level help with command groups", () => {
+  const result = spawnSync(bundledCli, ["--help", "--json"], {
+    encoding: "utf8",
+  });
+
+  assert.equal(result.status, 0);
+  const output = JSON.parse(result.stdout);
+  assert.equal(output.ok, true);
+  assert.equal(output.operation, "help.show");
+  assert.equal(output.data.mode, "top-level");
+  assert.match(output.data.usage, /originium <group> <command>/);
+  assert.ok(output.data.groups.some((group: { group: string }) => group.group === "citation"));
+  assert.ok(output.data.groups.some((group: { group: string }) => group.group === "refactor"));
+  assert.match(output.data.json, /--json/);
+});
+
+test("bundled CLI shows group help for citation, refactor, and model", () => {
+  for (const group of ["citation", "refactor", "model"]) {
+    const result = spawnSync(bundledCli, [group, "--help", "--json"], {
+      encoding: "utf8",
+    });
+
+    assert.equal(result.status, 0);
+    const output = JSON.parse(result.stdout);
+    assert.equal(output.ok, true);
+    assert.equal(output.operation, "help.show");
+    assert.equal(output.data.mode, "group");
+    assert.equal(output.data.group, group);
+    assert.ok(output.data.commands.length > 0);
+    assert.match(output.data.commands[0].usage, new RegExp(group));
+    assert.match(output.data.json, /--json/);
+  }
+});
+
+test("bundled CLI renders human-readable group help", () => {
+  const output = execFileSync(bundledCli, ["help", "citation"], {
+    encoding: "utf8",
+  });
+
+  assert.match(output, /^OK help citation\ncitation:/);
+  assert.match(output, /commands:/);
+  assert.match(output, /citation validate <wiki-page-id>/);
+  assert.match(output, /example:/);
+  assert.match(output, /--json/);
+});
+
 test("bundled CLI reports structured missing argument failures", () => {
   const result = spawnSync(bundledCli, ["db", "--json"], {
     encoding: "utf8",
@@ -205,7 +251,7 @@ test("bundled acceptance harness reports blocked stages with nonzero exit", () =
       ["db-doctor", "blocked"],
       ["schema", "blocked"],
       ["source-import", "blocked"],
-      ["heading-projection", "blocked"],
+      ["source-projections", "blocked"],
       ["session-start", "blocked"],
       ["chapter-ingestion", "blocked"],
       ["citation-validation", "blocked"],
@@ -256,11 +302,11 @@ test("bundled source read returns lossy text projection by page range", () => {
   assert.match(output.data.provenance.checksumSha256, /^[a-f0-9]{64}$/);
   assert.match(output.data.warning, /Lossy source text projection/);
   assert.match(output.data.text, /Autonomous|Mining/);
-  assert.match(output.data.nearestHeading.id, /^source_heading:/);
-  assert.match(output.data.nearestHeading.extractionHeadingId, /^source_heading:/);
+  assert.match(output.data.nearestOutline.id, /^source_outline:/);
+  assert.equal(output.data.nearestOutline.sourceDocumentId, "source_document:ia-mining-dg");
 });
 
-test("bundled source search returns IA Mining snippets with persisted heading context", () => {
+test("bundled source search returns IA Mining snippets with outline context", () => {
   const result = spawnSync(
     bundledCli,
     [
@@ -287,9 +333,84 @@ test("bundled source search returns IA Mining snippets with persisted heading co
   assert.equal(output.data.sourceDocument, "source_document:ia-mining-dg");
   assert.ok(output.data.hits.length > 0);
   assert.match(output.data.hits[0].snippet, /Cisco Ultra-Reliable Wireless Backhaul/);
-  assert.match(output.data.hits[0].nearestHeading.id, /^source_heading:/);
-  assert.equal(output.data.hits[0].nearestHeading.id, output.data.hits[0].nearestHeading.persistedSourceHeadingId);
+  assert.match(output.data.hits[0].nearestOutline.id, /^source_outline:/);
+  assert.equal(output.data.hits[0].nearestOutline.sourceDocumentId, "source_document:ia-mining-dg");
   assert.equal(output.data.hits[0].provenance.lossy, true);
+});
+
+test("bundled source locate prepares citation-local locators without database access", () => {
+  const result = spawnSync(
+    bundledCli,
+    [
+      "source",
+      "locate",
+      "--source",
+      "source_document:ia_mining",
+      "--pages",
+      "12-13",
+      "--quote",
+      "Ultra-Reliable Wireless Backhaul",
+      "--json",
+    ],
+    { encoding: "utf8" },
+  );
+
+  assert.equal(result.status, 0);
+  const output = JSON.parse(result.stdout);
+  assert.equal(output.ok, true);
+  assert.equal(output.operation, "source.locate");
+  assert.equal(output.data.locator.sourceDocumentId, "source_document:ia_mining");
+  assert.equal(output.data.locator.locatorKind, "quote-context");
+  assert.deepEqual(output.data.locator.pageRange, { startPage: 12, endPage: 13 });
+});
+
+test("bundled citation create reports locator validation failures before database access", () => {
+  const result = spawnSync(
+    bundledCli,
+    [
+      "cite",
+      "create",
+      "--page",
+      "wiki_page:curwb",
+      "--source",
+      "source_document:ia_mining",
+      "--key",
+      "source",
+      "--confidence",
+      "1.5",
+      "--json",
+    ],
+    { encoding: "utf8" },
+  );
+
+  assert.equal(result.status, 1);
+  const output = JSON.parse(result.stdout);
+  assert.equal(output.ok, false);
+  assert.equal(output.error.operation, "cite.add");
+  assert.match(output.error.reason, /confidence 1.5 is invalid/);
+});
+
+test("Graph Wiki lint can return focused citation and source families", () => {
+  const lint = lintGraphWikiStatements(
+    [
+      { result: [{ id: "wiki_page:a", title: "A", slug: "a", body: "Short.[^source]" }] },
+      [{ in: "wiki_page:a", key: "source", locator_kind: "whole-document", claim: "" }],
+      [{ id: "source_text_projection:a_1", source_document: "source_document:a", projection_status: "pending" }],
+      { result: [] },
+    ].map((statement) => (Array.isArray(statement) ? { result: statement } : statement)),
+    "citation",
+  );
+
+  assert.equal(lint.family, "citation");
+  assert.ok(lint.issues.every((issue) => issue.family === "citation"));
+  assert.ok(lint.issues.some((issue) => issue.kind === "broad-citation-target"));
+  assert.ok(lint.issues.every((issue) => typeof issue.suggestedRepair === "string"));
+
+  const sourceLint = lintGraphWikiStatements(
+    [{ result: [] }, { result: [] }, { result: [{ id: "source_text_projection:a_1", projection_status: "pending" }] }],
+    "source",
+  );
+  assert.ok(sourceLint.issues.some((issue) => issue.kind === "source-projection-not-ready"));
 });
 
 test("bundled link add rejects unsupported labels before database access", () => {
@@ -322,19 +443,7 @@ test("bundled link add rejects unsupported labels before database access", () =>
 test("bundled link add rejects vague reasons before database access", () => {
   const result = spawnSync(
     bundledCli,
-    [
-      "link",
-      "add",
-      "--from",
-      "wiki_page:a",
-      "--to",
-      "wiki_page:b",
-      "--label",
-      "uses",
-      "--reason",
-      "related",
-      "--json",
-    ],
+    ["link", "add", "--from", "wiki_page:a", "--to", "wiki_page:b", "--label", "uses", "--reason", "related", "--json"],
     { encoding: "utf8" },
   );
 

@@ -28,7 +28,7 @@ function OverviewRoute() {
         <section className="panel action-panel">
           <div>
             <h2>Source Documents</h2>
-            <p>Inventory, Source Headings, metadata, and PDF lane.</p>
+            <p>Inventory, Document Outline, metadata, and PDF lane.</p>
           </div>
           <Link to="/sources" className="button-link secondary">
             View sources

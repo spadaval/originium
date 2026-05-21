@@ -127,10 +127,13 @@ vocabulary proposal rather than inventing ad hoc labels.
 CLI support needed:
 
 - link lint that flags vague labels and missing reasons
-- relation-label search showing allowed labels, definitions, examples, and
-  non-examples
 - link rewrite tooling for replacing or removing weak links across a selected
   neighborhood
+
+Deferred until the frame workflow MVP proves a concrete need:
+
+- relation-label search showing allowed labels, definitions, examples, and
+  non-examples
 
 ## Case: Citation Is Too Broad
 
@@ -258,6 +261,9 @@ CLI support needed:
 
 - frame proposal commands that attach concrete graph examples, non-examples,
   expected slots, allowed edges, and affected lint behavior
+
+Deferred until the frame workflow MVP proves a concrete need:
+
 - model-impact reports showing which pages, source locator patterns, links,
   citations, and retrieval queries would change if the proposal is accepted
 
@@ -277,10 +283,13 @@ decisions, not treated as incidental metadata edits.
 
 CLI support needed:
 
-- Domain Model versioning, migration dry runs, and accepted/rejected proposal
-  history
 - frame/relation lint that can run against both the current model and a proposed
   model
+
+Deferred until the frame workflow MVP proves a concrete need:
+
+- Domain Model versioning, migration dry runs, and accepted/rejected proposal
+  history
 - migration tooling that reclassifies instances, rewrites labels, and records
   the old semantics for audit
 

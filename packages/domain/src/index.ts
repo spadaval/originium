@@ -11,17 +11,6 @@ export type SourceDocumentDraft = {
   readonly pageCount?: number;
 };
 
-export type SourceHeadingDraft = {
-  readonly sourceDocumentId: string;
-  readonly title: string;
-  readonly headingPath: readonly string[];
-  readonly level: number;
-  readonly startPage: number;
-  readonly endPage?: number;
-  readonly order: number;
-  readonly extractionMethod: "outline" | "table-of-contents" | "heading-detection" | "synthetic";
-};
-
 export type WikiPageDraft = {
   readonly title: string;
   readonly slug: string;
@@ -35,17 +24,35 @@ export type WikiPageKind = "concept" | "workflow" | "evidence" | "decision" | "q
 
 export type SourceTextProjectionDraft = {
   readonly sourceDocumentId: string;
-  readonly sourceHeadingId: string;
+  readonly startPage: number;
+  readonly endPage: number;
+  readonly projectionVersion: string;
+};
+
+export type CitationLocatorKind = "whole-document" | "page-range" | "quote-context";
+
+export type CitationPageRange = {
   readonly startPage: number;
   readonly endPage: number;
 };
 
+export type CitationValidationStatus = "validated" | "needs-review" | "invalid";
+
 export type CitationDraft = {
   readonly wikiPageId: string;
-  readonly sourceHeadingId: string;
+  readonly sourceDocumentId: string;
   readonly key: string;
   readonly label: string;
+  readonly claim: string;
+  readonly locatorKind: CitationLocatorKind;
+  readonly pageRange?: CitationPageRange;
+  readonly locationHint?: string;
   readonly quote?: string;
+  readonly context?: string;
+  readonly projectionId?: string;
+  readonly textHash?: string;
+  readonly validationStatus: CitationValidationStatus;
+  readonly confidence: number;
 };
 
 export type GraphWikiRecordIdConflict = {
@@ -108,19 +115,6 @@ export function sourceDocumentRecordId(draft: SourceDocumentDraft): string {
   return `source_document:${toSurrealIdPart(`${base}-${shortSha256(draft.sha256)}`)}`;
 }
 
-export function sourceHeadingRecordId(draft: SourceHeadingDraft): string {
-  const documentPart = toSurrealIdPart(normalizeRecordIdPart(draft.sourceDocumentId.replace(/^[^:]+:/, "")));
-  const headingPart = draft.headingPath
-    .map((part) => normalizeRecordIdPart(part))
-    .filter(Boolean)
-    .join("-");
-  const titlePart = normalizeRecordIdPart(draft.title);
-  const anchorPart = headingPart || titlePart || "source-heading";
-  const pagePart = draft.endPage === undefined ? `p${draft.startPage}` : `p${draft.startPage}-${draft.endPage}`;
-
-  return `source_heading:${toSurrealIdPart(`${documentPart}-${anchorPart}-${pagePart}-o${draft.order}`)}`;
-}
-
 export function wikiPageSlugFromTitle(title: string): string {
   return normalizeRecordIdPart(title);
 }
@@ -131,9 +125,9 @@ export function wikiPageRecordId(title: string): string {
 
 export function sourceTextProjectionRecordId(draft: SourceTextProjectionDraft): string {
   const documentPart = normalizeRecordIdPart(draft.sourceDocumentId.replace(/^[^:]+:/, ""));
-  const headingPart = normalizeRecordIdPart(draft.sourceHeadingId.replace(/^[^:]+:/, ""));
+  const versionPart = normalizeRecordIdPart(draft.projectionVersion) || "projection";
   return `source_text_projection:${toSurrealIdPart(
-    `${documentPart}-${headingPart}-p${draft.startPage}-${draft.endPage}`,
+    `${documentPart}-p${draft.startPage}-${draft.endPage}-${versionPart}`,
   )}`;
 }
 
@@ -141,12 +135,73 @@ export function formatGraphWikiRecordIdConflict(conflict: GraphWikiRecordIdConfl
   return [
     `Graph Wiki ${conflict.operation} failed for input "${conflict.inputIdentifier}".`,
     `Proposed record ID "${conflict.proposedId}" conflicts with existing record "${conflict.existingRecordId}".`,
-    "Use a distinct title, filename, heading path, or slug before retrying.",
+    "Use a distinct title, filename, page range, projection version, or slug before retrying.",
   ].join(" ");
 }
 
 export function assertGraphWikiRecordIdAvailable(conflict: GraphWikiRecordIdConflict): never {
   throw new GraphWikiRecordIdConflictError(conflict);
+}
+
+export function parseCitationPageRange(input: string): CitationPageRange | undefined {
+  const match = /^\s*(?:p(?:p)?\.?\s*)?([1-9][0-9]*)(?:\s*-\s*(?:p(?:p)?\.?\s*)?([1-9][0-9]*))?\s*$/.exec(input);
+
+  if (match === null) {
+    return undefined;
+  }
+
+  const startPage = Number(match[1]);
+  const endPage = match[2] === undefined ? startPage : Number(match[2]);
+  const pageRange = { startPage, endPage };
+
+  return isValidCitationPageRange(pageRange) ? pageRange : undefined;
+}
+
+export function formatCitationPageRange(pageRange: CitationPageRange): string {
+  return pageRange.startPage === pageRange.endPage
+    ? `p${pageRange.startPage}`
+    : `pp${pageRange.startPage}-${pageRange.endPage}`;
+}
+
+export function isValidCitationPageRange(pageRange: CitationPageRange): boolean {
+  return (
+    Number.isInteger(pageRange.startPage) &&
+    Number.isInteger(pageRange.endPage) &&
+    pageRange.startPage >= 1 &&
+    pageRange.endPage >= pageRange.startPage
+  );
+}
+
+export function validateCitationLocator(
+  draft: Pick<CitationDraft, "locatorKind" | "pageRange" | "quote" | "context" | "confidence">,
+): readonly string[] {
+  const issues: string[] = [];
+
+  if (draft.confidence < 0 || draft.confidence > 1) {
+    issues.push(`Citation locator confidence ${draft.confidence} is invalid. Use a number from 0 to 1.`);
+  }
+
+  if (draft.pageRange !== undefined && !isValidCitationPageRange(draft.pageRange)) {
+    issues.push(
+      `Citation locator page range ${draft.pageRange.startPage}-${draft.pageRange.endPage} is invalid. Use positive integer pages with endPage greater than or equal to startPage.`,
+    );
+  }
+
+  if (draft.locatorKind === "whole-document" && draft.pageRange !== undefined) {
+    issues.push(
+      "Citation locator kind whole-document must not include a page range. Use page-range when pages are known.",
+    );
+  }
+
+  if (draft.locatorKind === "page-range" && draft.pageRange === undefined) {
+    issues.push("Citation locator kind page-range requires pageRange.");
+  }
+
+  if (draft.locatorKind === "quote-context" && draft.quote === undefined && draft.context === undefined) {
+    issues.push("Citation locator kind quote-context requires quote or context evidence.");
+  }
+
+  return issues;
 }
 
 export function parseCitationMarkers(pageBody: string): CitationMarkerValidation {

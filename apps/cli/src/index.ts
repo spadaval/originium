@@ -3,11 +3,14 @@ import { createHash, randomUUID } from "node:crypto";
 import { copyFileSync, existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import {
-  type SourceHeadingDraft,
+  type CitationDraft,
+  type CitationLocatorKind,
+  formatCitationPageRange,
+  parseCitationPageRange,
   sourceDocumentRecordId,
-  sourceHeadingRecordId,
   sourceTextProjectionRecordId,
   toSlug,
+  validateCitationLocator,
   validatePageBodyCitationMarkers,
   type WikiPageKind,
   wikiPageRecordId,
@@ -15,11 +18,11 @@ import {
 } from "@originium/domain";
 import {
   createPdfSourceDocumentDraftFromFile,
-  extractPdfHeadings,
-  nearestHeadingForPage,
-  projectPdfChunk,
+  extractPdfOutline,
+  nearestOutlineForPage,
   projectPdfText,
-  type SourceHeadingProjection,
+  readPdfMetadata,
+  type SourceOutlineEntry,
   searchPdfText,
 } from "@originium/pdf-ingest";
 import {
@@ -68,6 +71,33 @@ type CliFailure = {
 export type CliResult = CliSuccess | CliFailure;
 
 type CommandHandler = (argv: readonly string[]) => Promise<CliResult> | CliResult;
+
+type HelpTopic = {
+  readonly group: string;
+  readonly summary: string;
+  readonly commands: readonly {
+    readonly usage: string;
+    readonly summary: string;
+    readonly example: string;
+  }[];
+  readonly workflows: readonly string[];
+};
+
+type HelpData =
+  | {
+      readonly mode: "top-level";
+      readonly usage: string;
+      readonly json: string;
+      readonly groups: readonly { readonly group: string; readonly summary: string }[];
+    }
+  | {
+      readonly mode: "group";
+      readonly group: string;
+      readonly summary: string;
+      readonly commands: HelpTopic["commands"];
+      readonly workflows: readonly string[];
+      readonly json: string;
+    };
 
 type QueryLogOptions = {
   readonly kind: "read" | "write";
@@ -119,17 +149,319 @@ type OllamaEmbeddingConfig = {
 const routeGroups: Record<string, CommandHandler> = {
   acceptance: routeAcceptance,
   activity: routeActivity,
+  cite: routeCitation,
   citation: routeCitation,
   db: routeDb,
+  help: routeHelp,
   ingest: routeIngest,
   link: routeLink,
   log: routeLog,
   page: routePage,
+  refactor: routeRefactor,
   graph: routeGraph,
   retrieval: routeRetrieval,
   session: routeSession,
   source: routeSource,
   workflow: routeWorkflow,
+};
+
+const helpTopics: Record<string, HelpTopic> = {
+  acceptance: {
+    group: "acceptance",
+    summary: "Run proof-oriented acceptance workflows.",
+    commands: [
+      {
+        usage: "acceptance poc <pdf-path>",
+        summary: "Run the POC acceptance harness and report blocked stages concretely.",
+        example: "originium acceptance poc fixtures/source-documents/IA-Mining-DG.pdf --json",
+      },
+    ],
+    workflows: ["Use before claiming a POC demo is healthy."],
+  },
+  activity: {
+    group: "activity",
+    summary: "Record and inspect agent activity outside durable Change Log mutations.",
+    commands: [
+      {
+        usage: "activity record --kind <kind> --summary <summary> [--session <agent-session-id>]",
+        summary: "Record a message, command, tool, status, file_change, graph_mutation, or error event.",
+        example: 'originium activity record --kind status --summary "Started source audit" --json',
+      },
+      {
+        usage: "activity list [--session <agent-session-id>]",
+        summary: "List activity records, optionally scoped to an Agent Session.",
+        example: "originium activity list --session agent_session:abc --json",
+      },
+    ],
+    workflows: ["Use for operator-visible trace, not graph facts."],
+  },
+  citation: {
+    group: "citation",
+    summary: "Create, list, validate, narrow, and repair Citation relations.",
+    commands: [
+      {
+        usage:
+          "citation add --page <wiki-page-id> --source <source-document-id> --key <marker-key> [--pages <n-m>] [--quote <text>]",
+        summary: "Create a Source Document Citation with citation-local locator fields.",
+        example:
+          'originium citation add --page wiki_page:curwb --source source_document:ia --key source --pages 12-13 --quote "Ultra-Reliable Wireless Backhaul" --json',
+      },
+      {
+        usage: "citation validate <wiki-page-id>",
+        summary:
+          "Validate marker matching, targets, locator breadth, projection freshness, and claim metadata where available.",
+        example: "originium citation validate wiki_page:curwb --json",
+      },
+      {
+        usage: "citation narrow --page <wiki-page-id> --key <marker-key> --pages <n-m> [--quote <text>]",
+        summary: "Update locator fields without changing the supported claim.",
+        example: "originium citation narrow --page wiki_page:curwb --key source --pages 12-13 --json",
+      },
+      {
+        usage:
+          "citation repair --page <wiki-page-id> --key <marker-key> (--source <source-document-id> | --unsupported)",
+        summary: "Retarget a Citation or mark the claim unsupported with before/after output.",
+        example: "originium citation repair --page wiki_page:curwb --key source --unsupported --json",
+      },
+    ],
+    workflows: ["Run after page edits and before answer-context or refactor workflows."],
+  },
+  cite: {
+    group: "cite",
+    summary: "Shortcut group for creating validated Source Document Citations.",
+    commands: [
+      {
+        usage:
+          "cite create --page <wiki-page-id> --source <source-document-id> --key <marker-key> [--pages <n-m>] [--quote <text>]",
+        summary: "Create a Source Document Citation with citation-local locator fields.",
+        example:
+          'originium cite create --page wiki_page:curwb --source source_document:ia --key source --pages 12-13 --quote "Ultra-Reliable Wireless Backhaul" --json',
+      },
+    ],
+    workflows: ["Equivalent to citation add/create; use before citation validate and source promotion."],
+  },
+  db: {
+    group: "db",
+    summary: "Operate the local SurrealDB target and schema.",
+    commands: [
+      {
+        usage: "db status",
+        summary: "Show configured SurrealDB target and managed process state.",
+        example: "originium db status",
+      },
+      {
+        usage: "db doctor",
+        summary: "Check database connectivity and file bucket capability.",
+        example: "originium db doctor --json",
+      },
+      {
+        usage: "db apply-schema",
+        summary: "Apply the core Graph Wiki schema.",
+        example: "originium db apply-schema --json",
+      },
+    ],
+    workflows: ["Run db doctor before diagnosing command-specific failures."],
+  },
+  graph: {
+    group: "graph",
+    summary: "Inspect and lint Graph Wiki records.",
+    commands: [
+      {
+        usage: "graph lint [--family citation|source|page]",
+        summary: "Run umbrella or focused lint families.",
+        example: "originium graph lint --family citation --json",
+      },
+      {
+        usage: "graph neighborhood <record-id>",
+        summary: "Read a bounded Wiki Page or Source Document neighborhood.",
+        example: "originium graph neighborhood wiki_page:curwb --json",
+      },
+    ],
+    workflows: ["Use focused lint after citation, source, page, or refactor mutations."],
+  },
+  help: {
+    group: "help",
+    summary: "Show command discovery output.",
+    commands: [
+      { usage: "help [group]", summary: "Show top-level help or one group.", example: "originium help citation" },
+      { usage: "<group> --help", summary: "Show group-level help.", example: "originium citation --help" },
+    ],
+    workflows: ["Use --json on any command for structured output."],
+  },
+  ingest: {
+    group: "ingest",
+    summary: "Run bounded ingestion helpers.",
+    commands: [
+      {
+        usage: "ingest chapter --source <source-document-id> --locator <locator> [--title <page-title>]",
+        summary: "Prepare a bounded source-to-page ingestion context.",
+        example: 'originium ingest chapter --source source_document:ia --pages 12-13 --title "CURWB" --json',
+      },
+    ],
+    workflows: ["Broad ingestion automation is deferred; prefer source promote for one selected locator."],
+  },
+  link: {
+    group: "link",
+    summary: "Create and inspect Manual Links.",
+    commands: [
+      {
+        usage: "link add --from <record-id> --to <record-id> --label <label> --reason <reason>",
+        summary: "Create an explicit graph traversal edge.",
+        example:
+          'originium link add --from wiki_page:a --to wiki_page:b --label "uses" --reason "A uses B during deployment." --json',
+      },
+      {
+        usage: "link list [--record <record-id>]",
+        summary: "List Manual Links.",
+        example: "originium link list --record wiki_page:a --json",
+      },
+    ],
+    workflows: ["Use links for semantic traversal, not citation evidence."],
+  },
+  log: {
+    group: "log",
+    summary: "Inspect durable Change Log entries.",
+    commands: [
+      {
+        usage: "log show [--session <agent-session-id>]",
+        summary: "List graph mutation Change Log entries.",
+        example: "originium log show --session agent_session:abc --json",
+      },
+    ],
+    workflows: ["Use after write commands and refactors to audit mutations."],
+  },
+  model: {
+    group: "model",
+    summary: "Deferred Domain Model primitive surface; frame workflows own the MVP.",
+    commands: [
+      {
+        usage: "model --help",
+        summary: "Explain deferred model primitives and frame ownership.",
+        example: "originium model --help",
+      },
+    ],
+    workflows: [
+      "Relation-label registries, model proposals, versions, impact analysis, and migrations require separate future beads.",
+    ],
+  },
+  page: {
+    group: "page",
+    summary: "Create, edit, search, and inspect Wiki Pages.",
+    commands: [
+      {
+        usage: "page update --title <title> --body <body>",
+        summary: "Create or update a Wiki Page.",
+        example: 'originium page update --title "CURWB" --body "Maintained synthesis.[^source]" --json',
+      },
+      {
+        usage: "page patch --page <wiki-page-id> --body-file <path> [--apply]",
+        summary: "Preview or apply a full body patch with citation validation.",
+        example: "originium page patch --page wiki_page:curwb --body-file /tmp/body.md --apply --json",
+      },
+      {
+        usage: "page candidates <topic>",
+        summary: "Find reuse candidates before creating a page.",
+        example: 'originium page candidates "wireless backhaul" --json',
+      },
+    ],
+    workflows: ["Run citation validate and focused lint after page edits."],
+  },
+  refactor: {
+    group: "refactor",
+    summary: "Dry-run-first graph refactor workflows.",
+    commands: [
+      {
+        usage: "refactor rename-page --page <wiki-page-id> --title <new-title> [--dry-run]",
+        summary: "Preview or execute a citation-safe page rename.",
+        example: 'originium refactor rename-page --page wiki_page:old --title "New Title" --dry-run --json',
+      },
+    ],
+    workflows: ["Refactors must preserve Citation edges and run focused lint before commit."],
+  },
+  retrieval: {
+    group: "retrieval",
+    summary: "Search and embed retrieval records.",
+    commands: [
+      {
+        usage: "retrieval search <query>",
+        summary: "Rank Wiki Pages and Source Text Projections.",
+        example: 'originium retrieval search "wireless backhaul" --json',
+      },
+      {
+        usage: "retrieval embed [--target all|wiki|source]",
+        summary: "Refresh stale embeddings.",
+        example: "originium retrieval embed --target wiki --limit 10 --json",
+      },
+    ],
+    workflows: ["Answer-context owns the bundled question answering workflow."],
+  },
+  session: {
+    group: "session",
+    summary: "Manage Agent Sessions.",
+    commands: [
+      {
+        usage: "session start --purpose <purpose>",
+        summary: "Create and remember a current Agent Session.",
+        example: 'originium session start --purpose "Graph maintenance" --json',
+      },
+      {
+        usage: "session current",
+        summary: "Show the current Agent Session source.",
+        example: "originium session current",
+      },
+      { usage: "session end", summary: "Clear the current Agent Session.", example: "originium session end" },
+    ],
+    workflows: ["Write commands use the current session for Change Log context when available."],
+  },
+  source: {
+    group: "source",
+    summary: "Import, locate, diagnose, and search Source Documents and projections.",
+    commands: [
+      {
+        usage: "source import-pdf <path>",
+        summary: "Import a PDF Source Document into the file bucket.",
+        example: "originium source import-pdf fixtures/source-documents/IA-Mining-DG.pdf --json",
+      },
+      {
+        usage: "source find <query-or-id>",
+        summary: "Resolve Source Documents by path, title, fingerprint, or corpus metadata.",
+        example: 'originium source find "IA Mining" --json',
+      },
+      {
+        usage: "source locate --source <source-document-id> (--pages <n-m> | --quote <text>)",
+        summary: "Map page or quote input to document-local locators and projection spans.",
+        example: 'originium source locate --source source_document:ia --pages 12-13 --quote "Ultra-Reliable" --json',
+      },
+      {
+        usage: "source diagnostics [--source <source-document-id>]",
+        summary: "Report import, projection, embedding, and citation-locator health.",
+        example: "originium source diagnostics --source source_document:ia --json",
+      },
+      {
+        usage: "source evidence <query> [--trace]",
+        summary: "Search Source Documents and Source Text Projections with trace output.",
+        example: 'originium source evidence "backhaul" --trace --json',
+      },
+    ],
+    workflows: ["Use source locate before citation add or source promote."],
+  },
+  workflow: {
+    group: "workflow",
+    summary: "Run bundled access-pattern workflows.",
+    commands: [
+      {
+        usage: "workflow answer-context <query>",
+        summary: "Bundle maintained synthesis, cited evidence, snippets, and warnings.",
+        example: 'originium workflow answer-context "How is CURWB used?" --json',
+      },
+      {
+        usage: "workflow page-upsert --title <title> --source <source-document-id> --key <marker-key>",
+        summary: "Create or update one Wiki Page with one Citation.",
+        example: 'originium workflow page-upsert --title "CURWB" --source source_document:ia --key source --json',
+      },
+    ],
+    workflows: ["Workflow commands compose lower-level page, citation, source, lint, and retrieval operations."],
+  },
 };
 
 const wikiPageKinds = ["concept", "workflow", "evidence", "decision", "question"] as const;
@@ -148,17 +480,11 @@ export async function runCli(argv: readonly string[] = process.argv.slice(2)): P
   const routedArgv = withoutOutputFlags(argv);
   const [group] = routedArgv;
 
-  if (!group) {
-    return usageFailure({
-      command: "",
-      operation: "cli.route",
-      input: routedArgv.join(" "),
-      reason: "Missing command group.",
-      action: `Choose one of: ${Object.keys(routeGroups).join(", ")}.`,
-    });
-  }
+  if (!group || group === "--help" || group === "-h") return helpResult(routedArgv, undefined);
+  if (group === "help") return routeHelp(routedArgv);
 
   const handler = routeGroups[group];
+  if (routedArgv[1] === "--help" || routedArgv[1] === "-h") return helpResult(routedArgv, group);
   if (!handler) {
     return usageFailure({
       command: group,
@@ -248,6 +574,60 @@ async function routeDb(argv: readonly string[]): Promise<CliResult> {
   });
 }
 
+function routeHelp(argv: readonly string[]): CliResult {
+  const topic = argv[1];
+  if (!topic) return helpResult(argv, undefined);
+  if (topic === "--help" || topic === "-h") return helpResult(argv, "help");
+  return helpResult(argv, topic);
+}
+
+function helpResult(argv: readonly string[], group: string | undefined): CliResult {
+  if (group) {
+    const topic = helpTopics[group];
+    if (!topic) {
+      return usageFailure({
+        command: "help",
+        operation: "help.show",
+        input: argv.join(" "),
+        reason: `Unknown help group '${group}'.`,
+        action: `Choose one of: ${Object.keys(helpTopics).sort().join(", ")}.`,
+      });
+    }
+
+    return success({
+      command: group === "help" ? "help" : `help ${group}`,
+      operation: "help.show",
+      input: argv,
+      message: `${topic.group}: ${topic.summary}`,
+      data: {
+        mode: "group",
+        group: topic.group,
+        summary: topic.summary,
+        commands: topic.commands,
+        workflows: topic.workflows,
+        json: "Append --json to any command for structured output.",
+      } satisfies HelpData,
+    });
+  }
+
+  const groups = Object.values(helpTopics)
+    .map((topic) => ({ group: topic.group, summary: topic.summary }))
+    .sort((left, right) => left.group.localeCompare(right.group));
+
+  return success({
+    command: "help",
+    operation: "help.show",
+    input: argv,
+    message: "Originium Graph Wiki CLI command groups.",
+    data: {
+      mode: "top-level",
+      usage: "originium <group> <command> [options]",
+      json: "Append --json to any command for structured output.",
+      groups,
+    } satisfies HelpData,
+  });
+}
+
 async function routeSource(argv: readonly string[]): Promise<CliResult> {
   const [, command] = argv;
   const config = readSurrealConfig();
@@ -258,11 +638,12 @@ async function routeSource(argv: readonly string[]): Promise<CliResult> {
       operation: "source.route",
       input: argv.join(" "),
       reason: "Missing source command.",
-      action: "Use one of: import-pdf, list, headings, projections, evidence, chunk, read, search, find, anchor.",
+      action:
+        "Use one of: import-pdf, list, find, outline, projections, evidence, locate, diagnostics, promote, chunk, read, search.",
     });
   }
 
-  if (command === "anchor") return routeSourceAnchor(argv);
+  if (command === "anchor") return deprecatedSourceAnchorCommand(argv);
   if (command === "list") {
     return queryCommand(
       "source list",
@@ -274,6 +655,7 @@ async function routeSource(argv: readonly string[]): Promise<CliResult> {
       { kind: "read", targetRecords: ["source_document"] },
     );
   }
+  if (command === "find") return findSourceDocuments(argv);
 
   if (command === "import-pdf") {
     const path = argv[2];
@@ -323,54 +705,41 @@ async function routeSource(argv: readonly string[]): Promise<CliResult> {
   }
 
   if (command === "headings") {
+    return operationFailure(
+      "source headings",
+      "source.headings",
+      argv,
+      "Source Outline records are no longer part of the Graph Wiki command model.",
+      "Use 'originium source outline <pdf-path> --source <source-document-id>' for non-canonical outline metadata, or 'originium source locate --source <source-document-id> --pages <range>' for citation locators.",
+    );
+  }
+
+  if (command === "outline") {
     const path = argv[2];
     const sourceOnlyId = valueAfter(argv, "--source") ?? (isRecordId(path, "source_document") ? path : undefined);
-    if (!path && !sourceOnlyId) return missingArgument("source headings", "source.headings", argv, "<pdf-path> or --source <source-document-id>");
-    if (sourceOnlyId && (!path || isRecordId(path, "source_document"))) {
-      return queryCommand(
-        "source headings",
-        "source.headings",
-        argv,
-        `SELECT id, source_document, title, heading_path, level, start_page, end_page, order, extraction_method FROM source_heading WHERE source_document = ${sourceOnlyId} ORDER BY order ASC;`,
-        `Listed persisted Source Headings for ${sourceOnlyId}.`,
-        { sourceId: sourceOnlyId, headingIdContract: "Use result[].id as the persisted Source Heading ID for citation and link commands." },
-        { kind: "read", targetRecords: [sourceOnlyId] },
-      );
-    }
-    const sourceId = valueAfter(argv, "--source") ?? defaultSourceDocumentId(path);
+    if (!path || isRecordId(path, "source_document"))
+      return missingArgument("source outline", "source.outline", argv, "<pdf-path>");
+    const sourceId = sourceOnlyId ?? defaultSourceDocumentId(path);
     try {
-      const headings = extractPdfHeadings(path, sourceId);
-      const values = headings.map((heading) => {
-        const draft = sourceHeadingDraftFromProjection(heading, sourceId);
-        const id = sourceHeadingRecordId(draft);
-        return `UPSERT ${id} SET source_document = ${sourceId}, title = "${escapeSurrealString(heading.title)}", heading_path = ${surrealArray(heading.headingPath)}, level = ${heading.level}, start_page = ${heading.startPage}, end_page = ${heading.endPage ?? "NONE"}, order = ${heading.order}, extraction_method = "${heading.extractionMethod}";`;
-      });
-      const result = await executeSurrealQuery(
-        config,
-        loggedQuery("source headings", "source.headings", argv, values.join("\n"), {
-          kind: "write",
-          targetRecords: [sourceId],
-          afterQuery: `SELECT * FROM source_heading WHERE source_document = ${sourceId} ORDER BY order ASC`,
-          relateEditedTargets: [sourceId],
-        }),
-        { queryId: `source.headings:${sourceId}` },
+      const outline = extractPdfOutline(path, sourceId).map((outlineEntry) =>
+        cliSourceOutlineEntry(outlineEntry, sourceId),
       );
-      if (!result.ok) return fromSurrealFailure("source headings", argv, result.error);
       return success({
-        command: "source headings",
-        operation: "source.headings",
+        command: "source outline",
+        operation: "source.outline",
         input: argv,
-        message: `Projected ${headings.length} Source Headings for ${sourceId}.`,
+        message: `Extracted ${outline.length} outline entr${outline.length === 1 ? "y" : "ies"} for ${sourceId}.`,
         data: {
           sourceId,
-          headingIdContract: "Use headings[].id as the persisted Source Heading ID for citation and link commands.",
-          headings: headings.map((heading) => cliSourceHeading(heading, sourceId)),
+          warning:
+            "Source outline entries are projection metadata for navigation only. Do not use them as graph records or citation targets.",
+          outline,
         },
       });
     } catch (error) {
       return operationFailure(
-        "source headings",
-        "source.headings",
+        "source outline",
+        "source.outline",
         argv,
         errorReason(error),
         "Verify pdftotext can extract the fixture PDF.",
@@ -380,60 +749,59 @@ async function routeSource(argv: readonly string[]): Promise<CliResult> {
 
   if (command === "projections") return buildSourceTextProjections(argv);
   if (command === "evidence") return searchPersistedEvidence(argv);
+  if (command === "locate") return locateSourceEvidence(argv);
+  if (command === "diagnostics") return sourceDiagnostics(argv);
+  if (command === "promote") return promoteSourceLocator(argv);
 
   if (command === "chunk") {
     const path = argv[2];
-    const headingId = valueAfter(argv, "--heading");
     if (!path) return missingArgument("source chunk", "source.chunk", argv, "<pdf-path>");
-    if (!headingId) return missingArgument("source chunk", "source.chunk", argv, "--heading <heading-id>");
-    const sourceId = valueAfter(argv, "--source") ?? defaultSourceDocumentId(path);
-    const maxTokens = Number.parseInt(valueAfter(argv, "--max-tokens") ?? "100000", 10);
-    const heading = findSourceHeading(extractPdfHeadings(path, sourceId), sourceId, headingId);
-    if (!heading) {
+    if (valueAfter(argv, "--heading")) {
       return operationFailure(
         "source chunk",
         "source.chunk",
         argv,
-        `No Source Heading matched '${headingId}'.`,
-        `Run originium source headings ${path} --source ${sourceId} and pass data.headings[].id.`,
+        "Source Outline IDs are no longer accepted by source chunk.",
+        "Pass a document-local locator such as --pages 12-14, or run source locate first.",
       );
     }
-    const persistedHeadingId = persistedSourceHeadingId(heading, sourceId);
-    const chunk = projectPdfChunk(path, heading, { maxTokens });
-    const chunkId = `ingestion_chunk:${persistedHeadingId.replace(/^source_heading:/, "")}_${maxTokens}`;
+    const pageRange = parsePageRangeArgument(argv);
+    if (!pageRange) return missingArgument("source chunk", "source.chunk", argv, "--pages <start-end>");
+    if ("ok" in pageRange) return pageRange;
+    const sourceId = valueAfter(argv, "--source") ?? defaultSourceDocumentId(path);
+    const maxTokens = Number.parseInt(valueAfter(argv, "--max-tokens") ?? "100000", 10);
+    const chunk = projectPdfText(path, { sourceDocumentId: sourceId, pageRange, maxTokens });
+    const chunkId = `ingestion_chunk:${sourceId.replace(/^source_document:/, "")}_p${pageRange.start}_${pageRange.end}_${maxTokens}`;
     const result = await executeSurrealQuery(
       readSurrealConfig(),
       loggedQuery(
         "source chunk",
         "source.chunk",
         argv,
-        `UPSERT ${chunkId} SET source_document = ${sourceId}, source_heading = ${persistedHeadingId}, start_page = ${chunk.pageRange.start}, end_page = ${chunk.pageRange.end}, token_estimate = ${chunk.tokenEstimate}, extraction_method = "${chunk.extractionMethod}", created_at = time::now(); SELECT * FROM ${chunkId};`,
+        `UPSERT ${chunkId} SET source_document = ${sourceId}, start_page = ${chunk.pageRange.start}, end_page = ${chunk.pageRange.end}, token_estimate = ${chunk.tokenEstimate}, extraction_method = "${chunk.provenance.extractionMethod}", created_at = time::now(); SELECT * FROM ${chunkId};`,
         {
           kind: "write",
-          targetRecords: [chunkId, persistedHeadingId],
+          targetRecords: [chunkId, sourceId],
           beforeQuery: `SELECT * FROM ${chunkId}`,
           afterQuery: `SELECT * FROM ${chunkId}`,
           relateEditedTargets: [chunkId],
         },
       ),
-      { queryId: `source.chunk:${persistedHeadingId}` },
+      { queryId: `source.chunk:${sourceId}:${pageRange.start}-${pageRange.end}` },
     );
     if (!result.ok) return fromSurrealFailure("source chunk", argv, result.error);
     return success({
       command: "source chunk",
       operation: "source.chunk",
       input: argv,
-      message: `Projected and recorded Ingestion Chunk ${chunkId} for ${persistedHeadingId} with estimated ${chunk.tokenEstimate} tokens.`,
+      message: `Projected and recorded Ingestion Chunk ${chunkId} for ${sourceId} pages ${pageRange.start}-${pageRange.end} with estimated ${chunk.tokenEstimate} tokens.`,
       data: {
         id: chunkId,
-        persistedSourceHeadingId: persistedHeadingId,
-        citationTarget: persistedHeadingId,
-        extractionHeadingId: chunk.headingId,
-        projectionHeadingId: chunk.headingId,
         sourceDocumentId: chunk.sourceDocumentId,
+        citationTarget: sourceId,
         pageRange: chunk.pageRange,
         tokenEstimate: chunk.tokenEstimate,
-        extractionMethod: chunk.extractionMethod,
+        extractionMethod: chunk.provenance.extractionMethod,
         text: chunk.text,
         result: result.result,
       },
@@ -441,13 +809,13 @@ async function routeSource(argv: readonly string[]): Promise<CliResult> {
   }
 
   if (command === "read") return readSourceText(argv);
-  if (command === "search" || command === "find") return searchSourceText(argv, command);
+  if (command === "search") return searchSourceText(argv, command);
 
   return unknownCommand(
     "source",
     command,
     argv,
-    "Use one of: import-pdf, list, headings, projections, evidence, chunk, read, search, find, anchor.",
+    "Use one of: import-pdf, list, find, outline, projections, evidence, locate, diagnostics, promote, chunk, read, search.",
   );
 }
 
@@ -456,13 +824,14 @@ async function buildSourceTextProjections(argv: readonly string[]): Promise<CliR
   if (!path) return missingArgument("source projections", "source.projections", argv, "<pdf-path>");
   const sourceId = valueAfter(argv, "--source") ?? defaultSourceDocumentId(path);
   const maxTokens = Number.parseInt(valueAfter(argv, "--max-tokens") ?? "12000", 10);
+  const projectionVersion = valueAfter(argv, "--projection-version") ?? "pdf-page-v1";
 
   try {
-    const headings = extractPdfHeadings(path, sourceId);
-    const statements = headings.map((heading) => {
-      const persistedHeadingId = persistedSourceHeadingId(heading, sourceId);
-      const startPage = heading.startPage;
-      const endPage = heading.endPage ?? heading.startPage;
+    const metadata = readPdfMetadata(path);
+    const pageCount = metadata.pageCount;
+    const projections = Array.from({ length: pageCount }, (_, index) => {
+      const startPage = index + 1;
+      const endPage = startPage;
       const projection = projectPdfText(path, {
         sourceDocumentId: sourceId,
         pageRange: { start: startPage, end: endPage },
@@ -470,21 +839,33 @@ async function buildSourceTextProjections(argv: readonly string[]): Promise<CliR
       });
       const projectionId = sourceTextProjectionRecordId({
         sourceDocumentId: sourceId,
-        sourceHeadingId: persistedHeadingId,
         startPage,
         endPage,
+        projectionVersion,
       });
       const textHash = sha256Hex(projection.text);
-      return `UPSERT ${projectionId} SET source_document = ${sourceId}, source_heading = ${persistedHeadingId}, start_page = ${startPage}, end_page = ${endPage}, text = "${escapeSurrealString(projection.text)}", text_hash = "${textHash}", extraction_method = "${escapeSurrealString(projection.provenance.extractionMethod)}", extraction_version = "pdf-ingest-v1", projection_status = "ready", updated_at = time::now();`;
+      return {
+        id: projectionId,
+        startPage,
+        endPage,
+        textHash,
+        statement: `UPSERT ${projectionId} SET source_document = ${sourceId}, start_page = ${startPage}, end_page = ${endPage}, text = "${escapeSurrealString(projection.text)}", text_hash = "${textHash}", extraction_method = "${escapeSurrealString(projection.provenance.extractionMethod)}", extraction_version = "pdf-ingest-v1", projection_version = "${escapeSurrealString(projectionVersion)}", projection_status = "ready", updated_at = time::now();`,
+      };
     });
     const result = await executeSurrealQuery(
       readSurrealConfig(),
-      loggedQuery("source projections", "source.projections", argv, statements.join("\n"), {
-        kind: "write",
-        targetRecords: [sourceId, "source_text_projection"],
-        afterQuery: `SELECT id, source_document, source_heading, start_page, end_page, text_hash, extraction_method, projection_status FROM source_text_projection WHERE source_document = ${sourceId} ORDER BY start_page ASC`,
-        relateEditedTargets: [sourceId],
-      }),
+      loggedQuery(
+        "source projections",
+        "source.projections",
+        argv,
+        projections.map((projection) => projection.statement).join("\n"),
+        {
+          kind: "write",
+          targetRecords: [sourceId, "source_text_projection"],
+          afterQuery: `SELECT id, source_document, start_page, end_page, text_hash, extraction_method, projection_version, projection_status FROM source_text_projection WHERE source_document = ${sourceId} ORDER BY start_page ASC`,
+          relateEditedTargets: [sourceId],
+        },
+      ),
       { queryId: `source.projections:${sourceId}` },
     );
     if (!result.ok) return fromSurrealFailure("source projections", argv, result.error);
@@ -492,26 +873,13 @@ async function buildSourceTextProjections(argv: readonly string[]): Promise<CliR
       command: "source projections",
       operation: "source.projections",
       input: argv,
-      message: `Built ${headings.length} Source Text Projection record(s) for ${sourceId}.`,
+      message: `Built ${projections.length} per-page Source Text Projection record(s) for ${sourceId}.`,
       data: {
         sourceId,
+        projectionVersion,
         warning:
           "Source Text Projections are lossy, rebuildable search caches. Verify evidence against the canonical Source Document before citing.",
-        projections: headings.map((heading) => {
-          const persistedHeadingId = persistedSourceHeadingId(heading, sourceId);
-          const endPage = heading.endPage ?? heading.startPage;
-          return {
-            id: sourceTextProjectionRecordId({
-              sourceDocumentId: sourceId,
-              sourceHeadingId: persistedHeadingId,
-              startPage: heading.startPage,
-              endPage,
-            }),
-            sourceHeading: persistedHeadingId,
-            startPage: heading.startPage,
-            endPage,
-          };
-        }),
+        projections: projections.map(({ id, startPage, endPage, textHash }) => ({ id, startPage, endPage, textHash })),
         result: result.result,
       },
     });
@@ -521,7 +889,7 @@ async function buildSourceTextProjections(argv: readonly string[]): Promise<CliR
       "source.projections",
       argv,
       errorReason(error),
-      "Verify the PDF path, ensure Source Headings can be extracted, and rerun source projections with the same --source ID.",
+      "Verify the PDF path and rerun source projections with the same --source ID.",
     );
   }
 }
@@ -530,8 +898,17 @@ async function searchPersistedEvidence(argv: readonly string[]): Promise<CliResu
   const queryText = positionalArgs(argv, 2).join(" ").trim();
   if (!queryText) return missingArgument("source evidence", "source.evidence", argv, "<query>");
   const sourceId = valueAfter(argv, "--source");
-  const headingId = valueAfter(argv, "--heading");
   const limit = Number.parseInt(valueAfter(argv, "--limit") ?? "10", 10);
+  const traceEnabled = argv.includes("--trace");
+  if (valueAfter(argv, "--heading")) {
+    return operationFailure(
+      "source evidence",
+      "source.evidence",
+      argv,
+      "Source Outline filters are no longer supported by source evidence.",
+      "Filter by --source <source-document-id> and use page ranges or citation locators in downstream commands.",
+    );
+  }
   if (sourceId && !isRecordId(sourceId, "source_document")) {
     return operationFailure(
       "source evidence",
@@ -541,30 +918,20 @@ async function searchPersistedEvidence(argv: readonly string[]): Promise<CliResu
       "Pass a Source Document record ID from 'originium source list', such as source_document:example.",
     );
   }
-  if (headingId && !isRecordId(headingId, "source_heading")) {
-    return operationFailure(
-      "source evidence",
-      "source.evidence",
-      argv,
-      `Invalid Source Heading ID '${headingId}'.`,
-      "Pass a Source Heading record ID from 'originium source headings --source <source-document-id>'.",
-    );
-  }
   const filters = [
     sourceId ? `source_document = ${sourceId}` : "",
-    headingId ? `source_heading = ${headingId}` : "",
     `text CONTAINS "${escapeSurrealString(queryText)}"`,
   ].filter(Boolean);
   const where = filters.length > 0 ? ` WHERE ${filters.join(" AND ")}` : "";
-  const projectionScope = [
-    sourceId ? `source_document = ${sourceId}` : "",
-    headingId ? `source_heading = ${headingId}` : "",
-  ].filter(Boolean);
+  const projectionScope = [sourceId ? `source_document = ${sourceId}` : ""].filter(Boolean);
   const projectionWhere = projectionScope.length > 0 ? ` WHERE ${projectionScope.join(" AND ")}` : "";
   const statements = [
     sourceId ? `SELECT id FROM ${sourceId};` : "",
     `SELECT id FROM source_text_projection${projectionWhere} LIMIT 1;`,
-    `SELECT id, source_document, source_heading, start_page, end_page, text_hash, extraction_method, extraction_version, projection_status, string::slice(text, 0, 700) AS snippet FROM source_text_projection${where} ORDER BY start_page ASC LIMIT ${limit} FETCH source_document, source_heading;`,
+    `SELECT id, source_document, start_page, end_page, text_hash, extraction_method, extraction_version, projection_version, projection_status, string::slice(text, 0, 700) AS snippet FROM source_text_projection${where} ORDER BY start_page ASC LIMIT ${limit} FETCH source_document;`,
+    traceEnabled
+      ? `SELECT id, source_document, start_page, end_page, text_hash, projection_status, string::slice(text, 0, 240) AS snippet FROM source_text_projection${projectionWhere} ORDER BY start_page ASC LIMIT ${limit * 2};`
+      : "",
   ]
     .filter(Boolean)
     .join("\n");
@@ -572,7 +939,7 @@ async function searchPersistedEvidence(argv: readonly string[]): Promise<CliResu
     readSurrealConfig(),
     loggedQuery("source evidence", "source.evidence", argv, statements, {
       kind: "read",
-      targetRecords: [sourceId ?? headingId ?? "source_text_projection"],
+      targetRecords: [sourceId ?? "source_text_projection"],
     }),
     { queryId: `source.evidence:${queryText}` },
   );
@@ -593,7 +960,7 @@ async function searchPersistedEvidence(argv: readonly string[]): Promise<CliResu
       "source evidence",
       "source.evidence",
       argv,
-      `No Source Text Projections exist for ${headingId ?? sourceId ?? "the database"}.`,
+      `No Source Text Projections exist for ${sourceId ?? "the database"}.`,
       sourceId
         ? `Run 'originium source projections <pdf-path> --source ${sourceId}' before evidence search.`
         : "Run 'originium source projections <pdf-path> --source <source-document-id>' for at least one imported Source Document.",
@@ -608,86 +975,239 @@ async function searchPersistedEvidence(argv: readonly string[]): Promise<CliResu
     data: {
       query: queryText,
       sourceId,
-      headingId,
       warning:
         "Source Text Projections are lossy search caches. Use Source Document/PDF reading for canonical verification before citing.",
+      trace: traceEnabled
+        ? {
+            query: queryText,
+            filters: { sourceId, limit },
+            executedStatements: statements.split("\n"),
+            rejectedNearMisses: queryResult[sourceStatementOffset + 2]?.result ?? [],
+          }
+        : undefined,
       result: result.result,
     },
   });
 }
 
-async function routeSourceAnchor(argv: readonly string[]): Promise<CliResult> {
-  const [, , command] = argv;
-  if (!command) return missingGroupCommand("source anchor", argv, "Use one of: create, read, search.");
+function findSourceDocuments(argv: readonly string[]): Promise<CliResult> {
+  const queryText = positionalArgs(argv, 2).join(" ").trim() || valueAfter(argv, "--query");
+  if (!queryText) return Promise.resolve(missingArgument("source find", "source.find", argv, "<query-or-id>"));
+  const limit = Number.parseInt(valueAfter(argv, "--limit") ?? "10", 10);
+  const sourceId = isRecordId(queryText, "source_document") ? queryText : undefined;
+  const escaped = escapeSurrealString(queryText);
+  const where = sourceId
+    ? `id = ${sourceId}`
+    : `title CONTAINS "${escaped}" OR source_uri CONTAINS "${escaped}" OR sha256 = "${escaped}" OR kind CONTAINS "${escaped}"`;
+  return queryCommand(
+    "source find",
+    "source.find",
+    argv,
+    `SELECT id, title, kind, sha256, mime_type, page_count, source_uri, extraction_status, updated_at FROM source_document WHERE ${where} ORDER BY updated_at DESC, title ASC LIMIT ${limit};`,
+    `Resolved Source Documents for '${queryText}'.`,
+    { query: queryText, limit },
+    { kind: "read", targetRecords: [sourceId ?? "source_document"] },
+  );
+}
 
-  if (command === "create") {
-    const title = valueAfter(argv, "--title");
-    const source = valueAfter(argv, "--source");
-    const heading = valueAfter(argv, "--heading");
-    const reason = valueAfter(argv, "--reason");
-    const locationHint = valueAfter(argv, "--location");
-    const pageRange = parsePageRangeArgument(argv);
-    if (pageRange && "ok" in pageRange) return pageRange;
-    const startPage = pageRange?.start;
-    const endPage = pageRange?.end;
-    const session = valueAfter(argv, "--session");
-    if (!title) return missingArgument("source anchor create", "source.anchor.create", argv, "--title <title>");
-    if (!source)
-      return missingArgument("source anchor create", "source.anchor.create", argv, "--source <source-document-id>");
-    if (!heading)
-      return missingArgument("source anchor create", "source.anchor.create", argv, "--heading <source-heading-id>");
-    if (!reason) return missingArgument("source anchor create", "source.anchor.create", argv, "--reason <reason>");
-
-    const anchorId = sourceAnchorRecordId(source, heading, title);
-    const query = `UPSERT ${anchorId} SET title = "${escapeSurrealString(title)}", source_document = ${source}, source_heading = ${heading}, start_page = ${startPage ?? "NONE"}, end_page = ${endPage ?? "NONE"}, location_hint = ${locationHint ? `"${escapeSurrealString(locationHint)}"` : "NONE"}, reason = "${escapeSurrealString(reason)}", created_session = ${session ?? "NONE"}, updated_at = time::now(); SELECT * FROM ${anchorId} FETCH source_heading;`;
-
-    return queryCommand(
-      "source anchor create",
-      "source.anchor.create",
+function locateSourceEvidence(argv: readonly string[]): CliResult {
+  const sourceId = valueAfter(argv, "--source") ?? valueAfter(argv, "--document");
+  if (!sourceId) return missingArgument("source locate", "source.locate", argv, "--source <source-document-id>");
+  if (!isRecordId(sourceId, "source_document")) {
+    return operationFailure(
+      "source locate",
+      "source.locate",
       argv,
-      query,
-      `Created Source Anchor ${anchorId} under ${heading}.`,
-      { id: anchorId },
-      {
-        kind: "write",
-        targetRecords: [anchorId, source, heading],
-        beforeQuery: `SELECT * FROM ${anchorId}`,
-        afterQuery: `SELECT * FROM ${anchorId}`,
-        sessionId: session,
-        relateEditedTargets: [anchorId],
-      },
+      `Invalid Source Document ID '${sourceId}'.`,
+      "Pass a Source Document record ID from 'originium source list', such as source_document:example.",
+    );
+  }
+  const pageRange = citationPageRangeFromArgv(argv);
+  if (pageRange instanceof Error) {
+    return operationFailure(
+      "source locate",
+      "source.locate",
+      argv,
+      pageRange.message,
+      "Pass a page range such as --pages 12-14.",
+    );
+  }
+  const quote = valueAfter(argv, "--quote");
+  const context = valueAfter(argv, "--context");
+  if (!pageRange && !quote && !context) {
+    return missingArgument(
+      "source locate",
+      "source.locate",
+      argv,
+      "--pages <range>, --quote <text>, or --context <text>",
+    );
+  }
+  const locatorKind = inferLocatorKind(pageRange, quote, context);
+  const locator = {
+    sourceDocumentId: sourceId,
+    locatorKind,
+    pageRange,
+    locationHint: valueAfter(argv, "--location") ?? valueAfter(argv, "--location-hint"),
+    quote,
+    context,
+    projectionId: valueAfter(argv, "--projection") ?? valueAfter(argv, "--projection-id"),
+  };
+  return success({
+    command: "source locate",
+    operation: "source.locate",
+    input: argv,
+    message: `Prepared ${locatorKind} locator for ${sourceId}.`,
+    data: {
+      locator,
+      suggestedCitation:
+        "Use this locator with citation add/create by passing --source, --pages, --quote/--context, --location, and --projection as applicable.",
+    },
+  });
+}
+
+function sourceDiagnostics(argv: readonly string[]): Promise<CliResult> {
+  const sourceId = valueAfter(argv, "--source") ?? valueAfter(argv, "--document");
+  const where = sourceId ? ` WHERE source_document = ${sourceId}` : "";
+  if (sourceId && !isRecordId(sourceId, "source_document")) {
+    return Promise.resolve(
+      operationFailure(
+        "source diagnostics",
+        "source.diagnostics",
+        argv,
+        `Invalid Source Document ID '${sourceId}'.`,
+        "Pass a Source Document record ID from 'originium source list', such as source_document:example.",
+      ),
+    );
+  }
+  return queryCommand(
+    "source diagnostics",
+    "source.diagnostics",
+    argv,
+    [
+      sourceId
+        ? `SELECT id, title, kind, sha256, mime_type, page_count, source_uri, extraction_status, updated_at FROM ${sourceId};`
+        : "SELECT id, title, kind, sha256, mime_type, page_count, source_uri, extraction_status, updated_at FROM source_document ORDER BY updated_at DESC LIMIT 20;",
+      `SELECT count() AS projection_count, math::min(start_page) AS first_page, math::max(end_page) AS last_page FROM source_text_projection${where} GROUP ALL;`,
+      sourceId
+        ? `SELECT count() AS citation_count FROM cites WHERE out = ${sourceId} GROUP ALL;`
+        : "SELECT count() AS citation_count FROM cites GROUP ALL;",
+    ].join("\n"),
+    sourceId ? `Reported Source Document diagnostics for ${sourceId}.` : "Reported Source Document diagnostics.",
+    { sourceId },
+    { kind: "read", targetRecords: [sourceId ?? "source_document", "source_text_projection", "cites"] },
+  );
+}
+
+async function promoteSourceLocator(argv: readonly string[]): Promise<CliResult> {
+  const sourceId = valueAfter(argv, "--source") ?? valueAfter(argv, "--document");
+  const title = valueAfter(argv, "--title");
+  const pageId = valueAfter(argv, "--page") ?? (title ? wikiPageRecordId(title) : undefined);
+  const key = valueAfter(argv, "--key") ?? "source";
+  const body =
+    valueAfter(argv, "--body") ??
+    (title ? `${title} synthesized from selected Source Document evidence.[^${key}]` : undefined);
+  if (!sourceId) return missingArgument("source promote", "source.promote", argv, "--source <source-document-id>");
+  if (!isRecordId(sourceId, "source_document")) {
+    return operationFailure(
+      "source promote",
+      "source.promote",
+      argv,
+      `Invalid Source Document ID '${sourceId}'.`,
+      "Pass a Source Document record ID from 'originium source list', such as source_document:example.",
+    );
+  }
+  if (!title && !pageId) return missingArgument("source promote", "source.promote", argv, "--title or --page");
+  if (!body) return missingArgument("source promote", "source.promote", argv, "--body <page-body>");
+  const pageRange = citationPageRangeFromArgv(argv);
+  if (pageRange instanceof Error) {
+    return operationFailure(
+      "source promote",
+      "source.promote",
+      argv,
+      pageRange.message,
+      "Pass a page range such as --pages 12-14.",
+    );
+  }
+  const citationDraft = citationDraftFromInput({
+    pageId: pageId ?? wikiPageRecordId(title ?? ""),
+    sourceId,
+    key,
+    label: valueAfter(argv, "--label") ?? key,
+    claim: valueAfter(argv, "--claim") ?? title ?? key,
+    quote: valueAfter(argv, "--quote"),
+    context: valueAfter(argv, "--context"),
+    pageRange,
+    locationHint: valueAfter(argv, "--location") ?? valueAfter(argv, "--location-hint"),
+    projectionId: valueAfter(argv, "--projection") ?? valueAfter(argv, "--projection-id"),
+    textHash: valueAfter(argv, "--text-hash"),
+    confidence: optionalFloatAfter(argv, "--confidence") ?? 1,
+  });
+  const locatorIssues = validateCitationLocator(citationDraft);
+  if (locatorIssues.length > 0) {
+    return operationFailure(
+      "source promote",
+      "source.promote",
+      argv,
+      `Source promotion locator validation failed for ${sourceId}: ${locatorIssues.join(" ")}`,
+      "Run source locate first or pass narrower --pages, --quote, --context, and --claim values.",
+      { issues: locatorIssues },
     );
   }
 
-  if (command === "read") {
-    const id = argv[3] ?? valueAfter(argv, "--anchor");
-    if (!id) return missingArgument("source anchor read", "source.anchor.read", argv, "<source-anchor-id>");
-    return queryCommand(
-      "source anchor read",
-      "source.anchor.read",
-      argv,
-      `SELECT * FROM ${id} FETCH source_heading;`,
-      `Read Source Anchor ${id}.`,
-      {},
-      { kind: "read", targetRecords: [id] },
-    );
-  }
+  const pageTitle = title ?? pageId ?? "Promoted Source Evidence";
+  const pageSlug = wikiPageSlugFromTitle(pageTitle);
+  const targetPageId = pageId ?? wikiPageRecordId(pageTitle);
+  const candidatesQuery = [
+    `SELECT id, title, slug, string::slice(body, 0, 280) AS snippet FROM wiki_page WHERE slug = "${escapeSurrealString(pageSlug)}" OR title CONTAINS "${escapeSurrealString(pageTitle)}" LIMIT 5;`,
+    `UPSERT ${targetPageId} SET title = "${escapeSurrealString(pageTitle)}", slug = "${pageSlug}", body = "${escapeSurrealString(body)}", updated_at = time::now();`,
+    `DELETE cites WHERE in = ${targetPageId} AND key = "${escapeSurrealString(key)}";`,
+    `RELATE ${targetPageId}->cites->${sourceId} SET ${citationSetClause(citationDraft)};`,
+    `SELECT id, title, slug, body FROM ${targetPageId};`,
+    `SELECT id, in, out, key, label, claim, locator_kind, page_range, quote, context, validation_status, confidence FROM cites WHERE in = ${targetPageId};`,
+  ].join("\n");
+  const result = await executeSurrealQuery(
+    readSurrealConfig(),
+    loggedQuery("source promote", "source.promote", argv, candidatesQuery, {
+      kind: "write",
+      targetRecords: [targetPageId, sourceId],
+      beforeQuery: `SELECT * FROM ${targetPageId}`,
+      afterQuery: `SELECT * FROM ${targetPageId}`,
+      relateEditedTargets: [targetPageId],
+    }),
+    { queryId: `source.promote:${targetPageId}:${key}` },
+  );
+  if (!result.ok) return fromSurrealFailure("source promote", argv, result.error);
+  const lint = lintGraphWikiStatements([
+    { result: [{ id: targetPageId, title: pageTitle, slug: pageSlug, body }] },
+    { result: [{ in: targetPageId, out: sourceId, key, ...citationDraftToLintRecord(citationDraft) }] },
+    { result: [] },
+    { result: [] },
+  ]);
+  return success({
+    command: "source promote",
+    operation: "source.promote",
+    input: argv,
+    message: `Promoted ${sourceId} locator into Wiki Page ${targetPageId} with Citation ${key}.`,
+    data: {
+      pageId: targetPageId,
+      sourceId,
+      citationKey: key,
+      duplicateRisk:
+        "Review the first query result for same-title or same-slug Wiki Pages before relying on the new page.",
+      focusedLint: lint,
+      result: result.result,
+    },
+  });
+}
 
-  if (command === "search") {
-    const queryText = positionalArgs(argv, 3).join(" ").trim();
-    if (!queryText) return missingArgument("source anchor search", "source.anchor.search", argv, "<query>");
-    return queryCommand(
-      "source anchor search",
-      "source.anchor.search",
-      argv,
-      `SELECT * FROM source_anchor WHERE title CONTAINS "${escapeSurrealString(queryText)}" OR reason CONTAINS "${escapeSurrealString(queryText)}" OR location_hint CONTAINS "${escapeSurrealString(queryText)}" ORDER BY updated_at DESC FETCH source_heading;`,
-      `Searched Source Anchors for '${queryText}'.`,
-      { query: queryText },
-      { kind: "read", targetRecords: [`source_anchor:${queryText}`] },
-    );
-  }
-
-  return unknownCommand("source anchor", command, argv, "Use one of: create, read, search.");
+function deprecatedSourceAnchorCommand(argv: readonly string[]): CliFailure {
+  return operationFailure(
+    "source anchor",
+    "source.anchor",
+    argv,
+    "Source Anchor records are no longer part of the Graph Wiki command model.",
+    "Put location precision directly on Citation locator fields with 'originium citation add --source <source-document-id> --pages <range> --quote <text>' or 'originium source locate'.",
+  );
 }
 
 function readSourceText(argv: readonly string[]): CliResult {
@@ -696,18 +1216,19 @@ function readSourceText(argv: readonly string[]): CliResult {
   const sourceId = valueAfter(argv, "--source") ?? defaultSourceDocumentId(path);
 
   try {
-    const headings = extractPdfHeadings(path, sourceId);
-    const selector = valueAfter(argv, "--heading") ?? valueAfter(argv, "--anchor");
-    const pageRange = selector
-      ? pageRangeForHeading(path, sourceId, headings, selector, argv)
-      : parsePageRangeArgument(argv);
-    if (!pageRange) {
-      return missingArgument(
+    if (valueAfter(argv, "--heading") || valueAfter(argv, "--anchor")) {
+      return operationFailure(
         "source read",
         "source.read",
         argv,
-        "--pages <start-end> or --heading <source-heading-id>",
+        "Source Outline and Source Anchor selectors are no longer supported by source read.",
+        "Pass a document-local locator such as --pages 12-14, or run source locate first.",
       );
+    }
+    const outline = extractPdfOutline(path, sourceId);
+    const pageRange = parsePageRangeArgument(argv);
+    if (!pageRange) {
+      return missingArgument("source read", "source.read", argv, "--pages <start-end>");
     }
     if ("ok" in pageRange) return pageRange;
 
@@ -716,7 +1237,7 @@ function readSourceText(argv: readonly string[]): CliResult {
       pageRange,
       maxTokens: Number.parseInt(valueAfter(argv, "--max-tokens") ?? "4000", 10),
     });
-    const nearestHeading = nearestHeadingForPage(headings, projection.pageRange.start);
+    const nearestOutline = nearestOutlineForPage(outline, projection.pageRange.start);
 
     return success({
       command: "source read",
@@ -726,7 +1247,7 @@ function readSourceText(argv: readonly string[]): CliResult {
       data: {
         ...projection,
         sourceDocument: sourceId,
-        nearestHeading: nearestHeading ? cliSourceHeading(nearestHeading, sourceId) : undefined,
+        nearestOutline: nearestOutline ? cliSourceOutlineEntry(nearestOutline, sourceId) : undefined,
       },
     });
   } catch (error) {
@@ -735,7 +1256,7 @@ function readSourceText(argv: readonly string[]): CliResult {
       "source.read",
       argv,
       errorReason(error),
-      "Verify the PDF path and page range, or run originium source headings <pdf-path> --source <source-document-id> to recover a valid heading ID.",
+      "Verify the PDF path and page range.",
     );
   }
 }
@@ -750,8 +1271,8 @@ function searchSourceText(argv: readonly string[], command: "search" | "find"): 
   try {
     const pageRange = parsePageRangeArgument(argv);
     if (pageRange && "ok" in pageRange) return pageRange;
-    const headings = extractPdfHeadings(path, sourceId);
-    const hits = searchPdfText(path, headings, query, {
+    const outline = extractPdfOutline(path, sourceId);
+    const hits = searchPdfText(path, outline, query, {
       sourceDocumentId: sourceId,
       pageRange,
       limit: Number.parseInt(valueAfter(argv, "--limit") ?? "10", 10),
@@ -759,7 +1280,7 @@ function searchSourceText(argv: readonly string[], command: "search" | "find"): 
       sourceDocument: hit.sourceDocumentId,
       pageRange: hit.pageRange,
       snippet: hit.snippet,
-      nearestHeading: hit.nearestHeading ? cliSourceHeading(hit.nearestHeading, sourceId) : undefined,
+      nearestOutline: hit.nearestOutline ? cliSourceOutlineEntry(hit.nearestOutline, sourceId) : undefined,
       provenance: hit.provenance,
       warning: hit.warning,
     }));
@@ -791,54 +1312,105 @@ async function routePage(argv: readonly string[]): Promise<CliResult> {
   if (command === "read") return selectById("page read", "page.read", argv, argv[2], "Wiki Page ID");
   if (command === "search") return searchPages(argv);
   if (command === "candidates") return pageCandidates(argv);
-  return unknownCommand("page", command, argv, "Use one of: create, read, update, replace, patch, append, search, candidates.");
+  return unknownCommand(
+    "page",
+    command,
+    argv,
+    "Use one of: create, read, update, replace, patch, append, search, candidates.",
+  );
 }
 
 async function routeCitation(argv: readonly string[]): Promise<CliResult> {
-  const [, command] = argv;
-  if (!command) return missingGroupCommand("citation", argv, "Use one of: add, list, validate.");
+  const [group, rawCommand] = argv;
+  const command = group === "cite" && rawCommand === "create" ? "add" : rawCommand;
+  const commandPrefix = group === "cite" ? "cite" : "citation";
+  if (!command)
+    return missingGroupCommand(commandPrefix, argv, "Use one of: add/create, list, validate, narrow, repair.");
 
   const config = readSurrealConfig();
-  if (command === "add") {
+  if (command === "add" || command === "create") {
     const pageId = valueAfter(argv, "--page");
-    const headingId = valueAfter(argv, "--heading");
+    const sourceId = valueAfter(argv, "--source") ?? valueAfter(argv, "--document");
     const key = valueAfter(argv, "--key");
     const label = valueAfter(argv, "--label") ?? key;
+    const claim = valueAfter(argv, "--claim") ?? "";
     const quote = valueAfter(argv, "--quote");
-    if (!pageId) return missingArgument("citation add", "citation.add", argv, "--page <wiki-page-id>");
-    if (!headingId) return missingArgument("citation add", "citation.add", argv, "--heading <source-heading-id>");
-    if (!key) return missingArgument("citation add", "citation.add", argv, "--key <citation-key>");
+    const context = valueAfter(argv, "--context");
+    const pageRange = citationPageRangeFromArgv(argv);
+    if (pageRange instanceof Error) {
+      return operationFailure(
+        commandPrefix,
+        `${commandPrefix}.${command}`,
+        argv,
+        pageRange.message,
+        "Pass a page range such as --pages 12-14.",
+      );
+    }
+    if (valueAfter(argv, "--heading")) {
+      return operationFailure(
+        commandPrefix,
+        `${commandPrefix}.${command}`,
+        argv,
+        "Source Outline IDs are no longer valid Citation targets.",
+        "Pass --source <source-document-id> and locator fields such as --pages, --quote, --context, and --claim.",
+      );
+    }
+    if (!pageId) return missingArgument(commandPrefix, `${commandPrefix}.${command}`, argv, "--page <wiki-page-id>");
+    if (!sourceId)
+      return missingArgument(commandPrefix, `${commandPrefix}.${command}`, argv, "--source <source-document-id>");
+    if (!key) return missingArgument(commandPrefix, `${commandPrefix}.${command}`, argv, "--key <citation-key>");
 
-    const relationTarget = `${pageId}->cites->${headingId}:${key}`;
+    const citationDraft = citationDraftFromInput({
+      pageId,
+      sourceId,
+      key,
+      label: label ?? key,
+      claim,
+      quote,
+      context,
+      pageRange,
+      locationHint: valueAfter(argv, "--location") ?? valueAfter(argv, "--location-hint"),
+      projectionId: valueAfter(argv, "--projection") ?? valueAfter(argv, "--projection-id"),
+      textHash: valueAfter(argv, "--text-hash"),
+      confidence: optionalFloatAfter(argv, "--confidence") ?? 1,
+    });
+    const locatorIssues = validateCitationLocator(citationDraft);
+    if (locatorIssues.length > 0) {
+      return operationFailure(
+        commandPrefix,
+        `${commandPrefix}.${command}`,
+        argv,
+        `Citation locator validation failed for ${pageId}/${key}: ${locatorIssues.join(" ")}`,
+        "Revise --pages, --quote/--context, and --confidence before creating the Citation.",
+        { issues: locatorIssues, draft: citationDraft },
+      );
+    }
+
+    const relationTarget = `${pageId}->cites->${sourceId}:${key}`;
     const relationQuery = `SELECT * FROM cites WHERE in = ${pageId} AND key = "${escapeSurrealString(key)}"`;
-    const query = `RELATE ${pageId}->cites->${headingId} SET key = "${escapeSurrealString(key)}", label = "${escapeSurrealString(label ?? key)}", quote = ${quote ? `"${escapeSurrealString(quote)}"` : "NONE"}, created_at = time::now();`;
+    const query = [
+      `DELETE cites WHERE in = ${pageId} AND key = "${escapeSurrealString(key)}";`,
+      `RELATE ${pageId}->cites->${sourceId} SET ${citationSetClause(citationDraft)};`,
+      relationQuery,
+    ].join("\n");
     const result = await executeSurrealQuery(
       config,
-      loggedQuery("citation add", "citation.add", argv, query, {
+      loggedQuery(`${commandPrefix} ${rawCommand}`, `${commandPrefix}.${rawCommand}`, argv, query, {
         kind: "write",
-        targetRecords: [relationTarget, pageId, headingId],
+        targetRecords: [relationTarget, pageId, sourceId],
         beforeQuery: relationQuery,
         afterQuery: relationQuery,
         relateEditedTargets: [pageId],
       }),
-      { queryId: `citation.add:${pageId}:${key}` },
+      { queryId: `${commandPrefix}.${rawCommand}:${pageId}:${key}` },
     );
-    if (!result.ok) {
-      const failure = fromSurrealFailure("citation add", argv, result.error);
-      return {
-        ...failure,
-        error: {
-          ...failure.error,
-          action: `Verify '${headingId}' is a persisted Source Heading ID. To recover one, run originium source headings <pdf-path> --source <source-document-id>; to search text first, run originium source search <pdf-path> "<query>" --source <source-document-id>.`,
-        },
-      };
-    }
+    if (!result.ok) return fromSurrealFailure(`${commandPrefix} ${rawCommand}`, argv, result.error);
     return success({
-      command: "citation add",
-      operation: "citation.add",
+      command: `${commandPrefix} ${rawCommand}`,
+      operation: `${commandPrefix}.${rawCommand}`,
       input: argv,
-      message: `Added Citation ${key} from ${pageId} to ${headingId}.`,
-      data: result.result,
+      message: `Added Citation ${key} from ${pageId} to ${sourceId}.`,
+      data: { draft: citationDraft, result: result.result },
     });
   }
 
@@ -849,7 +1421,7 @@ async function routeCitation(argv: readonly string[]): Promise<CliResult> {
       "citation list",
       "citation.list",
       argv,
-      `SELECT *, out.* AS source_heading FROM cites WHERE in = ${pageId};`,
+      `SELECT *, out.* AS source_document FROM cites WHERE in = ${pageId};`,
       `Listed Citations for ${pageId}.`,
       {},
       { kind: "read", targetRecords: [pageId] },
@@ -865,7 +1437,11 @@ async function routeCitation(argv: readonly string[]): Promise<CliResult> {
         "citation validate",
         "citation.validate",
         argv,
-        `SELECT body FROM ${pageId}; SELECT key FROM cites WHERE in = ${pageId};`,
+        [
+          `SELECT body FROM ${pageId};`,
+          `SELECT id, in, out, key, label, claim, locator_kind, page_range, location_hint, quote, context, projection_id, text_hash, validation_status, confidence FROM cites WHERE in = ${pageId} FETCH out;`,
+          `SELECT id, source_document, start_page, end_page, text_hash, projection_status, string::slice(text, 0, 1200) AS text FROM source_text_projection WHERE source_document IN (SELECT VALUE out FROM cites WHERE in = ${pageId});`,
+        ].join("\n"),
         { kind: "read", targetRecords: [pageId] },
       ),
       {
@@ -876,20 +1452,140 @@ async function routeCitation(argv: readonly string[]): Promise<CliResult> {
     const statements = pageResult.result as Array<{ result?: unknown }>;
     const body = pageBodyFromStatements(statements);
     const keys = citationKeysFromStatements(statements);
-    const validation = validatePageBodyCitationMarkers({ wikiPageId: pageId, pageBody: body, graphCitationKeys: keys });
+    const markerValidation = validatePageBodyCitationMarkers({
+      wikiPageId: pageId,
+      pageBody: body,
+      graphCitationKeys: keys,
+    });
+    const citationRows = rowsAtStatement(statements, 1);
+    const projectionRows = rowsAtStatement(statements, 2);
+    const locatorIssues = citationRows.flatMap((citation) => validateCitationRow(citation, projectionRows));
+    const issueCount = markerValidation.issues.length + locatorIssues.length;
     return success({
       command: "citation validate",
       operation: "citation.validate",
       input: argv,
       message:
-        validation.issues.length === 0
+        issueCount === 0
           ? `Citation Markers match graph Citations for ${pageId}.`
-          : `Citation validation found ${validation.issues.length} issue(s) for ${pageId}.`,
-      data: validation,
+          : `Citation validation found ${issueCount} issue(s) for ${pageId}.`,
+      data: {
+        wikiPageId: pageId,
+        markerValidation,
+        locatorValidation: {
+          issueCount: locatorIssues.length,
+          issues: locatorIssues,
+        },
+        citations: citationRows,
+      },
     });
   }
 
-  return unknownCommand("citation", command, argv, "Use one of: add, list, validate.");
+  if (command === "narrow") {
+    const pageId = valueAfter(argv, "--page");
+    const key = valueAfter(argv, "--key");
+    if (!pageId) return missingArgument("citation narrow", "citation.narrow", argv, "--page <wiki-page-id>");
+    if (!key) return missingArgument("citation narrow", "citation.narrow", argv, "--key <citation-key>");
+    const pageRange = citationPageRangeFromArgv(argv);
+    if (pageRange instanceof Error) {
+      return operationFailure(
+        "citation narrow",
+        "citation.narrow",
+        argv,
+        pageRange.message,
+        "Pass a page range such as --pages 12-14.",
+      );
+    }
+    const quote = valueAfter(argv, "--quote");
+    const context = valueAfter(argv, "--context");
+    if (!pageRange && !quote && !context && !valueAfter(argv, "--location") && !valueAfter(argv, "--projection")) {
+      return missingArgument(
+        "citation narrow",
+        "citation.narrow",
+        argv,
+        "--pages, --quote, --context, --location, or --projection",
+      );
+    }
+    const updates = citationLocatorUpdateClauses({
+      pageRange,
+      quote,
+      context,
+      locationHint: valueAfter(argv, "--location") ?? valueAfter(argv, "--location-hint"),
+      projectionId: valueAfter(argv, "--projection") ?? valueAfter(argv, "--projection-id"),
+      textHash: valueAfter(argv, "--text-hash"),
+      confidence: optionalFloatAfter(argv, "--confidence"),
+    });
+    return queryCommand(
+      "citation narrow",
+      "citation.narrow",
+      argv,
+      [
+        `LET $originium_before_citation = (SELECT * FROM cites WHERE in = ${pageId} AND key = "${escapeSurrealString(key)}")[0];`,
+        `UPDATE cites SET ${updates.join(", ")} WHERE in = ${pageId} AND key = "${escapeSurrealString(key)}";`,
+        `SELECT before = $originium_before_citation, after = (SELECT * FROM cites WHERE in = ${pageId} AND key = "${escapeSurrealString(key)}")[0];`,
+      ].join("\n"),
+      `Narrowed Citation ${key} on ${pageId}.`,
+      { pageId, key, updates },
+      {
+        kind: "write",
+        targetRecords: [pageId, `cites:${key}`],
+        beforeQuery: `SELECT * FROM cites WHERE in = ${pageId} AND key = "${escapeSurrealString(key)}"`,
+        afterQuery: `SELECT * FROM cites WHERE in = ${pageId} AND key = "${escapeSurrealString(key)}"`,
+        relateEditedTargets: [pageId],
+      },
+    );
+  }
+
+  if (command === "repair") {
+    const pageId = valueAfter(argv, "--page");
+    const key = valueAfter(argv, "--key");
+    const sourceId = valueAfter(argv, "--source") ?? valueAfter(argv, "--document");
+    const unsupported = argv.includes("--unsupported");
+    if (!pageId) return missingArgument("citation repair", "citation.repair", argv, "--page <wiki-page-id>");
+    if (!key) return missingArgument("citation repair", "citation.repair", argv, "--key <citation-key>");
+    if (!sourceId && !unsupported) {
+      return missingArgument(
+        "citation repair",
+        "citation.repair",
+        argv,
+        "--source <source-document-id> or --unsupported",
+      );
+    }
+    if (unsupported) {
+      return queryCommand(
+        "citation repair",
+        "citation.repair",
+        argv,
+        [
+          `LET $originium_before_citation = (SELECT * FROM cites WHERE in = ${pageId} AND key = "${escapeSurrealString(key)}")[0];`,
+          `UPDATE cites SET validation_status = "invalid", confidence = 0, location_hint = "unsupported claim" WHERE in = ${pageId} AND key = "${escapeSurrealString(key)}";`,
+          `SELECT before = $originium_before_citation, after = (SELECT * FROM cites WHERE in = ${pageId} AND key = "${escapeSurrealString(key)}")[0];`,
+        ].join("\n"),
+        `Marked Citation ${key} on ${pageId} as unsupported.`,
+        { pageId, key, unsupported: true },
+        {
+          kind: "write",
+          targetRecords: [pageId, `cites:${key}`],
+          beforeQuery: `SELECT * FROM cites WHERE in = ${pageId} AND key = "${escapeSurrealString(key)}"`,
+          afterQuery: `SELECT * FROM cites WHERE in = ${pageId} AND key = "${escapeSurrealString(key)}"`,
+          relateEditedTargets: [pageId],
+        },
+      );
+    }
+    return routeCitation([
+      "citation",
+      "add",
+      "--page",
+      pageId,
+      "--source",
+      sourceId ?? "",
+      "--key",
+      key,
+      ...argv.slice(2),
+    ]);
+  }
+
+  return unknownCommand(commandPrefix, command, argv, "Use one of: add/create, list, validate, narrow, repair.");
 }
 
 async function routeLink(argv: readonly string[]): Promise<CliResult> {
@@ -1087,6 +1783,17 @@ async function routeGraph(argv: readonly string[]): Promise<CliResult> {
   if (!command) return missingGroupCommand("graph", argv, "Use one of: lint, neighborhood.");
   if (command === "neighborhood") return graphNeighborhood(argv);
   if (command !== "lint") return unknownCommand("graph", command, argv, "Use one of: lint, neighborhood.");
+  const family = valueAfter(argv, "--family");
+  const supportedFamilies = ["citation", "source", "page"] as const;
+  if (family && !supportedFamilies.includes(family as (typeof supportedFamilies)[number])) {
+    return operationFailure(
+      "graph lint",
+      "graph.lint",
+      argv,
+      `Unsupported graph lint family '${family}'.`,
+      "Use --family citation, --family source, or --family page; omit --family for the umbrella lint.",
+    );
+  }
 
   const result = await executeSurrealQuery(
     readSurrealConfig(),
@@ -1096,26 +1803,25 @@ async function routeGraph(argv: readonly string[]): Promise<CliResult> {
       argv,
       [
         "SELECT id, title, slug, body FROM wiki_page;",
-        "SELECT id, in, out, key, label, quote FROM cites;",
-        "SELECT id, title, source_document, source_heading, start_page, end_page, location_hint, reason FROM source_anchor;",
-        "SELECT id, title, heading_path, start_page, end_page FROM source_heading;",
+        "SELECT id, in, out, key, label, claim, locator_kind, page_range, location_hint, quote, context, projection_id, text_hash, validation_status, confidence FROM cites;",
+        "SELECT id, source_document, start_page, end_page, text_hash, extraction_method, extraction_version, projection_version, projection_status FROM source_text_projection;",
         "SELECT id, in, out, reason, label FROM manual_link;",
       ].join("\n"),
-      { kind: "read", targetRecords: ["wiki_page", "cites", "source_anchor", "source_heading", "manual_link"] },
+      { kind: "read", targetRecords: ["wiki_page", "cites", "source_text_projection", "manual_link"] },
     ),
     { queryId: "graph.lint" },
   );
   if (!result.ok) return fromSurrealFailure("graph lint", argv, result.error);
 
-  const lint = lintGraphWikiStatements(result.result as Array<{ result?: unknown }>);
+  const lint = lintGraphWikiStatements(result.result as Array<{ result?: unknown }>, family);
   return success({
     command: "graph lint",
     operation: "graph.lint",
     input: argv,
     message:
       lint.issueCount === 0
-        ? "Graph Wiki lint found no hygiene issues."
-        : `Graph Wiki lint found ${lint.issueCount} hygiene issue(s).`,
+        ? `Graph Wiki${family ? ` ${family}` : ""} lint found no hygiene issues.`
+        : `Graph Wiki${family ? ` ${family}` : ""} lint found ${lint.issueCount} hygiene issue(s).`,
     data: lint,
   });
 }
@@ -1129,7 +1835,7 @@ async function graphNeighborhood(argv: readonly string[]): Promise<CliResult> {
     `SELECT id, title, slug, aliases, scope_note, page_kind, ->cites AS outgoing_citations, <-cites AS incoming_citations, ->manual_link AS outgoing_links, <-manual_link AS incoming_links FROM ONLY $record;`,
     `SELECT id, in, out, key, label, quote FROM cites WHERE in = $record OR out = $record;`,
     `SELECT id, in, out, label, reason FROM manual_link WHERE in = $record OR out = $record;`,
-    `SELECT id, title, slug FROM wiki_page WHERE ->cites->source_heading CONTAINS $record OR <-cites<-wiki_page CONTAINS $record LIMIT 20;`,
+    `SELECT id, title, slug FROM wiki_page WHERE ->cites->source_document CONTAINS $record OR <-cites<-wiki_page CONTAINS $record LIMIT 20;`,
   ].join("\n");
   return queryCommand(
     "graph neighborhood",
@@ -1150,6 +1856,71 @@ async function routeRetrieval(argv: readonly string[]): Promise<CliResult> {
   return unknownCommand("retrieval", command, argv, "Use one of: search, embed.");
 }
 
+async function routeRefactor(argv: readonly string[]): Promise<CliResult> {
+  const [, command] = argv;
+  if (!command) return missingGroupCommand("refactor", argv, "Use one of: rename-page.");
+  if (command !== "rename-page") return unknownCommand("refactor", command, argv, "Use one of: rename-page.");
+
+  const pageId = valueAfter(argv, "--page") ?? argv[2];
+  const title = valueAfter(argv, "--title");
+  const dryRun = argv.includes("--dry-run") || !argv.includes("--apply");
+  if (!pageId) return missingArgument("refactor rename-page", "refactor.rename-page", argv, "--page <wiki-page-id>");
+  if (!title) return missingArgument("refactor rename-page", "refactor.rename-page", argv, "--title <new-title>");
+  if (!isRecordId(pageId, "wiki_page")) {
+    return operationFailure(
+      "refactor rename-page",
+      "refactor.rename-page",
+      argv,
+      `Invalid Wiki Page ID '${pageId}'.`,
+      "Pass a Wiki Page record ID such as wiki_page:example.",
+    );
+  }
+
+  const slug = wikiPageSlugFromTitle(title);
+  const query = dryRun
+    ? [
+        `SELECT id, title, slug, aliases, body, ->cites AS citations FROM ${pageId};`,
+        `SELECT id, title, slug FROM wiki_page WHERE slug = "${escapeSurrealString(slug)}" AND id != ${pageId};`,
+      ].join("\n")
+    : [
+        `LET $originium_before_page = (SELECT * FROM ${pageId})[0];`,
+        `UPDATE ${pageId} SET aliases = array::distinct(array::concat(aliases ?? [], [$originium_before_page.title])), title = "${escapeSurrealString(title)}", slug = "${slug}", updated_at = time::now();`,
+        `SELECT before = $originium_before_page, after = (SELECT * FROM ${pageId})[0], citations = (SELECT * FROM cites WHERE in = ${pageId});`,
+      ].join("\n");
+  const result = await executeSurrealQuery(
+    readSurrealConfig(),
+    loggedQuery("refactor rename-page", "refactor.rename-page", argv, query, {
+      kind: dryRun ? "read" : "write",
+      targetRecords: [pageId],
+      beforeQuery: dryRun ? undefined : `SELECT * FROM ${pageId}`,
+      afterQuery: dryRun ? undefined : `SELECT * FROM ${pageId}`,
+      relateEditedTargets: [pageId],
+    }),
+    { queryId: `refactor.rename-page:${pageId}` },
+  );
+  if (!result.ok) return fromSurrealFailure("refactor rename-page", argv, result.error);
+  return success({
+    command: "refactor rename-page",
+    operation: "refactor.rename-page",
+    input: argv,
+    message: dryRun
+      ? `Prepared dry-run rename of ${pageId} to '${title}'.`
+      : `Renamed ${pageId} to '${title}' while preserving Citation relations.`,
+    data: {
+      pageId,
+      newTitle: title,
+      newSlug: slug,
+      mode: dryRun ? "dry-run" : "apply",
+      citationSafety:
+        "The workflow keeps the same Wiki Page record ID, so existing Citation edges and body markers remain attached.",
+      focusedLint: dryRun
+        ? undefined
+        : "Run graph lint --family page and graph lint --family citation for post-refactor verification.",
+      result: result.result,
+    },
+  });
+}
+
 async function routeWorkflow(argv: readonly string[]): Promise<CliResult> {
   const [, command] = argv;
   if (!command) return missingGroupCommand("workflow", argv, "Use one of: answer-context, page-upsert.");
@@ -1157,8 +1928,32 @@ async function routeWorkflow(argv: readonly string[]): Promise<CliResult> {
   if (command === "answer-context") {
     const query = positionalArgs(argv, 2).join(" ").trim();
     if (!query) return missingArgument("workflow answer-context", "workflow.answer-context", argv, "<query>");
-    const retrieval = await searchPages(["retrieval", "search", query, ...sessionArgsForChild(argv)]);
-    if (!retrieval.ok) return retrieval;
+    const limit = Number.parseInt(valueAfter(argv, "--limit") ?? "5", 10);
+    const escaped = escapeSurrealString(query);
+    const answerQuery = [
+      `LET $pages = (SELECT id, title, slug, body, updated_at FROM wiki_page WHERE title CONTAINS "${escaped}" OR body CONTAINS "${escaped}" ORDER BY updated_at DESC LIMIT ${limit});`,
+      "SELECT * FROM $pages;",
+      "SELECT id, in, out, key, label, claim, locator_kind, page_range, location_hint, quote, context, projection_id, text_hash, validation_status, confidence FROM cites WHERE in IN (SELECT VALUE id FROM $pages) FETCH out;",
+      `SELECT id, source_document, start_page, end_page, text_hash, projection_status, string::slice(text, 0, 700) AS snippet FROM source_text_projection WHERE text CONTAINS "${escaped}" ORDER BY start_page ASC LIMIT ${limit};`,
+    ].join("\n");
+    const result = await executeSurrealQuery(
+      readSurrealConfig(),
+      loggedQuery("workflow answer-context", "workflow.answer-context", argv, answerQuery, {
+        kind: "read",
+        targetRecords: ["wiki_page", "cites", "source_text_projection"],
+      }),
+      { queryId: `workflow.answer-context:${query}` },
+    );
+    if (!result.ok) return fromSurrealFailure("workflow answer-context", argv, result.error);
+    const statements = result.result as Array<{ result?: unknown }>;
+    const pages = rowsAtStatement(statements, 1);
+    const citations = rowsAtStatement(statements, 2);
+    const snippets = rowsAtStatement(statements, 3);
+    const gaps = [
+      pages.length === 0 ? "No maintained Wiki Page synthesis matched the query." : "",
+      citations.length === 0 ? "No graph Citations were found for the matched Wiki Pages." : "",
+      snippets.length === 0 ? "No raw Source Text Projection snippet matched the query." : "",
+    ].filter(Boolean);
     return success({
       command: "workflow answer-context",
       operation: "workflow.answer-context",
@@ -1166,7 +1961,14 @@ async function routeWorkflow(argv: readonly string[]): Promise<CliResult> {
       message: `Prepared answer context for '${query}'.`,
       data: {
         query,
-        retrieval: retrieval.data,
+        maintainedSynthesis: pages,
+        citationEvidence: citations,
+        rawSourceEvidence: snippets,
+        warnings: [
+          "Maintained synthesis is preferred for answers; raw Source Text Projections are lossy and need Source Document verification.",
+        ],
+        gaps,
+        trace: argv.includes("--trace") ? { query: answerQuery, result: result.result } : undefined,
       },
     });
   }
@@ -1174,12 +1976,21 @@ async function routeWorkflow(argv: readonly string[]): Promise<CliResult> {
   if (command === "page-upsert") {
     const title = valueAfter(argv, "--title");
     const body = valueAfter(argv, "--body") ?? "";
-    const heading = valueAfter(argv, "--heading");
+    const source = valueAfter(argv, "--source") ?? valueAfter(argv, "--document");
     const key = valueAfter(argv, "--key") ?? "source";
     const label = valueAfter(argv, "--label") ?? key;
     if (!title) return missingArgument("workflow page-upsert", "workflow.page-upsert", argv, "--title <title>");
-    if (!heading)
-      return missingArgument("workflow page-upsert", "workflow.page-upsert", argv, "--heading <source-heading-id>");
+    if (valueAfter(argv, "--heading")) {
+      return operationFailure(
+        "workflow page-upsert",
+        "workflow.page-upsert",
+        argv,
+        "Source Outline IDs are no longer accepted by workflow page-upsert.",
+        "Pass --source <source-document-id> and locator flags such as --pages, --quote, and --claim.",
+      );
+    }
+    if (!source)
+      return missingArgument("workflow page-upsert", "workflow.page-upsert", argv, "--source <source-document-id>");
     const page = await writePage(
       ["page", "update", "--title", title, "--body", body, ...sessionArgsForChild(argv)],
       "update",
@@ -1200,12 +2011,13 @@ async function routeWorkflow(argv: readonly string[]): Promise<CliResult> {
       "add",
       "--page",
       pageId,
-      "--heading",
-      heading,
+      "--source",
+      source,
       "--key",
       key,
       "--label",
       label,
+      ...locatorArgsForChild(argv),
       ...sessionArgsForChild(argv),
     ]);
     if (!citation.ok) return citation;
@@ -1226,11 +2038,21 @@ async function routeIngest(argv: readonly string[]): Promise<CliResult> {
   if (!command) return missingGroupCommand("ingest", argv, "Use one of: chapter.");
   if (command !== "chapter") return unknownCommand("ingest", command, argv, "Use one of: chapter.");
   const source = valueAfter(argv, "--source");
-  const heading = valueAfter(argv, "--heading");
   if (!source) return missingArgument("ingest chapter", "ingest.chapter", argv, "--source <source-document-id>");
-  if (!heading) return missingArgument("ingest chapter", "ingest.chapter", argv, "--heading <source-heading-id>");
+  if (valueAfter(argv, "--heading")) {
+    return operationFailure(
+      "ingest chapter",
+      "ingest.chapter",
+      argv,
+      "Source Outline IDs are no longer accepted by ingest chapter.",
+      "Pass a bounded document-local locator such as --pages 12-14.",
+    );
+  }
+  const pageRange = parsePageRangeArgument(argv);
+  if (!pageRange) return missingArgument("ingest chapter", "ingest.chapter", argv, "--pages <start-end>");
+  if ("ok" in pageRange) return pageRange;
   const maxTokens = Number.parseInt(valueAfter(argv, "--max-tokens") ?? "100000", 10);
-  const chunkId = `ingestion_chunk:${heading.replace(/^source_heading:/, "")}_${maxTokens}`;
+  const chunkId = `ingestion_chunk:${source.replace(/^source_document:/, "")}_p${pageRange.start}_${pageRange.end}_${maxTokens}`;
   const title = valueAfter(argv, "--title");
   const citationKey = valueAfter(argv, "--key") ?? "source";
   const body =
@@ -1261,7 +2083,20 @@ async function routeIngest(argv: readonly string[]): Promise<CliResult> {
       ? [
           `UPSERT ${pageId} SET title = "${escapeSurrealString(title)}", slug = "${pageSlug}", body = "${escapeSurrealString(body)}", updated_at = time::now();`,
           `DELETE cites WHERE in = ${pageId} AND key = "${escapeSurrealString(citationKey)}";`,
-          `RELATE ${pageId}->cites->${heading} SET key = "${escapeSurrealString(citationKey)}", label = "${escapeSurrealString(label)}", quote = ${quote ? `"${escapeSurrealString(quote)}"` : "NONE"}, created_at = time::now();`,
+          `RELATE ${pageId}->cites->${source} SET ${citationSetClause(
+            citationDraftFromInput({
+              pageId,
+              sourceId: source,
+              key: citationKey,
+              label,
+              claim: valueAfter(argv, "--claim") ?? label,
+              quote,
+              context: valueAfter(argv, "--context"),
+              pageRange: { startPage: pageRange.start, endPage: pageRange.end },
+              locationHint: valueAfter(argv, "--location") ?? valueAfter(argv, "--location-hint"),
+              confidence: optionalFloatAfter(argv, "--confidence") ?? 1,
+            }),
+          )};`,
           ...(linkTo && linkReason
             ? [
                 `RELATE ${pageId}->manual_link->${linkTo} SET reason = "${escapeSurrealString(linkReason)}", label = NONE, created_session = ${session ?? "NONE"}, created_at = time::now();`,
@@ -1270,25 +2105,23 @@ async function routeIngest(argv: readonly string[]): Promise<CliResult> {
         ]
       : [];
   const query = [
-    `LET $originium_heading = (SELECT * FROM ${heading})[0];`,
-    `UPSERT ${chunkId} SET source_document = ${source}, source_heading = ${heading}, start_page = $originium_heading.start_page ?? 0, end_page = $originium_heading.end_page ?? $originium_heading.start_page ?? 0, token_estimate = ${maxTokens}, extraction_method = "chapter-ingestion", created_at = time::now();`,
+    `UPSERT ${chunkId} SET source_document = ${source}, start_page = ${pageRange.start}, end_page = ${pageRange.end}, token_estimate = ${maxTokens}, extraction_method = "chapter-ingestion", created_at = time::now();`,
     ...pageStatements,
     `SELECT * FROM ${source};`,
-    `SELECT * FROM ${heading};`,
     `SELECT * FROM ${chunkId};`,
-    `SELECT id, title, slug, body, updated_at, ->cites->source_heading AS cited_evidence FROM wiki_page ORDER BY updated_at DESC LIMIT 10;`,
+    `SELECT id, title, slug, body, updated_at, ->cites->source_document AS cited_evidence FROM wiki_page ORDER BY updated_at DESC LIMIT 10;`,
   ].join("\n");
   const result = await executeSurrealQuery(
     readSurrealConfig(),
     loggedQuery("ingest chapter", "ingest.chapter", argv, query, {
       kind: "write",
-      targetRecords: [source, heading, chunkId, ...(pageId ? [pageId] : [])],
+      targetRecords: [source, chunkId, ...(pageId ? [pageId] : [])],
       beforeQuery: `SELECT * FROM ${chunkId}`,
       afterQuery: `SELECT * FROM ${chunkId}`,
       sessionId: session,
       relateEditedTargets: [chunkId, ...(pageId ? [pageId] : [])],
     }),
-    { queryId: `ingest.chapter:${heading}` },
+    { queryId: `ingest.chapter:${source}:${pageRange.start}-${pageRange.end}` },
   );
   if (!result.ok) return fromSurrealFailure("ingest chapter", argv, result.error);
   return success({
@@ -1296,11 +2129,11 @@ async function routeIngest(argv: readonly string[]): Promise<CliResult> {
     operation: "ingest.chapter",
     input: argv,
     message: pageId
-      ? `Prepared Chapter Ingestion context for ${heading} and updated Wiki Page ${pageId}.`
-      : `Prepared Chapter Ingestion context for ${heading}.`,
+      ? `Prepared bounded ingestion context for ${source} pages ${pageRange.start}-${pageRange.end} and updated Wiki Page ${pageId}.`
+      : `Prepared bounded ingestion context for ${source} pages ${pageRange.start}-${pageRange.end}.`,
     data: {
       source,
-      heading,
+      pageRange,
       chunkId,
       pageId,
       citationKey: pageId ? citationKey : undefined,
@@ -1317,35 +2150,61 @@ async function routeAcceptance(argv: readonly string[]): Promise<CliResult> {
   const stages: AcceptanceStage[] = [];
 
   stages.push(acceptanceStage("db-status", await routeDb(["db", "status"])));
-  stages.push(acceptanceStage("db-doctor", await routeDb(["db", "doctor"])));
+  const dbDoctorStage = acceptanceStage("db-doctor", await routeDb(["db", "doctor"]));
+  stages.push(dbDoctorStage);
+  if (dbDoctorStage.state === "blocked" || dbDoctorStage.state === "fail") {
+    stages.push(blockedStage("schema", "Blocked because db doctor did not pass."));
+    stages.push(blockedStage("source-import", "Blocked because db doctor did not pass."));
+    stages.push(blockedStage("source-projections", "Blocked because Source Document import did not run."));
+    stages.push(blockedStage("session-start", "Blocked because Source Document import did not run."));
+    stages.push(blockedStage("chapter-ingestion", "Blocked because Source Document import did not run."));
+    stages.push(blockedStage("citation-validation", "Blocked because Chapter Ingestion did not run."));
+    stages.push(blockedStage("graph-retrieval", "Blocked because Chapter Ingestion did not run."));
+    stages.push(blockedStage("change-log", "Blocked because no Agent Session was created."));
+    stages.push({
+      name: "surrealist-inspection",
+      state: "not-applicable",
+      reason:
+        "Not applicable to the automated CLI harness; Surrealist inspection is validated by the manual inspection beads.",
+    });
+    const data = { stages, overallState: dbDoctorStage.state };
+    return operationFailure(
+      "acceptance poc",
+      "acceptance.poc",
+      argv,
+      `POC acceptance ${dbDoctorStage.state} at stage 'db-doctor': ${dbDoctorStage.reason}`,
+      "Resolve the stage failure or record the environment blocker before relying on POC acceptance proof.",
+      data,
+    );
+  }
   stages.push(acceptanceStage("schema", await routeDb(["db", "apply-schema"])));
 
   const importResult = await routeSource(["source", "import-pdf", path]);
   stages.push(acceptanceStage("source-import", importResult));
   const sourceId = importResult.ok ? (importResult.data as { id?: string }).id : undefined;
 
-  const headingsResult = await routeSource([
+  const projectionsResult = await routeSource([
     "source",
-    "headings",
+    "projections",
     path,
     "--source",
     sourceId ?? "source_document:fixture",
+    "--max-tokens",
+    "12000",
   ]);
-  stages.push(acceptanceStage("heading-projection", headingsResult));
-  const heading = headingsResult.ok ? firstSourceHeading(headingsResult.data) : undefined;
-  const headingId = heading ? sourceHeadingRecordId(heading) : undefined;
+  stages.push(acceptanceStage("source-projections", projectionsResult));
 
-  if (!sourceId || !heading || !headingId) {
+  if (!sourceId || !projectionsResult.ok) {
     stages.push(
       blockedStage(
         "session-start",
-        "Blocked because Source Document import or Source Heading projection did not produce IDs.",
+        "Blocked because Source Document import or Source Text Projection build did not produce IDs.",
       ),
     );
     stages.push(
       blockedStage(
         "chapter-ingestion",
-        "Blocked because Source Document import or Source Heading projection did not produce IDs.",
+        "Blocked because Source Document import or Source Text Projection build did not produce IDs.",
       ),
     );
     stages.push(blockedStage("citation-validation", "Blocked because Chapter Ingestion did not run."));
@@ -1372,16 +2231,16 @@ async function routeAcceptance(argv: readonly string[]): Promise<CliResult> {
             "chapter",
             "--source",
             sourceId,
-            "--heading",
-            headingId,
+            "--pages",
+            "1",
             "--title",
             pageTitle,
             "--body",
-            `${heading.title} synthesized for POC acceptance.[^source]`,
+            `${pageTitle} synthesized for POC acceptance.[^source]`,
             "--key",
             "source",
             "--label",
-            heading.title,
+            pageTitle,
             "--session",
             sessionId,
           ]),
@@ -1396,7 +2255,7 @@ async function routeAcceptance(argv: readonly string[]): Promise<CliResult> {
       stages.push(
         acceptanceStage(
           "graph-retrieval",
-          await routeRetrieval(["retrieval", "search", heading.title, "POC", "acceptance", "--session", sessionId]),
+          await routeRetrieval(["retrieval", "search", pageTitle, "POC", "acceptance", "--session", sessionId]),
         ),
       );
       stages.push(acceptanceStage("change-log", await routeLog(["log", "show", "--session", sessionId])));
@@ -1477,8 +2336,8 @@ async function pageCandidates(argv: readonly string[]): Promise<CliResult> {
   const limit = Number.parseInt(valueAfter(argv, "--limit") ?? "10", 10);
   const slug = wikiPageSlugFromTitle(queryText);
   const query = [
-    `LET $exact = (SELECT id, title, slug, aliases, scope_note, page_kind, body, ->cites->source_heading AS cited_evidence, <-manual_link<-wiki_page AS inbound_links, ->manual_link->wiki_page AS outbound_links FROM wiki_page WHERE slug = "${escapeSurrealString(slug)}" OR title = "${escapeSurrealString(queryText)}");`,
-    `LET $text = (SELECT id, title, slug, aliases, scope_note, page_kind, body, ->cites->source_heading AS cited_evidence, <-manual_link<-wiki_page AS inbound_links, ->manual_link->wiki_page AS outbound_links FROM wiki_page WHERE title CONTAINS "${escapeSurrealString(queryText)}" OR body CONTAINS "${escapeSurrealString(queryText)}" OR aliases CONTAINS "${escapeSurrealString(queryText)}" LIMIT ${limit});`,
+    `LET $exact = (SELECT id, title, slug, aliases, scope_note, page_kind, body, ->cites->source_document AS cited_evidence, <-manual_link<-wiki_page AS inbound_links, ->manual_link->wiki_page AS outbound_links FROM wiki_page WHERE slug = "${escapeSurrealString(slug)}" OR title = "${escapeSurrealString(queryText)}");`,
+    `LET $text = (SELECT id, title, slug, aliases, scope_note, page_kind, body, ->cites->source_document AS cited_evidence, <-manual_link<-wiki_page AS inbound_links, ->manual_link->wiki_page AS outbound_links FROM wiki_page WHERE title CONTAINS "${escapeSurrealString(queryText)}" OR body CONTAINS "${escapeSurrealString(queryText)}" OR aliases CONTAINS "${escapeSurrealString(queryText)}" LIMIT ${limit});`,
     "RETURN array::distinct(array::concat($exact, $text));",
   ].join("\n");
   const result = await executeSurrealQuery(
@@ -1804,8 +2663,8 @@ async function searchPages(argv: readonly string[]): Promise<CliResult> {
       argv,
       [
         `LET $query_embedding = ${surrealNumberArray(queryEmbedding.embedding)};`,
-        `LET $wiki = (SELECT id, title, slug, aliases, scope_note, page_kind, body, embedding, embedded_text_hash, vector::similarity::cosine(embedding, $query_embedding) AS db_vector_score, ->cites->source_heading AS cited_evidence FROM wiki_page WHERE embedding != NONE AND (title CONTAINS "${lexical}" OR body CONTAINS "${lexical}" OR aliases CONTAINS "${lexical}") ORDER BY db_vector_score DESC LIMIT 50);`,
-        `LET $evidence = (SELECT id, source_document, source_heading, start_page, end_page, text, text_hash, embedding, embedded_text_hash, extraction_method, projection_status, vector::similarity::cosine(embedding, $query_embedding) AS db_vector_score FROM source_text_projection WHERE embedding != NONE AND text CONTAINS "${lexical}" ORDER BY db_vector_score DESC LIMIT 50 FETCH source_document, source_heading);`,
+        `LET $wiki = (SELECT id, title, slug, aliases, scope_note, page_kind, body, embedding, embedded_text_hash, vector::similarity::cosine(embedding, $query_embedding) AS db_vector_score, ->cites->source_document AS cited_evidence FROM wiki_page WHERE embedding != NONE AND (title CONTAINS "${lexical}" OR body CONTAINS "${lexical}" OR aliases CONTAINS "${lexical}") ORDER BY db_vector_score DESC LIMIT 50);`,
+        `LET $evidence = (SELECT id, source_document, start_page, end_page, text, text_hash, embedding, embedded_text_hash, extraction_method, projection_version, projection_status, vector::similarity::cosine(embedding, $query_embedding) AS db_vector_score FROM source_text_projection WHERE embedding != NONE AND text CONTAINS "${lexical}" ORDER BY db_vector_score DESC LIMIT 50 FETCH source_document);`,
         "RETURN { wiki: $wiki, evidence: $evidence };",
       ].join("\n"),
       { kind: "read", targetRecords: [`${operation}:${queryText}`] },
@@ -2095,8 +2954,10 @@ function renderCliResult(result: CliResult): string {
 function humanDetails(data: unknown): readonly string[] {
   if (!data || typeof data !== "object") return [];
   const record = data as Record<string, unknown>;
+  const help = helpDetails(record);
+  if (help.length > 0) return help;
   const lines: string[] = [];
-  for (const key of ["id", "slug", "sourceId", "pageId", "headingId", "chunkId", "query"] as const) {
+  for (const key of ["id", "slug", "sourceId", "pageId", "outlineEntryId", "chunkId", "query"] as const) {
     const value = record[key];
     if (typeof value === "string") lines.push(`${key}: ${value}`);
   }
@@ -2108,11 +2969,11 @@ function humanDetails(data: unknown): readonly string[] {
       lines.push(`- ${String(item.id ?? "<unknown>")} ${String(item.title ?? "")} ${String(item.score ?? "")}`.trim());
     }
   }
-  if (Array.isArray(record.headings)) {
-    lines.push(`headings: ${record.headings.length}`);
-    for (const heading of record.headings.slice(0, 8)) {
-      if (!heading || typeof heading !== "object") continue;
-      const item = heading as {
+  if (Array.isArray(record.outline)) {
+    lines.push(`outline: ${record.outline.length}`);
+    for (const outlineEntry of record.outline.slice(0, 8)) {
+      if (!outlineEntry || typeof outlineEntry !== "object") continue;
+      const item = outlineEntry as {
         id?: unknown;
         persistedId?: unknown;
         title?: unknown;
@@ -2125,6 +2986,41 @@ function humanDetails(data: unknown): readonly string[] {
     }
   }
   return lines;
+}
+
+function helpDetails(record: Record<string, unknown>): readonly string[] {
+  if (record.mode === "top-level" && Array.isArray(record.groups)) {
+    const lines = [`usage: ${String(record.usage)}`, String(record.json), "groups:"];
+    for (const group of record.groups) {
+      if (!group || typeof group !== "object") continue;
+      const item = group as { readonly group?: unknown; readonly summary?: unknown };
+      lines.push(`- ${String(item.group ?? "<unknown>")}: ${String(item.summary ?? "")}`);
+    }
+    return lines;
+  }
+
+  if (record.mode === "group" && Array.isArray(record.commands)) {
+    const lines = ["commands:"];
+    for (const command of record.commands) {
+      if (!command || typeof command !== "object") continue;
+      const item = command as {
+        readonly usage?: unknown;
+        readonly summary?: unknown;
+        readonly example?: unknown;
+      };
+      lines.push(`- ${String(item.usage ?? "<unknown>")}`);
+      lines.push(`  ${String(item.summary ?? "")}`);
+      lines.push(`  example: ${String(item.example ?? "")}`);
+    }
+    if (Array.isArray(record.workflows) && record.workflows.length > 0) {
+      lines.push("related workflows:");
+      for (const workflow of record.workflows) lines.push(`- ${String(workflow)}`);
+    }
+    lines.push(String(record.json));
+    return lines;
+  }
+
+  return [];
 }
 
 function wantsJson(argv: readonly string[]): boolean {
@@ -2154,6 +3050,30 @@ function sessionSource(argv: readonly string[]): string | undefined {
 function sessionArgsForChild(argv: readonly string[]): readonly string[] {
   const sessionId = resolveSessionId(argv, { createImplicit: false });
   return sessionId ? ["--session", sessionId] : [];
+}
+
+function locatorArgsForChild(argv: readonly string[]): readonly string[] {
+  const forwarded: string[] = [];
+  for (const flag of [
+    "--pages",
+    "--page-range",
+    "--page",
+    "--start-page",
+    "--end-page",
+    "--quote",
+    "--context",
+    "--claim",
+    "--location",
+    "--location-hint",
+    "--projection",
+    "--projection-id",
+    "--text-hash",
+    "--confidence",
+  ]) {
+    const value = valueAfter(argv, flag);
+    if (value !== undefined) forwarded.push(flag, value);
+  }
+  return forwarded;
 }
 
 function currentSessionFile(): string {
@@ -2222,7 +3142,105 @@ function citationKeysFromStatements(statements: readonly { readonly result?: unk
   return [];
 }
 
+function rowsAtStatement(
+  statements: readonly { readonly result?: unknown }[],
+  index: number,
+): readonly Record<string, unknown>[] {
+  const rows = statements[index]?.result;
+  return Array.isArray(rows) ? rows.filter(isRecord) : [];
+}
+
+function validateCitationRow(
+  citation: Record<string, unknown>,
+  projections: readonly Record<string, unknown>[],
+): readonly Record<string, unknown>[] {
+  const issues: Record<string, unknown>[] = [];
+  const key = stringField(citation, "key") ?? "<unknown>";
+  const pageId = stringField(citation, "in") ?? "<unknown-page>";
+  const sourceId = recordRefString(citation.out);
+  const locatorKind = stringField(citation, "locator_kind");
+  const pageRange = citation.page_range as { readonly start_page?: unknown; readonly end_page?: unknown } | undefined;
+  const quote = stringField(citation, "quote");
+  const context = stringField(citation, "context");
+  const claim = stringField(citation, "claim");
+  if (!sourceId?.startsWith("source_document:")) {
+    issues.push({
+      kind: "missing-source-document-target",
+      severity: "error",
+      recordId: `${pageId}:${key}`,
+      reason: `Citation ${key} does not target a Source Document.`,
+      suggestedRepair: `Run citation repair --page ${pageId} --key ${key} --source <source-document-id>.`,
+    });
+  }
+  if (!claim) {
+    issues.push({
+      kind: "missing-claim",
+      severity: "warning",
+      recordId: `${pageId}:${key}`,
+      reason: `Citation ${key} is missing claim metadata.`,
+      suggestedRepair: `Run citation narrow --page ${pageId} --key ${key} --context <supported claim context>.`,
+    });
+  }
+  if (!locatorKind || locatorKind === "whole-document" || (!pageRange && !quote && !context)) {
+    issues.push({
+      kind: "broad-locator",
+      severity: "warning",
+      recordId: `${pageId}:${key}`,
+      reason: `Citation ${key} has a broad or missing locator.`,
+      suggestedRepair: `Run citation narrow --page ${pageId} --key ${key} --pages <range> and add --quote or --context when possible.`,
+    });
+  }
+  const projectionId = stringField(citation, "projection_id");
+  const textHash = stringField(citation, "text_hash");
+  if (projectionId) {
+    const projection = projections.find((candidate) => stringField(candidate, "id") === projectionId);
+    if (!projection) {
+      issues.push({
+        kind: "missing-projection",
+        severity: "warning",
+        recordId: `${pageId}:${key}`,
+        reason: `Citation ${key} references missing Source Text Projection ${projectionId}.`,
+        suggestedRepair: `Run source projections <pdf-path> --source ${sourceId ?? "<source-document-id>"} or citation narrow with a valid --projection.`,
+      });
+    } else if (textHash && stringField(projection, "text_hash") && stringField(projection, "text_hash") !== textHash) {
+      issues.push({
+        kind: "stale-projection-hash",
+        severity: "warning",
+        recordId: `${pageId}:${key}`,
+        reason: `Citation ${key} text_hash does not match ${projectionId}.`,
+        suggestedRepair: `Rerun citation narrow --page ${pageId} --key ${key} --projection ${projectionId} --text-hash ${stringField(projection, "text_hash")}.`,
+      });
+    }
+  }
+  if (quote) {
+    const quotedProjection = projections.find((projection) => {
+      const text = stringField(projection, "text") ?? "";
+      return text.includes(quote);
+    });
+    if (projections.length > 0 && !quotedProjection) {
+      issues.push({
+        kind: "quote-not-found",
+        severity: "warning",
+        recordId: `${pageId}:${key}`,
+        reason: `Citation ${key} quote was not found in available Source Text Projections.`,
+        suggestedRepair: `Run source evidence ${JSON.stringify(quote)} --source ${sourceId ?? "<source-document-id>"} --trace, then narrow or repair the Citation.`,
+      });
+    }
+  }
+  return issues;
+}
+
+function recordRefString(value: unknown): string | undefined {
+  if (typeof value === "string") return value;
+  if (value && typeof value === "object") {
+    const record = value as Record<string, unknown>;
+    if (typeof record.id === "string") return record.id;
+  }
+  return undefined;
+}
+
 type GraphLintIssue = {
+  readonly family?: "citation" | "source" | "page" | "link";
   readonly kind:
     | "empty-wiki-page"
     | "uncited-wiki-page"
@@ -2232,26 +3250,36 @@ type GraphLintIssue = {
     | "orphan-page"
     | "stub-wiki-page"
     | "broad-citation-target"
+    | "source-projection-missing-hash"
+    | "source-projection-not-ready"
     | "weak-manual-link";
   readonly severity: "error" | "warning";
   readonly recordId: string;
   readonly message: string;
   readonly suggestion: string;
+  readonly reason?: string;
+  readonly suggestedRepair?: string;
+  readonly autoFixable?: boolean;
+  readonly retrievalImpact?: "none" | "low" | "medium" | "high";
   readonly details?: Record<string, unknown>;
 };
 
-export function lintGraphWikiStatements(statements: readonly { readonly result?: unknown }[]): {
+export function lintGraphWikiStatements(
+  statements: readonly { readonly result?: unknown }[],
+  family?: string,
+): {
   readonly issueCount: number;
   readonly issues: readonly GraphLintIssue[];
   readonly summary: Record<string, number>;
+  readonly family?: string;
 } {
   const rowsByStatement = statements.map((statement) =>
     Array.isArray(statement.result) ? statement.result.filter(isRecord) : [],
   );
   const pages = rowsByStatement[0] ?? [];
   const citations = rowsByStatement[1] ?? [];
-  const anchors = rowsByStatement[2] ?? [];
-  const manualLinks = rowsByStatement[4] ?? [];
+  const projections = rowsByStatement[2] ?? [];
+  const manualLinks = rowsByStatement[3] ?? [];
   const issues: GraphLintIssue[] = [];
   const citationsByPage = groupBy(citations, "in");
   const manualLinksByEndpoint = new Map<string, number>();
@@ -2331,7 +3359,7 @@ export function lintGraphWikiStatements(statements: readonly { readonly result?:
         severity: "warning",
         recordId: id,
         message: `Wiki Page ${id} has no graph Citations.`,
-        suggestion: `Run citation add --page ${id} --heading <source-heading-id> --key <marker-key> after adding a matching Citation Marker.`,
+        suggestion: `Run citation add --page ${id} --source <source-document-id> --key <marker-key> after adding a matching Citation Marker.`,
       });
     }
 
@@ -2369,36 +3397,92 @@ export function lintGraphWikiStatements(statements: readonly { readonly result?:
     }
   }
 
-  const anchorsByHeading = groupBy(anchors, "source_heading");
   for (const citation of citations) {
-    const heading = stringField(citation, "out");
     const pageId = stringField(citation, "in");
-    if (!heading || !pageId) continue;
-    const headingAnchors = anchorsByHeading.get(heading) ?? [];
-    if (headingAnchors.length === 0) continue;
     const key = stringField(citation, "key") ?? "<unknown>";
-    issues.push({
-      kind: "broad-citation-target",
-      severity: "warning",
-      recordId: `${pageId}:${key}`,
-      message: `Citation ${key} on ${pageId} targets broad Source Heading ${heading} even though ${headingAnchors.length} Source Anchor(s) exist below it.`,
-      suggestion:
-        "Prefer citing the most specific Source Anchor once Citation relations support Source Anchor targets, or record why the heading-level citation is intentional.",
-      details: {
-        pageId,
-        heading,
-        citationKey: key,
-        sourceAnchors: headingAnchors.map((anchor) => stringField(anchor, "id")).filter(Boolean),
-      },
-    });
+    if (!pageId) continue;
+    const locatorKind = stringField(citation, "locator_kind");
+    const pageRange = citation.page_range;
+    const quote = stringField(citation, "quote");
+    const context = stringField(citation, "context");
+    const claim = stringField(citation, "claim");
+    if (!claim || !locatorKind || locatorKind === "whole-document" || (!pageRange && !quote && !context)) {
+      issues.push({
+        kind: "broad-citation-target",
+        severity: "warning",
+        recordId: `${pageId}:${key}`,
+        message: `Citation ${key} on ${pageId} has missing or broad Source Document locator metadata.`,
+        suggestion: `Run citation narrow --page ${pageId} --key ${key} --pages <range> and add --quote or --context when available.`,
+        details: { pageId, citationKey: key, locatorKind, pageRange, quote, context, claim },
+      });
+    }
   }
 
-  const summary = issues.reduce<Record<string, number>>((accumulator, issue) => {
+  for (const projection of projections) {
+    const id = stringField(projection, "id") ?? "<unknown-projection>";
+    const status = stringField(projection, "projection_status");
+    const textHash = stringField(projection, "text_hash");
+    if (!textHash) {
+      issues.push({
+        kind: "source-projection-missing-hash",
+        severity: "warning",
+        recordId: id,
+        message: `Source Text Projection ${id} is missing text_hash.`,
+        suggestion: `Rebuild projections with source projections <pdf-path> --source ${stringField(projection, "source_document") ?? "<source-document-id>"}.`,
+        details: { projection },
+      });
+    }
+    if (status && status !== "ready") {
+      issues.push({
+        kind: "source-projection-not-ready",
+        severity: "warning",
+        recordId: id,
+        message: `Source Text Projection ${id} is '${status}', not ready.`,
+        suggestion: `Run source diagnostics --source ${stringField(projection, "source_document") ?? "<source-document-id>"} and rebuild projections when extraction is healthy.`,
+        details: { projection },
+      });
+    }
+  }
+
+  const filteredIssues = issues.map(enrichGraphLintIssue).filter((issue) => !family || issue.family === family);
+  const summary = filteredIssues.reduce<Record<string, number>>((accumulator, issue) => {
     accumulator[issue.kind] = (accumulator[issue.kind] ?? 0) + 1;
     return accumulator;
   }, {});
 
-  return { issueCount: issues.length, issues, summary };
+  return { issueCount: filteredIssues.length, issues: filteredIssues, summary, family };
+}
+
+function enrichGraphLintIssue(issue: GraphLintIssue): GraphLintIssue {
+  const family = issue.family ?? graphLintIssueFamily(issue.kind);
+  return {
+    ...issue,
+    family,
+    reason: issue.reason ?? issue.message,
+    suggestedRepair: issue.suggestedRepair ?? issue.suggestion,
+    autoFixable: issue.autoFixable ?? graphLintAutoFixable(issue.kind),
+    retrievalImpact: issue.retrievalImpact ?? graphLintRetrievalImpact(issue.kind),
+  };
+}
+
+function graphLintIssueFamily(kind: GraphLintIssue["kind"]): NonNullable<GraphLintIssue["family"]> {
+  if (kind.startsWith("source-projection")) return "source";
+  if (kind.includes("citation")) return "citation";
+  if (kind === "broad-citation-target") return "citation";
+  if (kind === "weak-manual-link") return "link";
+  return "page";
+}
+
+function graphLintAutoFixable(kind: GraphLintIssue["kind"]): boolean {
+  return kind === "source-projection-missing-hash" || kind === "source-projection-not-ready";
+}
+
+function graphLintRetrievalImpact(kind: GraphLintIssue["kind"]): "none" | "low" | "medium" | "high" {
+  if (kind === "empty-wiki-page" || kind === "source-projection-not-ready") return "high";
+  if (kind === "stub-wiki-page" || kind === "broad-citation-target" || kind === "source-projection-missing-hash")
+    return "medium";
+  if (kind === "uncited-wiki-page" || kind === "orphan-page" || kind === "duplicate-ish-page") return "low";
+  return "none";
 }
 
 function groupBy(records: readonly Record<string, unknown>[], key: string): Map<string, Record<string, unknown>[]> {
@@ -2514,7 +3598,11 @@ function retrievalCandidatesFromStatements(
 ): readonly RetrievalCandidate[] {
   const candidates: RetrievalCandidate[] = [];
   const rows = statements.flatMap((statement) => {
-    const statementRows = Array.isArray(statement.result) ? statement.result : statement.result ? [statement.result] : [];
+    const statementRows = Array.isArray(statement.result)
+      ? statement.result
+      : statement.result
+        ? [statement.result]
+        : [];
     return statementRows.flatMap((entry) => {
       if (!entry || typeof entry !== "object") return [entry];
       const record = entry as Record<string, unknown>;
@@ -2527,15 +3615,15 @@ function retrievalCandidatesFromStatements(
     if (!row || typeof row !== "object") continue;
     const record = row as Record<string, unknown>;
     const id = typeof record.id === "string" ? record.id : "";
-    const fetchedHeading =
-      record.source_heading && typeof record.source_heading === "object"
-        ? (record.source_heading as Record<string, unknown>)
+    const fetchedSourceDocument =
+      record.source_document && typeof record.source_document === "object"
+        ? (record.source_document as Record<string, unknown>)
         : undefined;
     const title =
       typeof record.title === "string"
         ? record.title
-        : typeof fetchedHeading?.title === "string"
-          ? fetchedHeading.title
+        : typeof fetchedSourceDocument?.title === "string"
+          ? fetchedSourceDocument.title
           : "";
     if (!id || !title) continue;
 
@@ -2568,11 +3656,11 @@ function retrievalCandidatesFromStatements(
         citedEvidence: [],
         metadata: {
           sourceDocument: record.source_document,
-          sourceHeading: record.source_heading,
           startPage: record.start_page,
           endPage: record.end_page,
           textHash: record.text_hash,
           extractionMethod: record.extraction_method,
+          projectionVersion: record.projection_version,
           projectionStatus: record.projection_status,
           dbVectorScore: record.db_vector_score,
         },
@@ -2599,7 +3687,8 @@ async function rankRetrievalCandidates(
 
     const lexical = lexicalScore(queryText, candidate.text);
     const vector = cosineSimilarity(queryEmbedding, candidate.embedding);
-    const graphAuthority = (candidate.kind === "wiki_page" ? 0.35 : -0.05) + Math.min(candidate.citedEvidence.length, 3) * 0.15;
+    const graphAuthority =
+      (candidate.kind === "wiki_page" ? 0.35 : -0.05) + Math.min(candidate.citedEvidence.length, 3) * 0.15;
     const score = vector * 0.55 + lexical * 0.3 + graphAuthority;
 
     ranked.push({
@@ -2644,7 +3733,9 @@ function pageCandidateRows(
         const title = stringField(record, "title") ?? "";
         const slug = stringField(record, "slug") ?? "";
         const body = stringField(record, "body") ?? "";
-        const aliases = Array.isArray(record.aliases) ? record.aliases.filter((value) => typeof value === "string") : [];
+        const aliases = Array.isArray(record.aliases)
+          ? record.aliases.filter((value) => typeof value === "string")
+          : [];
         const reasons = [
           slug === querySlug ? "exact slug" : "",
           title.toLowerCase() === queryText.toLowerCase() ? "exact title" : "",
@@ -2672,9 +3763,7 @@ function pageCandidateRows(
   });
 }
 
-function embeddingCandidatesFromStatements(
-  statements: readonly { readonly result?: unknown }[],
-): readonly {
+function embeddingCandidatesFromStatements(statements: readonly { readonly result?: unknown }[]): readonly {
   readonly id: string;
   readonly text: string;
   readonly textHash: string;
@@ -2914,123 +4003,30 @@ function blockedStage(name: string, reason: string): AcceptanceStage {
   };
 }
 
-function firstSourceHeading(data: unknown): SourceHeadingDraft | undefined {
-  const headings = (data as { headings?: unknown }).headings;
-  if (!Array.isArray(headings)) return undefined;
-  const heading = headings[0] as Partial<SourceHeadingDraft> | undefined;
-  if (
-    !heading ||
-    typeof heading.sourceDocumentId !== "string" ||
-    typeof heading.title !== "string" ||
-    !Array.isArray(heading.headingPath) ||
-    typeof heading.level !== "number" ||
-    typeof heading.startPage !== "number" ||
-    typeof heading.order !== "number" ||
-    typeof heading.extractionMethod !== "string"
-  ) {
-    return undefined;
-  }
-
-  return {
-    sourceDocumentId: heading.sourceDocumentId,
-    title: heading.title,
-    headingPath: heading.headingPath.filter((entry): entry is string => typeof entry === "string"),
-    level: heading.level,
-    startPage: heading.startPage,
-    endPage: typeof heading.endPage === "number" ? heading.endPage : undefined,
-    order: heading.order,
-    extractionMethod: heading.extractionMethod as SourceHeadingDraft["extractionMethod"],
-  };
-}
-
 function defaultSourceDocumentId(path: string): string {
   return `source_document:${basename(path)
     .replace(/\.[^.]+$/, "")
     .toLowerCase()}`;
 }
 
-function sourceHeadingDraftFromProjection(
-  heading: SourceHeadingProjection,
-  sourceDocumentId = heading.sourceDocumentId,
-): SourceHeadingDraft {
-  return {
-    sourceDocumentId,
-    title: heading.title,
-    headingPath: heading.headingPath,
-    level: heading.level,
-    startPage: heading.startPage,
-    endPage: heading.endPage,
-    order: heading.order,
-    extractionMethod: heading.extractionMethod,
-  };
-}
-
-function persistedSourceHeadingId(
-  heading: SourceHeadingProjection,
-  sourceDocumentId = heading.sourceDocumentId,
-): string {
-  return sourceHeadingRecordId(sourceHeadingDraftFromProjection(heading, sourceDocumentId));
-}
-
-function cliSourceHeading(
-  heading: SourceHeadingProjection,
-  sourceDocumentId = heading.sourceDocumentId,
+function cliSourceOutlineEntry(
+  outlineEntry: SourceOutlineEntry,
+  sourceDocumentId = outlineEntry.sourceDocumentId,
 ): Record<string, unknown> {
-  const persistedId = persistedSourceHeadingId(heading, sourceDocumentId);
   return {
-    id: persistedId,
-    persistedSourceHeadingId: persistedId,
-    citationTarget: persistedId,
-    extractionHeadingId: heading.id,
-    projectionHeadingId: heading.id,
+    id: outlineEntry.id,
     sourceDocumentId,
-    title: heading.title,
-    headingPath: heading.headingPath,
-    level: heading.level,
-    startPage: heading.startPage,
-    endPage: heading.endPage,
-    order: heading.order,
-    extractionMethod: heading.extractionMethod,
+    title: outlineEntry.title,
+    outlinePath: outlineEntry.outlinePath,
+    level: outlineEntry.level,
+    startPage: outlineEntry.startPage,
+    endPage: outlineEntry.endPage,
+    order: outlineEntry.order,
+    extractionMethod: outlineEntry.extractionMethod,
   };
-}
-
-function findSourceHeading(
-  headings: readonly SourceHeadingProjection[],
-  sourceDocumentId: string,
-  selector: string,
-): SourceHeadingProjection | undefined {
-  return headings.find((candidate) => {
-    const persistedId = persistedSourceHeadingId(candidate, sourceDocumentId);
-    return (
-      candidate.id === selector ||
-      persistedId === selector ||
-      candidate.title === selector ||
-      candidate.headingPath.join(" / ") === selector
-    );
-  });
 }
 
 type PageRange = { readonly start: number; readonly end: number };
-
-function pageRangeForHeading(
-  path: string,
-  sourceDocumentId: string,
-  headings: readonly SourceHeadingProjection[],
-  selector: string,
-  argv: readonly string[],
-): PageRange | CliFailure {
-  const heading = findSourceHeading(headings, sourceDocumentId, selector);
-  if (!heading) {
-    return operationFailure(
-      "source read",
-      "source.read",
-      argv,
-      `No Source Heading matched '${selector}'.`,
-      `Run originium source headings ${path} --source ${sourceDocumentId} and pass data.headings[].id.`,
-    );
-  }
-  return { start: heading.startPage, end: heading.endPage ?? heading.startPage };
-}
 
 function parsePageRangeArgument(argv: readonly string[]): PageRange | CliFailure | undefined {
   const pages = valueAfter(argv, "--pages") ?? valueAfter(argv, "--page-range");
@@ -3064,6 +4060,133 @@ function parsePageRangeArgument(argv: readonly string[]): PageRange | CliFailure
   const start = optionalIntegerAfter(argv, "--start-page") ?? optionalIntegerAfter(argv, "--from-page");
   const end = optionalIntegerAfter(argv, "--end-page") ?? optionalIntegerAfter(argv, "--to-page") ?? start;
   return start === undefined || end === undefined ? undefined : { start, end };
+}
+
+function citationPageRangeFromArgv(argv: readonly string[]): CitationDraft["pageRange"] | Error | undefined {
+  const raw = valueAfter(argv, "--pages") ?? valueAfter(argv, "--page-range");
+  if (raw) {
+    const pageRange = parseCitationPageRange(raw);
+    return pageRange ?? new Error(`Invalid page range '${raw}'.`);
+  }
+  const parsed = parsePageRangeArgument(argv);
+  if (!parsed) return undefined;
+  if ("ok" in parsed) return new Error(parsed.error.reason);
+  return { startPage: parsed.start, endPage: parsed.end };
+}
+
+function inferLocatorKind(
+  pageRange: CitationDraft["pageRange"] | undefined,
+  quote: string | undefined,
+  context: string | undefined,
+): CitationLocatorKind {
+  if (quote || context) return "quote-context";
+  if (pageRange) return "page-range";
+  return "whole-document";
+}
+
+function citationDraftFromInput(input: {
+  readonly pageId: string;
+  readonly sourceId: string;
+  readonly key: string;
+  readonly label: string;
+  readonly claim: string;
+  readonly quote?: string;
+  readonly context?: string;
+  readonly pageRange?: CitationDraft["pageRange"];
+  readonly locationHint?: string;
+  readonly projectionId?: string;
+  readonly textHash?: string;
+  readonly confidence: number;
+}): CitationDraft {
+  return {
+    wikiPageId: input.pageId,
+    sourceDocumentId: input.sourceId,
+    key: input.key,
+    label: input.label,
+    claim: input.claim || input.label,
+    locatorKind: inferLocatorKind(input.pageRange, input.quote, input.context),
+    pageRange: input.pageRange,
+    locationHint: input.locationHint,
+    quote: input.quote,
+    context: input.context,
+    projectionId: input.projectionId,
+    textHash: input.textHash,
+    validationStatus: "validated",
+    confidence: input.confidence,
+  };
+}
+
+function citationSetClause(draft: CitationDraft): string {
+  return [
+    `key = "${escapeSurrealString(draft.key)}"`,
+    `label = "${escapeSurrealString(draft.label)}"`,
+    `claim = "${escapeSurrealString(draft.claim)}"`,
+    `locator_kind = "${draft.locatorKind}"`,
+    `page_range = ${draft.pageRange ? citationPageRangeObject(draft.pageRange) : "NONE"}`,
+    `location_hint = ${optionalSurrealString(draft.locationHint)}`,
+    `quote = ${optionalSurrealString(draft.quote)}`,
+    `context = ${optionalSurrealString(draft.context)}`,
+    `projection_id = ${optionalSurrealString(draft.projectionId)}`,
+    `text_hash = ${optionalSurrealString(draft.textHash)}`,
+    `validation_status = "${draft.validationStatus}"`,
+    `confidence = ${draft.confidence}`,
+    "created_at = time::now()",
+  ].join(", ");
+}
+
+function citationDraftToLintRecord(draft: CitationDraft): Record<string, unknown> {
+  return {
+    key: draft.key,
+    label: draft.label,
+    claim: draft.claim,
+    locator_kind: draft.locatorKind,
+    page_range: draft.pageRange,
+    location_hint: draft.locationHint,
+    quote: draft.quote,
+    context: draft.context,
+    projection_id: draft.projectionId,
+    text_hash: draft.textHash,
+    validation_status: draft.validationStatus,
+    confidence: draft.confidence,
+  };
+}
+
+function citationLocatorUpdateClauses(input: {
+  readonly pageRange?: CitationDraft["pageRange"];
+  readonly quote?: string;
+  readonly context?: string;
+  readonly locationHint?: string;
+  readonly projectionId?: string;
+  readonly textHash?: string;
+  readonly confidence?: number;
+}): readonly string[] {
+  const updates: string[] = [];
+  if (input.pageRange) {
+    updates.push(`page_range = ${citationPageRangeObject(input.pageRange)}`);
+    updates.push('locator_kind = "page-range"');
+  }
+  if (input.quote !== undefined) {
+    updates.push(`quote = ${optionalSurrealString(input.quote)}`);
+    updates.push('locator_kind = "quote-context"');
+  }
+  if (input.context !== undefined) {
+    updates.push(`context = ${optionalSurrealString(input.context)}`);
+    updates.push('locator_kind = "quote-context"');
+  }
+  if (input.locationHint !== undefined) updates.push(`location_hint = ${optionalSurrealString(input.locationHint)}`);
+  if (input.projectionId !== undefined) updates.push(`projection_id = ${optionalSurrealString(input.projectionId)}`);
+  if (input.textHash !== undefined) updates.push(`text_hash = ${optionalSurrealString(input.textHash)}`);
+  if (input.confidence !== undefined) updates.push(`confidence = ${input.confidence}`);
+  updates.push('validation_status = "validated"');
+  return updates;
+}
+
+function citationPageRangeObject(pageRange: NonNullable<CitationDraft["pageRange"]>): string {
+  return `{ start_page: ${pageRange.startPage}, end_page: ${pageRange.endPage}, label: "${formatCitationPageRange(pageRange)}" }`;
+}
+
+function optionalSurrealString(value: string | undefined): string {
+  return value === undefined || value.length === 0 ? "NONE" : `"${escapeSurrealString(value)}"`;
 }
 
 function isEnvironmentBlocked(reason: string): boolean {
@@ -3122,10 +4245,11 @@ function optionalIntegerAfter(argv: readonly string[], flag: string): number | u
   return Number.isFinite(parsed) ? parsed : undefined;
 }
 
-function sourceAnchorRecordId(sourceDocumentId: string, headingId: string, title: string): string {
-  const sourcePart = toSurrealIdPart(toSlug(sourceDocumentId.replace(/^[^:]+:/, "")));
-  const headingPart = toSurrealIdPart(toSlug(headingId.replace(/^[^:]+:/, "")));
-  return `source_anchor:${sourcePart}_${headingPart}_${toSurrealIdPart(toSlug(title))}`;
+function optionalFloatAfter(argv: readonly string[], flag: string): number | undefined {
+  const value = valueAfter(argv, flag);
+  if (value === undefined) return undefined;
+  const parsed = Number.parseFloat(value);
+  return Number.isFinite(parsed) ? parsed : undefined;
 }
 
 function positionalArgs(argv: readonly string[], startIndex: number): readonly string[] {

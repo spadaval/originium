@@ -33,27 +33,27 @@ export type PdfToolFailure = {
   readonly action: string;
 };
 
-export type SourceHeadingProjection = {
+export type SourceOutlineEntry = {
   readonly id: string;
   readonly sourceDocumentId: string;
   readonly title: string;
-  readonly headingPath: readonly string[];
+  readonly outlinePath: readonly string[];
   readonly level: number;
   readonly startPage: number;
   readonly endPage?: number;
   readonly order: number;
-  readonly extractionMethod: "outline" | "table-of-contents" | "heading-detection" | "synthetic";
+  readonly extractionMethod: "outline" | "table-of-contents" | "outline-detection" | "synthetic";
 };
 
 export type IngestionChunkProjection = {
   readonly sourceDocumentId: string;
-  readonly headingId: string;
+  readonly outlineId: string;
   readonly pageRange: {
     readonly start: number;
     readonly end: number;
   };
   readonly tokenEstimate: number;
-  readonly extractionMethod: SourceHeadingProjection["extractionMethod"];
+  readonly extractionMethod: SourceOutlineEntry["extractionMethod"];
   readonly text: string;
 };
 
@@ -84,7 +84,7 @@ export type SourceTextSearchHit = {
     readonly end: number;
   };
   readonly snippet: string;
-  readonly nearestHeading?: SourceHeadingProjection;
+  readonly nearestOutline?: SourceOutlineEntry;
   readonly provenance: SourceTextProvenance;
   readonly warning: string;
 };
@@ -123,12 +123,12 @@ export async function createPdfSourceDocumentDraftFromFile(path: string): Promis
   });
 }
 
-export function parseTableOfContentsHeadings(
+export function parseTableOfContentsOutline(
   sourceDocumentId: string,
   contentsText: string,
-): readonly SourceHeadingProjection[] {
+): readonly SourceOutlineEntry[] {
   const lines = contentsText.split(/\r?\n/);
-  const headings: SourceHeadingProjection[] = [];
+  const outline: SourceOutlineEntry[] = [];
 
   for (const line of lines) {
     const match = line.match(/^(.+?)\s+(?:\.\s*){2,}(\d+)\s*$/);
@@ -139,14 +139,14 @@ export function parseTableOfContentsHeadings(
 
     const startPage = Number.parseInt(match[2], 10);
     const level = title.startsWith("Chapter ") ? 1 : 2;
-    const headingPath = level === 1 ? [title] : [nearestChapterTitle(headings), title].filter(Boolean);
-    const order = headings.length + 1;
+    const outlinePath = level === 1 ? [title] : [nearestChapterTitle(outline), title].filter(Boolean);
+    const order = outline.length + 1;
 
-    headings.push({
-      id: sourceHeadingId(sourceDocumentId, headingPath, startPage, order),
+    outline.push({
+      id: sourceOutlineEntryId(sourceDocumentId, outlinePath, startPage, order),
       sourceDocumentId,
       title,
-      headingPath,
+      outlinePath,
       level,
       startPage,
       order,
@@ -154,13 +154,15 @@ export function parseTableOfContentsHeadings(
     });
   }
 
-  return headings.map((heading, index) => {
-    const next = headings[index + 1];
-    return next && next.startPage > heading.startPage ? { ...heading, endPage: next.startPage } : heading;
+  return outline.map((outlineEntry, index) => {
+    const next = outline[index + 1];
+    return next && next.startPage > outlineEntry.startPage
+      ? { ...outlineEntry, endPage: next.startPage }
+      : outlineEntry;
   });
 }
 
-export function extractPdfHeadings(path: string, sourceDocumentId: string): readonly SourceHeadingProjection[] {
+export function extractPdfOutline(path: string, sourceDocumentId: string): readonly SourceOutlineEntry[] {
   const metadata = readPdfMetadata(path);
   const maxTocPage = Math.min(metadata.pageCount, 12);
 
@@ -168,15 +170,15 @@ export function extractPdfHeadings(path: string, sourceDocumentId: string): read
     const contentsText = execFileSync("pdftotext", ["-f", "1", "-l", String(maxTocPage), path, "-"], {
       encoding: "utf8",
     });
-    const headings = parseTableOfContentsHeadings(sourceDocumentId, contentsText);
-    if (headings.length > 0) return headings;
+    const outline = parseTableOfContentsOutline(sourceDocumentId, contentsText);
+    if (outline.length > 0) return outline;
 
     return [
       {
-        id: sourceHeadingId(sourceDocumentId, [metadata.title], 1, 1),
+        id: sourceOutlineEntryId(sourceDocumentId, [metadata.title], 1, 1),
         sourceDocumentId,
         title: metadata.title,
-        headingPath: [metadata.title],
+        outlinePath: [metadata.title],
         level: 1,
         startPage: 1,
         endPage: metadata.pageCount,
@@ -185,20 +187,20 @@ export function extractPdfHeadings(path: string, sourceDocumentId: string): read
       },
     ];
   } catch (error) {
-    throw toolFailure("pdf.headings", path, error, "Install poppler pdftotext and verify the PDF is extractable.");
+    throw toolFailure("pdf.outline", path, error, "Install poppler pdftotext and verify the PDF is extractable.");
   }
 }
 
 export function projectPdfChunk(
   path: string,
-  heading: SourceHeadingProjection,
+  outlineEntry: SourceOutlineEntry,
   options: { readonly maxTokens?: number } = {},
 ): IngestionChunkProjection {
   const maxTokens = options.maxTokens ?? 100_000;
-  const endPage = heading.endPage ?? heading.startPage;
+  const endPage = outlineEntry.endPage ?? outlineEntry.startPage;
 
   try {
-    const text = execFileSync("pdftotext", ["-f", String(heading.startPage), "-l", String(endPage), path, "-"], {
+    const text = execFileSync("pdftotext", ["-f", String(outlineEntry.startPage), "-l", String(endPage), path, "-"], {
       encoding: "utf8",
       maxBuffer: 20 * 1024 * 1024,
     }).trim();
@@ -206,17 +208,17 @@ export function projectPdfChunk(
     const boundedText = tokenEstimate > maxTokens ? trimToEstimatedTokens(text, maxTokens) : text;
 
     return {
-      sourceDocumentId: heading.sourceDocumentId,
-      headingId: heading.id,
-      pageRange: { start: heading.startPage, end: endPage },
+      sourceDocumentId: outlineEntry.sourceDocumentId,
+      outlineId: outlineEntry.id,
+      pageRange: { start: outlineEntry.startPage, end: endPage },
       tokenEstimate: Math.min(tokenEstimate, maxTokens),
-      extractionMethod: heading.extractionMethod,
+      extractionMethod: outlineEntry.extractionMethod,
       text: boundedText,
     };
   } catch (error) {
     throw toolFailure(
       "pdf.chunk",
-      `${path}#${heading.id}`,
+      `${path}#${outlineEntry.id}`,
       error,
       "Verify pdftotext can read the requested page range.",
     );
@@ -249,7 +251,7 @@ export function projectPdfText(
 
 export function searchPdfText(
   path: string,
-  headings: readonly SourceHeadingProjection[],
+  outline: readonly SourceOutlineEntry[],
   query: string,
   options: {
     readonly sourceDocumentId: string;
@@ -276,7 +278,7 @@ export function searchPdfText(
       sourceDocumentId: options.sourceDocumentId,
       pageRange: { start: page, end: page },
       snippet: snippetAround(pageText, matchIndex, normalizedQuery.length, snippetCharacters),
-      nearestHeading: nearestHeadingForPage(headings, page),
+      nearestOutline: nearestOutlineForPage(outline, page),
       provenance: sourceTextProvenance(pageText),
       warning: sourceTextProjectionWarning,
     });
@@ -290,33 +292,36 @@ export function estimateTokens(text: string): number {
   return Math.ceil(words * 1.35);
 }
 
-export function nearestHeadingForPage(
-  headings: readonly SourceHeadingProjection[],
+export function nearestOutlineForPage(
+  outline: readonly SourceOutlineEntry[],
   page: number,
-): SourceHeadingProjection | undefined {
-  return headings
-    .filter((heading) => heading.startPage <= page && (heading.endPage === undefined || heading.endPage >= page))
+): SourceOutlineEntry | undefined {
+  return outline
+    .filter(
+      (outlineEntry) =>
+        outlineEntry.startPage <= page && (outlineEntry.endPage === undefined || outlineEntry.endPage >= page),
+    )
     .sort((left, right) => right.startPage - left.startPage || right.order - left.order)[0];
 }
 
-function nearestChapterTitle(headings: readonly SourceHeadingProjection[]): string {
-  return [...headings].reverse().find((heading) => heading.level === 1)?.title ?? "";
+function nearestChapterTitle(outline: readonly SourceOutlineEntry[]): string {
+  return [...outline].reverse().find((outlineEntry) => outlineEntry.level === 1)?.title ?? "";
 }
 
-function sourceHeadingId(
+function sourceOutlineEntryId(
   sourceDocumentId: string,
-  headingPath: readonly string[],
+  outlinePath: readonly string[],
   startPage: number,
   order: number,
 ): string {
-  const suffix = headingPath
+  const suffix = outlinePath
     .join(" ")
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "_")
     .replace(/^_+|_+$/g, "")
     .slice(0, 80);
 
-  return `source_heading:${sourceDocumentId.replace(/^source_document:/, "")}_${order}_${startPage}_${suffix}`;
+  return `source_outline:${sourceDocumentId.replace(/^source_document:/, "")}_${order}_${startPage}_${suffix}`;
 }
 
 function trimToEstimatedTokens(text: string, maxTokens: number): string {

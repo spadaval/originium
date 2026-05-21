@@ -18,10 +18,11 @@ Indexing is not a page-by-page summary. Build a maintained knowledge layer.
 
 ## Recommended Loop
 
-1. Start an Agent Session and list Source Headings for the Source Document.
+1. Start an Agent Session and list Source Text Projection coverage for the
+   Source Document.
 2. Choose a bounded chapter, section cluster, or theme to index.
-3. Read the relevant chunks with `source chunk`. For broad or noisy headings,
-   use `source search` or `source read --pages <start-end>` to locate the real
+3. Read the relevant chunks with `source chunk`. For broad or noisy ranges, use
+   `source search` or `source read --pages <start-end>` to locate the real
    evidence before synthesizing.
 4. Run concept reuse checks before writing:
 

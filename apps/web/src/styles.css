@@ -892,13 +892,13 @@ dd {
   background: oklch(83% 0.07 168);
 }
 
-.graph-map-node.source-heading {
+.graph-map-node.source-document {
   border-color: oklch(75% 0.035 58);
   background: oklch(92% 0.027 58);
   color: oklch(35% 0.065 48);
 }
 
-.graph-map-node.source-heading strong {
+.graph-map-node.source-document strong {
   color: oklch(31% 0.06 48);
 }
 

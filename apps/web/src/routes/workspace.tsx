@@ -159,21 +159,8 @@ const getWorkspacePageData = createServerFn({ method: "GET" })
     }
 
     const selectedNode = graphResult.data.nodes.find((node) => node.selected);
-    if (selectedNode?.kind !== "wiki_page") {
-      return {
-        session,
-        pages: listResult.data,
-        selectedRecordId,
-        graph: graphResult.data,
-        agentActivity: activityResult?.ok ? activityResult.data.map(serializableActivityRecord) : [],
-        changeLogs: changeLogResult?.ok ? changeLogResult.data.map(serializableChangeLogRecord) : [],
-        sessionError,
-        activityError: activityResult && !activityResult.ok ? activityResult.error : undefined,
-        changeLogError: changeLogResult && !changeLogResult.ok ? changeLogResult.error : undefined,
-      };
-    }
 
-    const pageResult = await readWikiPage({ pageId: selectedNode.id });
+    const pageResult = await readWikiPage({ pageId: selectedNode?.id ?? selectedRecordId });
     if (!pageResult.ok) {
       return {
         session,
@@ -580,35 +567,6 @@ function PageTab({
     );
   }
 
-  if (selectedNode?.kind === "source_heading") {
-    return (
-      <section className="page-region" aria-labelledby="page-heading">
-        <div className="panel-heading">
-          <div>
-            <h2 id="page-heading">Wiki Page</h2>
-            <span className="quiet-label">Selected: Source Heading</span>
-          </div>
-          {selectedNode.navigation.sourceDocumentId ? (
-            <Link
-              to="/sources"
-              search={{ sourceDocumentId: selectedNode.navigation.sourceDocumentId }}
-              className="button-link secondary small"
-            >
-              Open source
-            </Link>
-          ) : null}
-        </div>
-        <div className="empty-state inline-empty" role="status">
-          <strong>Select a Wiki Page</strong>
-          <p>
-            {navigationSummary(selectedNode)} is source context. Choose a Wiki Page node or focus chip to edit Page Body
-            text.
-          </p>
-        </div>
-      </section>
-    );
-  }
-
   if (!page) {
     return (
       <section className="page-region" aria-labelledby="page-heading">
@@ -776,16 +734,6 @@ function serializableScalar(value: unknown): string | number | boolean | null {
   }
   if (value === undefined) return null;
   return JSON.stringify(value);
-}
-
-function navigationSummary(node: GraphNeighborhoodNode | undefined): string {
-  if (!node) return "No graph node selected";
-  if (node.kind === "wiki_page") return node.navigation.slug ? `Wiki Page slug ${node.navigation.slug}` : node.id;
-  const pageRange =
-    node.navigation.endPage && node.navigation.endPage !== node.navigation.startPage
-      ? `pages ${node.navigation.startPage}-${node.navigation.endPage}`
-      : `page ${node.navigation.startPage ?? "unknown"}`;
-  return `${node.navigation.sourceDocumentId ?? "Unknown Source Document"} - ${pageRange}`;
 }
 
 function WorkspacePending() {

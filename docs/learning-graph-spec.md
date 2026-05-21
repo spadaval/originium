@@ -32,8 +32,7 @@ The Domain Graph is the objective-ish, source-backed map of the material.
 
 It contains:
 
-- Source Documents and Source Headings.
-- Source Anchors and Source Text Projections.
+- Source Documents and Source Text Projections.
 - Wiki Pages and concept-like synthesis records.
 - Citations and evidence provenance.
 - Concept structure, including prerequisite, hierarchy, contrast, application,
@@ -93,8 +92,8 @@ Minimum useful Domain Graph relationships:
   system.
 - `concept_exemplified_by`: an example, case, source section, or problem makes
   a concept concrete.
-- `concept_supported_by`: a concept or concept edge is supported by a Source
-  Anchor.
+- `concept_supported_by`: a concept or concept edge is supported by a Citation
+  to a Source Document with citation-local locator metadata.
 
 Useful edge fields:
 
@@ -102,7 +101,7 @@ Useful edge fields:
 - `confidence`
 - `review_status`
 - `created_session`
-- `source_anchor`
+- `citation_locator`
 - `strength`
 
 Prerequisite-like edges should never be treated as true merely because they are
@@ -170,7 +169,8 @@ Answer retrieval should remain global and evidence-first.
 
 It should:
 
-- Search across Wiki Pages, concepts, source anchors, and projections.
+- Search across Wiki Pages, concepts, Source Documents, citation locators, and
+  projections.
 - Rank by relevance, citation coverage, source authority, graph centrality,
   importance, and contradiction handling.
 - Use prerequisite or concept structure only as supporting context.
@@ -217,7 +217,7 @@ consistent with the existing CLI contract.
 
 - Do not replace Graph Wiki retrieval with lesson planning.
 - Do not store learner mastery directly on Domain Graph nodes.
-- Do not treat every Source Heading, Wiki Page, or reference record as a
+- Do not treat every source section, Wiki Page, or reference record as a
   teachable concept.
 - Do not allow unsupported prerequisite edges to influence answer truth.
 - Do not require the web UI to be redesigned before CLI learning workflows can
@@ -237,4 +237,3 @@ A first useful milestone should prove:
    Domain Graph.
 6. A `learn next`-style workflow can choose a local next concept from learner
    state and prerequisite readiness.
-

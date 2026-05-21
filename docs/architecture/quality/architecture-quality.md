@@ -30,9 +30,9 @@ amplification, information leakage, or misplaced responsibility.
 - **Abstraction leverage**: caller complexity removed relative to interface
   complexity.
 
-Use concrete Originium nouns: app, package, Source Document, Source Heading,
-Wiki Page, Citation, Change Log, CLI command, SurrealDB query, file bucket,
-schema, route, or UI view. Avoid generic `module` when an owning concept is
+Use concrete Originium nouns: app, package, Source Document, Source Text
+Projection, Wiki Page, Citation, Change Log, CLI command, SurrealDB query, file
+bucket, schema, route, or UI view. Avoid generic `module` when an owning concept is
 available.
 
 Use **boundary** for runtime, process, database, credential, or trust

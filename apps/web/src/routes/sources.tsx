@@ -3,9 +3,9 @@ import { createServerFn } from "@tanstack/react-start";
 import {
   listSourceDocuments,
   readSourceDocument,
-  readSourceHeadings,
+  readSourceOutline,
   type SourceDocumentRecord,
-  type SourceHeadingRecord,
+  type SourceOutlineRecord,
   type WebGraphWikiOperationFailure,
   type WebGraphWikiValidationFailure,
 } from "../server/graph-wiki.ts";
@@ -18,10 +18,10 @@ type SourcesPageData = {
   readonly documents: readonly SourceDocumentRecord[];
   readonly selectedDocumentId?: string;
   readonly selectedDocument?: SourceDocumentRecord;
-  readonly headings: readonly SourceHeadingRecord[];
+  readonly outline: readonly SourceOutlineRecord[];
   readonly listError?: SourceDataError;
   readonly detailError?: SourceDataError;
-  readonly headingsError?: SourceDataError;
+  readonly outlineError?: SourceDataError;
 };
 
 type SourceDataError = WebGraphWikiOperationFailure | WebGraphWikiValidationFailure;
@@ -42,7 +42,7 @@ const getSourcesPageData = createServerFn({ method: "GET" })
     if (!listResult.ok) {
       return {
         documents: [],
-        headings: [],
+        outline: [],
         listError: listResult.error,
       };
     }
@@ -51,7 +51,7 @@ const getSourcesPageData = createServerFn({ method: "GET" })
     if (!selectedDocumentId) {
       return {
         documents: listResult.data,
-        headings: [],
+        outline: [],
       };
     }
 
@@ -61,7 +61,7 @@ const getSourcesPageData = createServerFn({ method: "GET" })
       return {
         documents: listResult.data,
         selectedDocumentId,
-        headings: [],
+        outline: [],
         detailError: detailResult.error,
       };
     }
@@ -71,18 +71,18 @@ const getSourcesPageData = createServerFn({ method: "GET" })
       return {
         documents: listResult.data,
         selectedDocumentId,
-        headings: [],
+        outline: [],
       };
     }
 
-    const headingsResult = await readSourceHeadings(selectedDocument.id);
-    if (!headingsResult.ok) {
+    const outlineResult = await readSourceOutline(selectedDocument.id);
+    if (!outlineResult.ok) {
       return {
         documents: listResult.data,
         selectedDocumentId: selectedDocument.id,
         selectedDocument,
-        headings: [],
-        headingsError: headingsResult.error,
+        outline: [],
+        outlineError: outlineResult.error,
       };
     }
 
@@ -90,7 +90,7 @@ const getSourcesPageData = createServerFn({ method: "GET" })
       documents: listResult.data,
       selectedDocumentId: selectedDocument.id,
       selectedDocument,
-      headings: headingsResult.data,
+      outline: outlineResult.data,
     };
   });
 
@@ -185,7 +185,7 @@ function SourcesRoute() {
               {data.detailError ? (
                 <SourceDataErrorPanel title="Source Document detail failed" error={data.detailError} />
               ) : selectedDocument ? (
-                <SourceMetadata document={selectedDocument} headingCount={data.headings.length} />
+                <SourceMetadata document={selectedDocument} outlineCount={data.outline.length} />
               ) : data.selectedDocumentId ? (
                 <div className="state-panel slim" role="status">
                   <strong>Source Document not found</strong>
@@ -217,27 +217,27 @@ function SourcesRoute() {
 
             <section className="headings-pane" aria-labelledby="headings-heading">
               <div className="panel-heading tight">
-                <h3 id="headings-heading">Source Headings</h3>
-                <span className="quiet-label">{data.headings.length}</span>
+                <h3 id="headings-heading">Document Outline</h3>
+                <span className="quiet-label">{data.outline.length}</span>
               </div>
-              {data.headingsError ? (
-                <SourceDataErrorPanel title="Source Headings failed" error={data.headingsError} />
-              ) : data.headings.length > 0 ? (
+              {data.outlineError ? (
+                <SourceDataErrorPanel title="Document outline failed" error={data.outlineError} />
+              ) : data.outline.length > 0 ? (
                 <ol className="heading-list">
-                  {data.headings.map((heading) => (
-                    <li key={heading.id}>
-                      <span className="heading-level">H{heading.level}</span>
+                  {data.outline.map((entry) => (
+                    <li key={entry.id}>
+                      <span className="heading-level">P</span>
                       <span>
-                        <strong>{heading.title}</strong>
-                        <small>{headingMeta(heading)}</small>
+                        <strong>{outlineTitle(entry)}</strong>
+                        <small>{outlineMeta(entry)}</small>
                       </span>
                     </li>
                   ))}
                 </ol>
               ) : (
                 <div className="empty-state inline-empty" role="status">
-                  <strong>No Source Headings</strong>
-                  <p>Heading anchors will appear after extraction.</p>
+                  <strong>No document outline</strong>
+                  <p>Outline projection metadata will appear after extraction.</p>
                 </div>
               )}
             </section>
@@ -310,17 +310,17 @@ function SourcePdfPane({
 
 function SourceMetadata({
   document,
-  headingCount,
+  outlineCount,
 }: {
   readonly document: SourceDocumentRecord;
-  readonly headingCount: number;
+  readonly outlineCount: number;
 }) {
   const fields = [
     { label: "Record", value: document.id },
     { label: "Kind", value: document.kind || "Unknown" },
     { label: "MIME type", value: document.mime_type || "Unknown" },
     { label: "Pages", value: document.page_count === undefined ? "Unknown" : String(document.page_count) },
-    { label: "Source Headings", value: String(headingCount) },
+    { label: "Outline entries", value: String(outlineCount) },
     { label: "SHA-256", value: document.sha256 || "Unknown" },
     { label: "Source URI", value: document.source_uri || "Unknown" },
     { label: "Created", value: formatDate(document.created_at) },
@@ -397,10 +397,15 @@ function sourceRowMeta(document: SourceDocumentRecord): string {
   return `${document.kind || "source"} - ${pages} - ${updated}`;
 }
 
-function headingMeta(heading: SourceHeadingRecord): string {
-  const endPage = heading.end_page && heading.end_page !== heading.start_page ? `-${heading.end_page}` : "";
-  const path = heading.heading_path.length > 1 ? heading.heading_path.join(" / ") : heading.extraction_method;
-  return `Page ${heading.start_page}${endPage} - ${path}`;
+function outlineMeta(entry: SourceOutlineRecord): string {
+  const endPage = entry.end_page && entry.end_page !== entry.start_page ? `-${entry.end_page}` : "";
+  const projection = entry.projection_version ?? entry.extraction_method;
+  return `Page ${entry.start_page}${endPage} - ${projection}`;
+}
+
+function outlineTitle(entry: SourceOutlineRecord): string {
+  const endPage = entry.end_page && entry.end_page !== entry.start_page ? `-${entry.end_page}` : "";
+  return `Source Text Projection ${entry.start_page}${endPage}`;
 }
 
 function formatCount(count: number, singular: string): string {

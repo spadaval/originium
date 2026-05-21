@@ -6,10 +6,13 @@ Originium is a Graph Wiki: a persistent, agent-maintained knowledge base that tu
 
 The system is not a generic RAG index. Raw sources remain available as
 canonical evidence, but the durable product is the maintained wiki: pages,
-citations, links, source headings, retrieval caches, logs, and projections that
-compound over time as agents absorb more material.
+citations, links, retrieval caches, logs, and projections that compound over
+time as agents absorb more material.
 
-The first proof of concept should prove that a large PDF can be imported, processed chapter by chapter, converted into useful Wiki Pages, cited back to stable source headings, and queried by agents through a CLI.
+The first proof of concept should prove that a large PDF can be imported,
+processed page range by page range, converted into useful Wiki Pages, cited back
+to Source Documents with precise locator metadata, and queried by agents through
+a CLI.
 
 ## Design Principles
 
@@ -56,12 +59,12 @@ new hash instead of mutating the old evidence record.
 
 Extracted PDF body text must not be copied into Wiki Pages or treated as
 canonical evidence. The system may persist Source Text Projections as lossy,
-rebuildable search caches that store extracted text, page range, heading
-context, extraction provenance, and retrieval metadata. Projections may lose
+rebuildable search caches that store extracted text, page range, outline or
+section context, extraction provenance, and retrieval metadata. Projections may lose
 formatting, diagrams, emphasis, tables, cross-page layout, image content, and
 reading order. Ingestion and answer workflows may use those projections for
 candidate search and agent reading, but citation evidence must still point back
-to Source Documents through Source Headings or other Source Anchors.
+to Source Documents through citation-local locator metadata.
 
 The CLI should manage local development SurrealDB processes instead of assuming an ambient server is correctly configured. It should still support connecting to an external SurrealDB URL.
 
@@ -98,7 +101,6 @@ Use schemafull SurrealDB tables for core records and relations:
 
 - `source_document`
 - `source_text_projection`
-- `source_heading`
 - `wiki_page`
 - `agent_session`
 - `change_log`
@@ -140,7 +142,7 @@ Initial fields:
 
 Source Documents are the immutable canonical evidence boundary. Re-importing a
 changed file creates a new Source Document identity because the evidence hash
-changed. Derived headings, projections, embeddings, Wiki Pages, and citations
+changed. Derived outline metadata, projections, embeddings, Wiki Pages, and citations
 may be rebuilt or revised around that stable evidence record, but they do not
 overwrite the Source Document's evidentiary content.
 
@@ -152,7 +154,8 @@ reading, and evidence discovery.
 Initial fields:
 
 - `source_document`
-- `source_heading`
+- `page_number` or `page_start`/`page_end`
+- `outline_path` or section label when extraction found one
 - `page_start`
 - `page_end`
 - `text`
@@ -173,40 +176,15 @@ Rules:
 - Projection text may be shown to agents with provenance and warning text.
 - Projection text must not be copied wholesale into Wiki Pages, logs, beads, or
   Change Logs.
-- Citation targets should remain Source Headings or other Source Anchors, not
-  projection rows.
+- Citation targets should remain Source Documents, not projection rows.
 
-Granularity should use a middle path. Start with page-range projections aligned
-to Source Heading boundaries when possible. Split long headings into bounded
-page ranges when needed for extraction, indexing, or context limits. Avoid
-single-token, sentence, or arbitrary tiny chunks as the primary persisted shape,
-and avoid whole-document projections that are too coarse to cite, inspect, or
-rerank usefully.
-
-### Source Heading
-
-A heading extracted from a Source Document. Source Headings are the default citation anchors.
-
-Initial fields:
-
-- `source_document`
-- `title`
-- `heading_path`
-- `level`
-- `start_page`
-- `end_page`
-- `order`
-- `destination`
-
-The system should use the PDF table of contents, outlines, annotations, or extracted heading-like text when available. If a source lacks clean headings, ingestion should create coarse synthetic headings with clear provenance.
-
-Heading extraction should use a layered fallback:
-
-1. PDF outline/bookmarks when available.
-2. Table-of-contents parsing when outline data is missing or incomplete.
-3. Heading-like text detection from extracted page text as a last resort.
-
-Each extracted Source Heading should record the extraction method so low-confidence headings are visible to agents and users.
+Granularity should use a middle path. For paginated Source Documents, persist
+one rebuildable projection per page as the default shape. Page-range reads,
+chapter reads, and token-budgeted Ingestion Chunks should be derived from those
+page projections or directly from the Source Document rather than persisted as
+canonical document sections. Avoid single-token, sentence, or arbitrary tiny
+chunks as the primary persisted shape, and avoid whole-document projections that
+are too coarse to cite, inspect, or rerank usefully.
 
 ### Ingestion Chunk
 
@@ -214,12 +192,13 @@ A token-budgeted slice used during Chapter Ingestion.
 
 Chunking rule:
 
-- Prefer Source Heading boundaries.
-- Split only when a heading exceeds the configured token budget.
+- Prefer document-local page ranges and outline metadata for human orientation.
+- Split only when a selected page range exceeds the configured token budget.
 - Keep chunk size configurable.
 - Start with a practical default around 100k estimated tokens.
 - Treat chunk text as an agent-readable projection from the stored Source Document, not as canonical wiki state.
-- Persist chunk metadata only when useful: source document, source heading, page range, token estimate, projection identifiers, and extraction method.
+- Persist chunk metadata only when useful: source document, page range, token
+  estimate, projection identifiers, outline metadata, and extraction method.
 
 ## Wiki Model
 
@@ -247,12 +226,14 @@ The marker is only a handle. The canonical citation target is a graph relation.
 
 ## Record Identity
 
-Imported Source Documents and Source Headings should use deterministic record IDs where practical.
+Imported Source Documents and Wiki Pages should use deterministic record IDs
+where practical.
 
 Recommended ID inputs:
 
 - Source Document: normalized title or filename plus a short hash of the whole file, for example `source_document:ia_mining_dg_2f8a91c4`.
-- Source Heading: source document ID plus normalized heading path, page range, and order, for example `source_heading:ia_mining_dg_2f8a91c4_chapter_2_curwb_architecture`.
+- Source Text Projection: source document ID plus page number or page range and
+  extraction version when persisted.
 - Wiki Page: normalized slug from title, with explicit conflict handling.
 - Agent Session and Change Log: generated IDs.
 
@@ -264,15 +245,17 @@ Use Surreal graph relations for relationships that need metadata.
 
 ### `cites`
 
-Connects a Wiki Page to a Source Heading.
+Connects a Wiki Page to a Source Document.
 
 Shape:
 
 ```sql
-RELATE wiki_page:fm_1000->cites->source_heading:fm_shield_ruggedized_enclosure
+RELATE wiki_page:fm_1000->cites->source_document:fm_shield_manual
 SET
   key = "fm1000-enclosure",
   label = "ruggedized enclosure",
+  page_start = 12,
+  page_end = 12,
   quote = "FM-Shield Ruggedized Enclosure",
   created_at = time::now();
 ```
@@ -290,8 +273,9 @@ Connects graph records when an agent is explicitly asked to create a semantic li
 Potential endpoints:
 
 - Wiki Page to Wiki Page
-- Wiki Page to Source Heading
-- Source Heading to Source Heading
+- Wiki Page to Source Document
+- Wiki Page to source locator metadata through Citation relations, not Manual
+  Links
 
 Rules:
 
@@ -308,15 +292,16 @@ This is secondary to the Change Log, but useful for traversal.
 
 The POC retrieval model should use SurrealDB for hybrid candidate search and
 Originium graph semantics for reranking. SurrealDB over-fetches candidates with
-full-text and vector search across Wiki Pages, Source Headings, and Source Text
-Projections. Originium then reranks those candidates with graph authority:
-Citation relations, Manual Links, nearby Wiki Pages, source heading quality,
-and evidence proximity.
+full-text and vector search across Wiki Pages, Source Documents, and Source
+Text Projections. Originium then reranks those candidates with graph authority:
+Citation relations, Manual Links, nearby Wiki Pages, locator quality, and
+evidence proximity.
 
 Initial candidate records:
 
 - Wiki Pages, searched by `title` and `body`
-- Source Headings, searched by `title`, `heading_path`, and source metadata
+- Source Documents, searched by `title`, corpus/source metadata, and imported
+  outline metadata
 - Source Text Projections, searched by extracted `text`, page range,
   extraction provenance, and embeddings
 
@@ -326,18 +311,19 @@ Initial ranking signals:
 - Vector similarity when embeddings are available
 - Citation authority, such as inbound `cites` edges from Wiki Pages
 - Manual-link authority, such as inbound `manual_link` edges from other relevant records
-- Evidence proximity, such as a projection's Source Heading being cited by an
-  already relevant Wiki Page
-- Extraction confidence, such as PDF outline-derived heading context ranking
-  above low-confidence synthetic heading context
+- Evidence proximity, such as a projection page range overlapping a locator
+  cited by an already relevant Wiki Page
+- Extraction confidence, such as PDF outline-derived context ranking above
+  low-confidence synthetic section context
 
 Initial embedding engine:
 
 - Use Ollama for local embeddings.
 - Default local model: `nomic-embed-text` unless a better local embedding model is configured.
 - Keep embedding generation behind a provider interface so the system can swap embedding engines later without changing graph schema.
-- Embed Wiki Pages and Source Text Projections first. Source Headings can rely
-  on title/path metadata initially unless heading-level embeddings prove useful.
+- Embed Wiki Pages and Source Text Projections first. Source Documents can rely
+  on title/source metadata initially unless document-level embeddings prove
+  useful.
 
 Search jobs should stay distinct:
 
@@ -346,21 +332,23 @@ Search jobs should stay distinct:
   Links over raw source text.
 - Answer retrieval finds the best synthesized answer context. It should search
   Wiki Pages first, then use graph reranking and Citation relations to pull
-  supporting Source Headings and Source Text Projections.
+  supporting Source Documents and Source Text Projections.
 - Evidence search finds source-backed support or disagreement. It should search
-  Source Headings and Source Text Projections, show extraction provenance and
+  Source Documents and Source Text Projections, show extraction provenance and
   page ranges, and keep Source Documents as the final evidence boundary.
 - Graph neighborhood inspection starts from known records and traverses
-  Citations, Manual Links, edited-in sessions, and nearby Source Headings. It is
-  not a text search substitute.
+  Citations, Manual Links, edited-in sessions, and nearby Wiki Pages or cited
+  Source Documents. It is not a text search substitute.
 
 Preferred answer flow:
 
 1. Search Wiki Pages first.
-2. Follow Citation relations to Source Headings for evidence.
+2. Follow Citation relations to Source Documents and citation-local locators for
+   evidence.
 3. Search or read Source Text Projections when the answer needs source
    verification, disagreement checks, or additional context.
-4. Fall back to Source Heading search when the wiki has not yet synthesized the topic.
+4. Fall back to Source Document/projection search when the wiki has not yet
+   synthesized the topic.
 5. Rebuild or refresh projections from the Source Document when projection
    provenance is stale or too lossy for the answer.
 
@@ -369,10 +357,11 @@ Do not build the POC around raw PDF text search as the primary answer path. The 
 Contradiction handling should remain evidence-first without hardcoding a
 contradiction schema for the POC. When sources or Wiki Pages disagree, the
 answer workflow should surface the competing cited claims, their Source
-Headings, and relevant Source Text Projections. Wiki Pages should state the
-disagreement in prose with Citation Markers and preserve graph evidence through
-Citation relations. Add a dedicated contradiction record or relation only after
-repeated workflows show the fields, lifecycle, and review semantics needed.
+Documents, citation-local locators, and relevant Source Text Projections. Wiki
+Pages should state the disagreement in prose with Citation Markers and preserve
+graph evidence through Citation relations. Add a dedicated contradiction record
+or relation only after repeated workflows show the fields, lifecycle, and review
+semantics needed.
 
 ## Change Log
 
@@ -438,25 +427,28 @@ originium session show <session-id>
 originium log show --session <session-id>
 
 originium source import-pdf <path>
-originium source headings <source-id>
-originium source chunk <source-id> --heading <heading-id> --max-tokens 100000
+originium source projections rebuild --source <source-id>
+originium source read --source <source-id> --pages <start-end>
 
 originium page create --title <title>
 originium page read <page-id-or-slug>
 originium page update <page-id-or-slug> --body-file <path>
 originium page search <query>
 
-originium citation add --page <page> --key <key> --heading <heading>
+originium citation add --page <page> --key <key> --source <source-document> --pages <start-end>
 originium citation list --page <page>
 originium citation validate --page <page>
 
 originium link add --from <record-id> --to <record-id> --label <label>
 originium link list <record-id>
 
-originium ingest chapter --source <source-id> --heading <heading-id>
+originium ingest chapter --source <source-id> --pages <start-end>
 ```
 
-The CLI should print useful technical errors. A failed import should name the file path, operation, and reason. A failed citation add should name the page, marker key, target heading, and concrete validation failure.
+The CLI should print useful technical errors. A failed import should name the
+file path, operation, and reason. A failed citation add should name the page,
+marker key, target Source Document, locator fields, and concrete validation
+failure.
 
 ## Package Boundaries
 
@@ -464,7 +456,7 @@ Initial TypeScript package/app shape:
 
 - `packages/domain`: Graph Wiki domain types, validation, ID helpers, citation-marker parsing, and pure policies.
 - `packages/surreal`: SurrealDB connection, schema application, table/relation access, file bucket helpers, retrieval queries, and logging wrappers.
-- `packages/pdf-ingest`: PDF metadata, heading extraction, page-range extraction, Source Text Projection generation, and token-budgeted chunk projection.
+- `packages/pdf-ingest`: PDF metadata, outline metadata extraction, page-range extraction, per-page Source Text Projection generation, and token-budgeted chunk projection.
 - `apps/cli`: agent-facing CLI commands composed from domain, SurrealDB, and PDF ingestion packages.
 - `apps/web`: TanStack Start web shell and host-direct backend seams for Source Document, Wiki Page, Agent Session, Change Log, Agent Activity, and PDF streaming workflows.
 - `.agents/skills/graph-wiki`: repo-local agent instructions for using the CLI, preserving citation markers, and respecting the Graph Wiki model.
@@ -478,9 +470,9 @@ and future workers should use the same package seams.
 The POC ingestion loop:
 
 1. Import PDF into a Surreal file bucket.
-2. Extract PDF metadata and source headings.
-3. Pick one Source Heading or chapter.
-4. Create token-budgeted Ingestion Chunks for that heading.
+2. Extract PDF metadata, outline metadata, and per-page Source Text Projections.
+3. Pick one page range, chapter, or theme.
+4. Create token-budgeted Ingestion Chunks for that range when needed.
 5. Let an agent read the chunk or Source Text Projection and existing related Wiki Pages.
 6. The agent creates or updates Wiki Pages.
 7. The agent creates Citation relations for the citation markers it used.
@@ -498,9 +490,10 @@ The first end-to-end proof should run against `fixtures/source-documents/IA-Mini
 2. Apply schema.
 3. Import the PDF into a file bucket.
 4. Create a deterministic Source Document record.
-5. Extract Source Headings.
-6. Select one chapter.
-7. Create or read a Source Text Projection or Ingestion Chunk projection for that chapter.
+5. Extract outline metadata and rebuild per-page Source Text Projections.
+6. Select one chapter or page range.
+7. Create or read a Source Text Projection or Ingestion Chunk projection for
+   that range.
 8. Create or update one Wiki Page from the chapter.
 9. Add at least one Citation relation and matching Citation Marker.
 10. Validate citation markers against graph citations.
@@ -519,7 +512,7 @@ repo-local ignored tool cache when needed.
 POC inspection should prove a human can inspect:
 
 - Source Document list
-- Source Heading outline for a Source Document
+- Source Document outline/projection coverage
 - Wiki Page reader
 - Citation panel for a Wiki Page
 - Graph neighborhood for a record
@@ -555,12 +548,12 @@ Initial routes:
 - `/workspace`: two-pane Agent Workspace with chat and activity on the left,
   and graph/page tabs on the right.
 - `/sources`: Source Document Page with Source Document list, import/extraction
-  status, Source Heading outline, and embedded PDF viewer for PDF Source
+  status, outline/projection coverage, and embedded PDF viewer for PDF Source
   Documents.
 
 The web app should also include a dedicated Source Document Page. That page
 should list imported Source Documents, show import/extraction status and
-Source Heading metadata, and embed a PDF viewer for PDF Source Documents when
+outline/projection metadata, and embed a PDF viewer for PDF Source Documents when
 the stored file can be served safely from the backend. The browser should load
 PDFs through an Originium backend endpoint, not by talking directly to SurrealDB
 file buckets or local bucket paths. The first viewer should use browser-native
@@ -603,9 +596,9 @@ Graph Wiki mutations.
 
 The first graph view should render the local graph neighborhood of the selected
 record rather than the full Graph Wiki. For a selected Wiki Page, that
-neighborhood includes the page, cited Source Headings, Manual Links, and nearby
-Wiki Pages. Full-graph exploration can wait until there is evidence the local
-view is not enough.
+neighborhood includes the page, cited Source Documents with locator metadata,
+Manual Links, and nearby Wiki Pages. Full-graph exploration can wait until
+there is evidence the local view is not enough.
 
 Basic Wiki Page editing belongs in the Page viewer. It should update only the
 Page Body, preserve graph-owned Citations and Manual Links, and run citation

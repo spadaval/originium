@@ -30,18 +30,18 @@ For command behavior, error reporting, and session setup, load
 
 ## Subskills
 
-| Subskill   | Use For                                                                | Load                                            |
-| ---------- | ---------------------------------------------------------------------- | ----------------------------------------------- |
-| `answer`   | Answering from maintained Wiki Pages and cited evidence                | [procedures/answer.md](procedures/answer.md)    |
-| `source`   | Importing, extracting, reading, searching, chunking, or anchoring PDFs  | [procedures/source.md](procedures/source.md)    |
-| `index`    | Running an LLM-powered indexing pass over a document, chapter, or theme | [procedures/index.md](procedures/index.md)      |
-| `page`     | Creating, updating, replacing, appending, patching, or ingesting pages  | [procedures/page.md](procedures/page.md)        |
-| `links`    | Adding or inspecting explicit Manual Links                             | [procedures/links.md](procedures/links.md)      |
-| `repair`   | Inspecting sessions, lint output, citations, duplicates, and stale work | [procedures/repair.md](procedures/repair.md)    |
-| `validate` | Proving a local install with the acceptance workflow                    | [procedures/validate.md](procedures/validate.md) |
-| `concepts` | Graph Wiki record types and evidence model                             | [standards/concepts.md](standards/concepts.md)  |
+| Subskill   | Use For                                                                 | Load                                                   |
+| ---------- | ----------------------------------------------------------------------- | ------------------------------------------------------ |
+| `answer`   | Answering from maintained Wiki Pages and cited evidence                 | [procedures/answer.md](procedures/answer.md)           |
+| `source`   | Importing, extracting, reading, searching, or chunking Source Documents | [procedures/source.md](procedures/source.md)           |
+| `index`    | Running an LLM-powered indexing pass over a document, chapter, or theme | [procedures/index.md](procedures/index.md)             |
+| `page`     | Creating, updating, replacing, appending, patching, or ingesting pages  | [procedures/page.md](procedures/page.md)               |
+| `links`    | Adding or inspecting explicit Manual Links                              | [procedures/links.md](procedures/links.md)             |
+| `repair`   | Inspecting sessions, lint output, citations, duplicates, and stale work | [procedures/repair.md](procedures/repair.md)           |
+| `validate` | Proving a local install with the acceptance workflow                    | [procedures/validate.md](procedures/validate.md)       |
+| `concepts` | Graph Wiki record types and evidence model                              | [standards/concepts.md](standards/concepts.md)         |
 | `writing`  | Page granularity, citation discipline, retrieval validation, closeout   | [standards/wiki-writing.md](standards/wiki-writing.md) |
-| `cli`      | CLI selection, JSON failure reporting, database/session start gate      | [standards/cli.md](standards/cli.md)            |
+| `cli`      | CLI selection, JSON failure reporting, database/session start gate      | [standards/cli.md](standards/cli.md)                   |
 
 ## Subskill Rules
 

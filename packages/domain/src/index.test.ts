@@ -2,12 +2,14 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  formatCitationPageRange,
   formatGraphWikiRecordIdConflict,
   GraphWikiRecordIdConflictError,
+  parseCitationPageRange,
   sourceDocumentRecordId,
-  sourceHeadingRecordId,
   sourceTextProjectionRecordId,
   toSlug,
+  validateCitationLocator,
   validatePageBodyCitationMarkers,
   wikiPageRecordId,
   wikiPageSlugFromTitle,
@@ -37,29 +39,16 @@ test("record ID helpers produce stable normalized IDs", () => {
     }),
     "source_document:ia_mining_dg_abcdef012345",
   );
-  assert.equal(
-    sourceHeadingRecordId({
-      sourceDocumentId: "source_document:Résumé CURWB Deployment-abcdef012345",
-      title: "Autonomous Operations",
-      headingPath: [" Résumé CURWB Deployment ", " Chapter 2 ", "Autonomous Operations"],
-      level: 2,
-      startPage: 12,
-      endPage: 18,
-      order: 4,
-      extractionMethod: "outline",
-    }),
-    "source_heading:resume_curwb_deployment_abcdef012345_resume_curwb_deployment_chapter_2_autonomous_operations_p12_18_o4",
-  );
   assert.equal(wikiPageSlugFromTitle(" Résumé: CURWB Deployment!! "), "resume-curwb-deployment");
   assert.equal(wikiPageRecordId(" Résumé: CURWB Deployment!! "), "wiki_page:resume_curwb_deployment");
   assert.equal(
     sourceTextProjectionRecordId({
       sourceDocumentId: "source_document:industrial_automation",
-      sourceHeadingId: "source_heading:industrial_automation_overview_p1_2_o1",
       startPage: 1,
       endPage: 2,
+      projectionVersion: "pdf-text-v1",
     }),
-    "source_text_projection:industrial_automation_industrial_automation_overview_p1_2_o1_p1_2",
+    "source_text_projection:industrial_automation_p1_2_pdf_text_v1",
   );
 });
 
@@ -76,27 +65,21 @@ test("record ID helpers are idempotent for equivalent repeated input", () => {
     sha256: "ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789",
     mimeType: "application/pdf",
   });
-  const firstSourceHeadingId = sourceHeadingRecordId({
+  const firstSourceTextProjectionId = sourceTextProjectionRecordId({
     sourceDocumentId: firstSourceDocumentId,
-    title: "System Overview",
-    headingPath: ["System Overview"],
-    level: 1,
     startPage: 3,
-    order: 1,
-    extractionMethod: "outline",
+    endPage: 3,
+    projectionVersion: " PDF Text V1 ",
   });
-  const repeatedSourceHeadingId = sourceHeadingRecordId({
+  const repeatedSourceTextProjectionId = sourceTextProjectionRecordId({
     sourceDocumentId: repeatedSourceDocumentId,
-    title: " system overview ",
-    headingPath: [" system---overview "],
-    level: 1,
     startPage: 3,
-    order: 1,
-    extractionMethod: "outline",
+    endPage: 3,
+    projectionVersion: "pdf---text---v1",
   });
 
   assert.equal(firstSourceDocumentId, repeatedSourceDocumentId);
-  assert.equal(firstSourceHeadingId, repeatedSourceHeadingId);
+  assert.equal(firstSourceTextProjectionId, repeatedSourceTextProjectionId);
   assert.equal(wikiPageRecordId("System Overview"), wikiPageRecordId(" system---overview "));
 });
 
@@ -108,7 +91,7 @@ test("Graph Wiki record ID conflict errors name operation, input, proposed ID, a
     existingRecordId: "wiki_page:resume_curwb_deployment",
   };
   const expectedMessage =
-    'Graph Wiki create Wiki Page failed for input "Wiki Page title: Résumé: CURWB Deployment". Proposed record ID "wiki_page:resume_curwb_deployment" conflicts with existing record "wiki_page:resume_curwb_deployment". Use a distinct title, filename, heading path, or slug before retrying.';
+    'Graph Wiki create Wiki Page failed for input "Wiki Page title: Résumé: CURWB Deployment". Proposed record ID "wiki_page:resume_curwb_deployment" conflicts with existing record "wiki_page:resume_curwb_deployment". Use a distinct title, filename, page range, projection version, or slug before retrying.';
 
   assert.equal(formatGraphWikiRecordIdConflict(conflict), expectedMessage);
   assert.throws(
@@ -117,6 +100,56 @@ test("Graph Wiki record ID conflict errors name operation, input, proposed ID, a
     },
     new RegExp(expectedMessage.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")),
   );
+});
+
+test("Citation locator page ranges parse and format concrete pages", () => {
+  assert.deepEqual(parseCitationPageRange("p12"), { startPage: 12, endPage: 12 });
+  assert.deepEqual(parseCitationPageRange("pp. 12-18"), { startPage: 12, endPage: 18 });
+  assert.equal(formatCitationPageRange({ startPage: 12, endPage: 12 }), "p12");
+  assert.equal(formatCitationPageRange({ startPage: 12, endPage: 18 }), "pp12-18");
+  assert.equal(parseCitationPageRange("18-12"), undefined);
+  assert.equal(parseCitationPageRange("0-2"), undefined);
+});
+
+test("Citation locator validation accepts whole document, page range, and quote/context evidence", () => {
+  assert.deepEqual(validateCitationLocator({ locatorKind: "whole-document", confidence: 0.4 }), []);
+  assert.deepEqual(
+    validateCitationLocator({
+      locatorKind: "page-range",
+      pageRange: { startPage: 12, endPage: 18 },
+      confidence: 0.8,
+    }),
+    [],
+  );
+  assert.deepEqual(
+    validateCitationLocator({
+      locatorKind: "quote-context",
+      quote: "Validated quote text",
+      context: "Nearby paragraph context",
+      confidence: 1,
+    }),
+    [],
+  );
+});
+
+test("Citation locator validation reports actionable locator failures", () => {
+  assert.deepEqual(validateCitationLocator({ locatorKind: "page-range", confidence: 0.5 }), [
+    "Citation locator kind page-range requires pageRange.",
+  ]);
+  assert.deepEqual(
+    validateCitationLocator({
+      locatorKind: "whole-document",
+      pageRange: { startPage: 2, endPage: 3 },
+      confidence: 1.2,
+    }),
+    [
+      "Citation locator confidence 1.2 is invalid. Use a number from 0 to 1.",
+      "Citation locator kind whole-document must not include a page range. Use page-range when pages are known.",
+    ],
+  );
+  assert.deepEqual(validateCitationLocator({ locatorKind: "quote-context", confidence: 0.5 }), [
+    "Citation locator kind quote-context requires quote or context evidence.",
+  ]);
 });
 
 test("Citation Marker validation accepts markers with keys and optional labels", () => {

@@ -63,9 +63,10 @@ These access patterns imply a few high-leverage CLI families:
 - Refactor tools: merge pages, split pages, rename pages, move claims between
   pages, migrate aliases, rewrite Manual Links, retarget citations, rebuild
   projections, and reindex embeddings.
-- Proposal tools: create frame proposals, relation-label proposals, unresolved
-  evidence notes, contradiction notes, and follow-up maintenance issues without
-  mutating the active model prematurely.
+- Proposal tools: create frame proposals, unresolved evidence notes,
+  contradiction notes, and follow-up maintenance issues without mutating the
+  active model prematurely. Relation-label proposal/search primitives are
+  deferred until frame workflows show a concrete need.
 
 ## Patterns
 
@@ -99,7 +100,7 @@ These access patterns imply a few high-leverage CLI families:
 
 The current source corpus already suggests useful first frames. These examples
 should be recognized from Source Document titles, outline metadata, projection
-spans, and Wiki Page synthesis rather than from first-class Source Heading
+spans, and Wiki Page synthesis rather than from first-class source-structure
 records:
 
 - Source-backed concept: `wiki_page:autonomous_operations`

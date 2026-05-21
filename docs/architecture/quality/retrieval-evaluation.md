@@ -5,8 +5,8 @@ requiring the full corpus to be synthesized into Wiki Pages first. Each
 question names expected evidence areas rather than fixed answer prose.
 
 Run this after applying schema, importing at least the Cisco industry PDFs under
-`fixtures/source-documents/cisco-industries/`, building Source Headings and
-Source Text Projections, and refreshing retrieval embeddings in batches:
+`fixtures/source-documents/cisco-industries/`, rebuilding per-page Source Text
+Projections, and refreshing retrieval embeddings in batches:
 
 ```bash
 bun run cli db apply-schema
@@ -14,7 +14,7 @@ bun run cli source list
 bun run cli source evidence "<question terms>" --limit 5
 bun run cli page candidates "<concept>"
 bun run cli retrieval search "<question terms>"
-bun run cli graph neighborhood <wiki-page-or-source-heading-id>
+bun run cli graph neighborhood <wiki-page-or-source-document-id>
 ```
 
 Result classification:
@@ -92,6 +92,6 @@ Result classification:
 
 12. What graph neighborhood should be visible for an indexed page about CURWB in
     autonomous mining?
-    Expected evidence: outbound Citations to CURWB/autonomous mining headings,
+    Expected evidence: outbound Citations to CURWB/autonomous mining Source Documents,
     Manual Links to broader mining autonomy or industrial wireless pages, and
-    Source Headings cited by multiple pages when indexing has run.
+    Source Document locators cited by multiple pages when indexing has run.

@@ -7,7 +7,7 @@
 - Cite claims that depend on Source Document evidence.
 - Keep Page Body prose readable. Put evidence targets in Citation relations,
   not inline metadata.
-- Process large documents one Source Heading at a time.
+- Process large documents one bounded page range, chapter, or theme at a time.
 - Make every meaningful read and write part of an Agent Session.
 - Validate retrieval after indexing with likely questions, aliases, acronyms,
   broader terms, and at least one graph-neighborhood inspection when available.
@@ -25,10 +25,10 @@ roles, known tradeoffs, and operational risks.
 - Prefer one focused page per durable concept.
 - Avoid one giant document summary page.
 - Avoid tiny pages that only restate a single sentence.
-- Use chapter or major Source Heading pages only as overview/navigation pages;
-  link them to more specific pages when those relationships are useful.
-- Synthesize across multiple Source Headings when a concept is distributed
-  across the document. Cite each materially different source of evidence.
+- Use chapter or major section pages only as overview/navigation pages; link
+  them to more specific pages when those relationships are useful.
+- Synthesize across multiple source regions when a concept is distributed across
+  the document. Cite each materially different source of evidence.
 - Preserve contradictions, stale information, and superseded guidance in cited
   Wiki Page sections.
 
@@ -54,15 +54,15 @@ Use this split-vs-merge heuristic:
 - Each evidence-backed claim in a Page Body should have a nearby Citation
   Marker. One marker can support a short paragraph, but not an entire page of
   unrelated claims.
-- Citation labels should name the human source anchor, not repeat opaque record
-  IDs.
-- If Source Headings are too broad for confident citation, create Source
-  Anchors when the CLI supports the needed anchor; otherwise keep the heading
-  citation and report the precision gap.
+- Citation labels should name the human-readable source location, not repeat
+  opaque record IDs.
+- If a Source Document citation is too broad, narrow the citation-local locator
+  with page range, quote/context, supported claim, and projection identity/hash
+  when available.
 - If a source point is unclear or contradictory, create a page that preserves
   the uncertainty instead of silently choosing one interpretation.
-- If a projection snippet looks useful but cannot be verified against a Source
-  Heading, Source Anchor, or original document, do not use it for a durable
+- If a projection snippet looks useful but cannot be verified against the Source
+  Document or a trustworthy Source Text Projection, do not use it for a durable
   claim. Report the evidence gap.
 
 Interpret citation validation results literally:
@@ -80,12 +80,13 @@ Interpret citation validation results literally:
 ## Retrieval Validation
 
 After indexing, likely queries should find maintained Wiki Pages before raw
-Source Headings for important topics covered by the indexed scope.
+Source Document/projection matches for important topics covered by the indexed
+scope.
 
 Run retrieval validation for likely questions, aliases, and broader terms with
 `originium retrieval search`, `originium page candidates`, and
 `originium graph neighborhood` when available. Inspect whether intended Wiki
-Pages rank ahead of raw Source Headings and whether graph neighborhoods expose
+Pages rank ahead of raw source matches and whether graph neighborhoods expose
 useful citations and Manual Links.
 
 If planned commands are not available yet, use `page search`, `retrieval search`,
