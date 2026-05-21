@@ -74,6 +74,79 @@ test("core schema stores citation locator metadata on Wiki Page to Source Docume
   );
 });
 
+test("core schema defines sparse advisory Domain Frames and metadata slots", () => {
+  const schema = readFileSync(coreSchemaPath, "utf8");
+
+  assert.match(schema, /DEFINE TABLE OVERWRITE domain_frame SCHEMAFULL;/);
+  assert.match(
+    schema,
+    /DEFINE FIELD IF NOT EXISTS record_scope ON domain_frame TYPE string ASSERT \$value IN \["source_document", "wiki_page"\];/,
+  );
+  assert.match(
+    schema,
+    /DEFINE FIELD IF NOT EXISTS status ON domain_frame TYPE string DEFAULT "draft" ASSERT \$value IN \["draft", "reviewed", "deprecated"\];/,
+  );
+  assert.match(
+    schema,
+    /DEFINE FIELD IF NOT EXISTS created_session ON domain_frame TYPE option<record<agent_session>>;/,
+  );
+  assert.match(
+    schema,
+    /DEFINE FIELD IF NOT EXISTS updated_session ON domain_frame TYPE option<record<agent_session>>;/,
+  );
+  assert.match(schema, /DEFINE FIELD IF NOT EXISTS reviewed_at ON domain_frame TYPE option<datetime>;/);
+  assert.match(schema, /DEFINE FIELD IF NOT EXISTS reviewed_by ON domain_frame TYPE option<string>;/);
+
+  assert.match(schema, /DEFINE TABLE OVERWRITE metadata_slot_definition SCHEMAFULL;/);
+  assert.match(
+    schema,
+    /DEFINE FIELD IF NOT EXISTS domain_frame ON metadata_slot_definition TYPE record<domain_frame>;/,
+  );
+  assert.match(
+    schema,
+    /DEFINE FIELD IF NOT EXISTS presence ON metadata_slot_definition TYPE string ASSERT \$value IN \["required", "recommended", "optional"\];/,
+  );
+  assert.match(
+    schema,
+    /DEFINE FIELD IF NOT EXISTS value_kind ON metadata_slot_definition TYPE string ASSERT \$value IN \["string", "string_list", "date", "boolean", "number", "controlled_string"\];/,
+  );
+  assert.match(
+    schema,
+    /DEFINE INDEX IF NOT EXISTS metadata_slot_definition_frame_name ON metadata_slot_definition FIELDS domain_frame, name UNIQUE;/,
+  );
+});
+
+test("core schema represents frame assignments for Source Documents and Wiki Pages", () => {
+  const schema = readFileSync(coreSchemaPath, "utf8");
+
+  assert.match(schema, /DEFINE TABLE OVERWRITE frame_assignment TYPE RELATION SCHEMAFULL;/);
+  assert.match(
+    schema,
+    /DEFINE FIELD IF NOT EXISTS record_scope ON frame_assignment TYPE string ASSERT \$value IN \["source_document", "wiki_page"\];/,
+  );
+  assert.match(schema, /DEFINE FIELD IF NOT EXISTS metadata ON TABLE frame_assignment TYPE option<object> FLEXIBLE;/);
+  assert.match(
+    schema,
+    /DEFINE FIELD IF NOT EXISTS assignment_status ON frame_assignment TYPE string DEFAULT "advisory" ASSERT \$value IN \["advisory", "needs-review", "reviewed", "deprecated"\];/,
+  );
+  assert.match(
+    schema,
+    /DEFINE INDEX IF NOT EXISTS frame_assignment_record_frame ON frame_assignment FIELDS in, out UNIQUE;/,
+  );
+});
+
+test("core schema explicitly defers broader Domain Model governance", () => {
+  const schema = readFileSync(coreSchemaPath, "utf8");
+
+  assert.match(
+    schema,
+    /Deferred: relation-label registries, Domain Model proposal workflows, and full model versioning\./,
+  );
+  assert.doesNotMatch(schema, /DEFINE TABLE OVERWRITE relation_label/);
+  assert.doesNotMatch(schema, /DEFINE TABLE OVERWRITE domain_model_proposal/);
+  assert.doesNotMatch(schema, /DEFINE TABLE OVERWRITE domain_model_version/);
+});
+
 test("core schema no longer defines Source Heading or Source Anchor tables", () => {
   const schema = readFileSync(coreSchemaPath, "utf8");
 

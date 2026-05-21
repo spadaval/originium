@@ -75,6 +75,9 @@ operations]]`. They are navigation and synthesis context, not evidence.
   Do not create `related` or `related evidence` graph edges.
 - Future semantic graph edges belong in governed Domain Relations with typed
   predicates, evidence, review status, and lint rules.
+  See
+  [ADR 0005](../../../docs/adr/0005-governed-domain-relations.md)
+  before proposing or implementing them.
 
 Example:
 
@@ -89,6 +92,28 @@ CURWB networks support autonomous operations [^autonomous-operations-page].
 
 [^1]: [[Autonomous Operations]]
 ```
+
+## Modeling Deferrals
+
+Keep the first Graph Wiki model small and evidence-first:
+
+- Contradictions stay in cited Wiki Page prose or follow-up maintenance tasks.
+  Do not create first-class contradiction records until repeated workflows prove
+  their fields, lifecycle, and review semantics.
+- Source-only material stays as a Source Document, Source Text Projection, or
+  retrieval/projection context unless a repeated workflow justifies a durable
+  Wiki Page or other record.
+- Procedural order belongs in cited Wiki Page prose before any procedure-step
+  schema exists. Preserve the source order with Citation Markers rather than
+  inventing step records.
+- Wiki Page-to-Wiki Page reading paths use inline Page Body links. Citations
+  target Source Documents only.
+- Manual Links and generic semantic graph links are deferred. Future semantic
+  links require an accepted governed Domain Relation decision, not ad hoc labels
+  or relation-label search.
+- Implementation beads should remain focused on citation locators, Wiki Page
+  References, answer context, lint, and safe refactors unless a new accepted
+  decision expands the model.
 
 ## When To Use Originium
 

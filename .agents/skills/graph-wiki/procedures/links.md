@@ -45,6 +45,13 @@ Domain Relations are deferred until a dedicated model exists. They must have:
 
 - typed predicates with definitions, examples, and non-examples
 - evidence, usually a Citation or Source Document locator
-- review status, such as draft, reviewed, or deprecated
+- subject and object record scopes
+- reason or claim text explaining what the relation asserts
+- confidence and review status, such as draft, reviewed, or deprecated
 - lint rules for allowed predicates, endpoint types, evidence presence, review
   status, and stale or contradictory edges
+
+Do not build relation-label search or ad hoc semantic link creation before the
+governed model is accepted. Until then, keep implementation work focused on
+Citation locators, Wiki Page References, answer context, lint, and safe
+refactors.

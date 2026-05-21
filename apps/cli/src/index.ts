@@ -12,6 +12,7 @@ import {
   toSlug,
   validateCitationLocator,
   validatePageBodyCitationMarkers,
+  validatePageBodyWikiPageReferences,
   type WikiPageKind,
   wikiPageRecordId,
   wikiPageSlugFromTitle,
@@ -224,7 +225,10 @@ const helpTopics: Record<string, HelpTopic> = {
         example: "originium citation repair --page wiki_page:curwb --key source --unsupported --json",
       },
     ],
-    workflows: ["Run after page edits and before answer-context or refactor workflows."],
+    workflows: [
+      "Citations target Source Documents only; use inline Wiki Page References for page-to-page navigation.",
+      "Run after page edits and before answer-context or refactor workflows.",
+    ],
   },
   cite: {
     group: "cite",
@@ -238,7 +242,10 @@ const helpTopics: Record<string, HelpTopic> = {
           'originium cite create --page wiki_page:curwb --source source_document:ia --key source --pages 12-13 --quote "Ultra-Reliable Wireless Backhaul" --json',
       },
     ],
-    workflows: ["Equivalent to citation add/create; use before citation validate and source promotion."],
+    workflows: [
+      "Equivalent to citation add/create; Citation targets must be Source Documents.",
+      "Use before citation validate and source promotion.",
+    ],
   },
   db: {
     group: "db",
@@ -267,9 +274,9 @@ const helpTopics: Record<string, HelpTopic> = {
     summary: "Inspect and lint Graph Wiki records.",
     commands: [
       {
-        usage: "graph lint [--family citation|source|page]",
+        usage: "graph lint [--family citation|source|page|page-reference|link]",
         summary: "Run umbrella or focused lint families.",
-        example: "originium graph lint --family citation --json",
+        example: "originium graph lint --family page-reference --json",
       },
       {
         usage: "graph neighborhood <record-id>",
@@ -302,13 +309,13 @@ const helpTopics: Record<string, HelpTopic> = {
   },
   link: {
     group: "link",
-    summary: "Create and inspect Manual Links.",
+    summary: "Inspect deprecated Manual Links; new generic link writes are disabled.",
     commands: [
       {
         usage: "link add --from <record-id> --to <record-id> --label <label> --reason <reason>",
-        summary: "Create an explicit graph traversal edge.",
+        summary: "Disabled for the frame workflow MVP; use inline Wiki Page References or Citations instead.",
         example:
-          'originium link add --from wiki_page:a --to wiki_page:b --label "uses" --reason "A uses B during deployment." --json',
+          'originium link add --from wiki_page:a --to wiki_page:b --label "uses" --reason "deprecated" --json',
       },
       {
         usage: "link list [--record <record-id>]",
@@ -316,7 +323,7 @@ const helpTopics: Record<string, HelpTopic> = {
         example: "originium link list --record wiki_page:a --json",
       },
     ],
-    workflows: ["Use links for semantic traversal, not citation evidence."],
+    workflows: ["Use inline Wiki Page References for page navigation and Citations for Source Document evidence."],
   },
   log: {
     group: "log",
@@ -465,16 +472,6 @@ const helpTopics: Record<string, HelpTopic> = {
 };
 
 const wikiPageKinds = ["concept", "workflow", "evidence", "decision", "question"] as const;
-const manualLinkLabels = [
-  "depends on",
-  "constrains",
-  "implements",
-  "uses",
-  "applies to",
-  "contrasts with",
-  "supersedes",
-  "related evidence",
-] as const;
 
 export async function runCli(argv: readonly string[] = process.argv.slice(2)): Promise<CliResult> {
   const routedArgv = withoutOutputFlags(argv);
@@ -1359,6 +1356,15 @@ async function routeCitation(argv: readonly string[]): Promise<CliResult> {
     if (!sourceId)
       return missingArgument(commandPrefix, `${commandPrefix}.${command}`, argv, "--source <source-document-id>");
     if (!key) return missingArgument(commandPrefix, `${commandPrefix}.${command}`, argv, "--key <citation-key>");
+    const targetFailure = validateCitationSourceDocumentTarget({
+      command: commandPrefix,
+      operation: `${commandPrefix}.${command}`,
+      argv,
+      pageId,
+      key,
+      sourceId,
+    });
+    if (targetFailure) return targetFailure;
 
     const citationDraft = citationDraftFromInput({
       pageId,
@@ -1551,6 +1557,17 @@ async function routeCitation(argv: readonly string[]): Promise<CliResult> {
         "--source <source-document-id> or --unsupported",
       );
     }
+    if (sourceId) {
+      const targetFailure = validateCitationSourceDocumentTarget({
+        command: "citation repair",
+        operation: "citation.repair",
+        argv,
+        pageId,
+        key,
+        sourceId,
+      });
+      if (targetFailure) return targetFailure;
+    }
     if (unsupported) {
       return queryCommand(
         "citation repair",
@@ -1597,43 +1614,17 @@ async function routeLink(argv: readonly string[]): Promise<CliResult> {
     const to = valueAfter(argv, "--to");
     const reason = valueAfter(argv, "--reason");
     const label = valueAfter(argv, "--label") ?? "related evidence";
-    const session = valueAfter(argv, "--session");
     if (!from) return missingArgument("link add", "link.add", argv, "--from <record-id>");
     if (!to) return missingArgument("link add", "link.add", argv, "--to <record-id>");
     if (!reason) return missingArgument("link add", "link.add", argv, "--reason <reason>");
-    if (!manualLinkLabels.includes(label as (typeof manualLinkLabels)[number])) {
-      return operationFailure(
-        "link add",
-        "link.add",
-        argv,
-        `Unsupported Manual Link label '${label}'.`,
-        `Use one of: ${manualLinkLabels.join(", ")}. Keep --reason specific enough for future graph traversal.`,
-      );
-    }
-    if (hasWeakGraphManualLinkReason(reason)) {
-      return operationFailure(
-        "link add",
-        "link.add",
-        argv,
-        `Manual Link reason is too vague for '${from}' -> '${to}': ${JSON.stringify(reason)}.`,
-        "Provide a concrete reason naming the relationship and why traversal across this edge is useful.",
-      );
-    }
-
-    return queryCommand(
+    return Promise.resolve(operationFailure(
       "link add",
       "link.add",
       argv,
-      `RELATE ${from}->manual_link->${to} SET reason = "${escapeSurrealString(reason)}", label = "${escapeSurrealString(label)}", created_session = ${session ?? "NONE"}, created_at = time::now();`,
-      `Added Manual Link from ${from} to ${to}.`,
-      {},
-      {
-        kind: "write",
-        targetRecords: [`${from}->manual_link->${to}`, from, to],
-        relateEditedTargets: [from],
-        sessionId: session,
-      },
-    );
+      `Manual Link writes are disabled for '${from}' -> '${to}' with label '${label}'. Generic Manual Links are deprecated for the frame workflow MVP.`,
+      "Use an inline Wiki Page Reference such as [[Page Title]] for page-to-page navigation, use a Citation to a Source Document for evidence, or file a Domain Relation design follow-up for governed semantic edges.",
+      { from, to, label, reason },
+    ));
   }
 
   if (command === "list") {
@@ -1784,14 +1775,14 @@ async function routeGraph(argv: readonly string[]): Promise<CliResult> {
   if (command === "neighborhood") return graphNeighborhood(argv);
   if (command !== "lint") return unknownCommand("graph", command, argv, "Use one of: lint, neighborhood.");
   const family = valueAfter(argv, "--family");
-  const supportedFamilies = ["citation", "source", "page"] as const;
+  const supportedFamilies = ["citation", "source", "page", "page-reference", "link"] as const;
   if (family && !supportedFamilies.includes(family as (typeof supportedFamilies)[number])) {
     return operationFailure(
       "graph lint",
       "graph.lint",
       argv,
       `Unsupported graph lint family '${family}'.`,
-      "Use --family citation, --family source, or --family page; omit --family for the umbrella lint.",
+      "Use --family citation, --family source, --family page, --family page-reference, or --family link; omit --family for the umbrella lint.",
     );
   }
 
@@ -1802,7 +1793,7 @@ async function routeGraph(argv: readonly string[]): Promise<CliResult> {
       "graph.lint",
       argv,
       [
-        "SELECT id, title, slug, body FROM wiki_page;",
+        "SELECT id, title, slug, aliases, body FROM wiki_page;",
         "SELECT id, in, out, key, label, claim, locator_kind, page_range, location_hint, quote, context, projection_id, text_hash, validation_status, confidence FROM cites;",
         "SELECT id, source_document, start_page, end_page, text_hash, extraction_method, extraction_version, projection_version, projection_status FROM source_text_projection;",
         "SELECT id, in, out, reason, label FROM manual_link;",
@@ -2297,6 +2288,22 @@ async function writePage(argv: readonly string[], command: "create" | "update"):
   if (!title) return missingArgument(`page ${command}`, `page.${command}`, argv, "--title <title>");
   const slug = wikiPageSlugFromTitle(title);
   const id = wikiPageRecordId(title);
+  const pageReferenceValidation = validateWikiPageReferencesForPage({
+    wikiPageId: id,
+    title,
+    slug,
+    pageBody: body,
+  });
+  if (pageReferenceValidation.issues.length > 0) {
+    return operationFailure(
+      `page ${command}`,
+      `page.${command}`,
+      argv,
+      `Wiki Page Reference validation failed for ${id}: ${pageReferenceValidation.issues.map((issue) => issue.message).join(" ")}`,
+      "Keep Wiki Page References inline with non-empty targets, avoid duplicate/self references, and use Citations for Source Document evidence.",
+      { id, pageReferenceValidation },
+    );
+  }
   const aliases = valuesAfter(argv, "--alias");
   const scopeNote = valueAfter(argv, "--scope-note");
   const pageKind = valueAfter(argv, "--kind") as WikiPageKind | undefined;
@@ -2319,7 +2326,7 @@ async function writePage(argv: readonly string[], command: "create" | "update"):
     argv,
     query,
     `${command === "create" ? "Created" : "Updated"} Wiki Page ${id}.`,
-    { id, slug, aliases, scopeNote, pageKind },
+    { id, slug, aliases, scopeNote, pageKind, pageReferenceValidation },
     {
       kind: "write",
       targetRecords: [id],
@@ -2479,6 +2486,7 @@ type PageEditPreviewResult =
         readonly beforeContext: string;
         readonly afterContext: string;
         readonly citationValidation: ReturnType<typeof validatePageBodyCitationMarkers>;
+        readonly pageReferenceValidation: PageReferenceValidation;
         readonly matchCount?: number;
       };
     }
@@ -2584,6 +2592,10 @@ function validatePageEditPreview(
     pageBody: nextBody,
     graphCitationKeys,
   });
+  const pageReferenceValidation = validateWikiPageReferencesForPage({
+    wikiPageId: pageId,
+    pageBody: nextBody,
+  });
   if (citationValidation.issues.length > 0) {
     return {
       ok: false,
@@ -2591,6 +2603,15 @@ function validatePageEditPreview(
       action:
         "Keep Citation Markers aligned with graph Citation keys, or update Citations before applying the Page Body edit.",
       data: { pageId, citationValidation },
+    };
+  }
+  if (pageReferenceValidation.issues.length > 0) {
+    return {
+      ok: false,
+      reason: `Wiki Page edit would break Wiki Page Reference validation for ${pageId}: ${pageReferenceValidation.issues.map((issue) => issue.message).join(" ")}`,
+      action:
+        "Keep Wiki Page References inline with non-empty targets, avoid duplicate/self references, and use Citations for Source Document evidence.",
+      data: { pageId, pageReferenceValidation },
     };
   }
 
@@ -2609,6 +2630,7 @@ function validatePageEditPreview(
       beforeContext: currentBody.slice(start, end),
       afterContext: nextBody.slice(start, nextEnd),
       citationValidation,
+      pageReferenceValidation,
       ...(options.matchCount === undefined ? {} : { matchCount: options.matchCount }),
     },
   };
@@ -3240,19 +3262,23 @@ function recordRefString(value: unknown): string | undefined {
 }
 
 type GraphLintIssue = {
-  readonly family?: "citation" | "source" | "page" | "link";
+  readonly family?: "citation" | "source" | "page" | "page-reference" | "link";
   readonly kind:
     | "empty-wiki-page"
     | "uncited-wiki-page"
     | "citation-marker-mismatch"
     | "unused-citation"
+    | "malformed-wiki-page-reference"
+    | "duplicate-wiki-page-reference"
+    | "unresolved-wiki-page-reference"
+    | "self-wiki-page-reference"
     | "duplicate-ish-page"
     | "orphan-page"
     | "stub-wiki-page"
     | "broad-citation-target"
     | "source-projection-missing-hash"
     | "source-projection-not-ready"
-    | "weak-manual-link";
+    | "deprecated-manual-link";
   readonly severity: "error" | "warning";
   readonly recordId: string;
   readonly message: string;
@@ -3289,18 +3315,16 @@ export function lintGraphWikiStatements(
     const to = stringField(link, "out");
     if (from) manualLinksByEndpoint.set(from, (manualLinksByEndpoint.get(from) ?? 0) + 1);
     if (to) manualLinksByEndpoint.set(to, (manualLinksByEndpoint.get(to) ?? 0) + 1);
-    const reason = stringField(link, "reason");
-    if (!reason || hasWeakGraphManualLinkReason(reason)) {
-      const id = stringField(link, "id") || `${from}->manual_link->${to}`;
-      issues.push({
-        kind: "weak-manual-link",
-        severity: "warning",
-        recordId: id,
-        message: `Manual Link ${id} has a missing or vague reason.`,
-        suggestion: `Run link add --from ${from || "<from>"} --to ${to || "<to>"} --reason <specific relationship reason> to replace it with an actionable reason.`,
-        details: { from, to, reason },
-      });
-    }
+    const id = stringField(link, "id") || `${from}->manual_link->${to}`;
+    issues.push({
+      kind: "deprecated-manual-link",
+      severity: "warning",
+      recordId: id,
+      message: `Graph lint link failed for Manual Link ${id}: deprecated-manual-link from "${from ?? "<missing>"}" to "${to ?? "<missing>"}". Generic Manual Links are disabled for the frame workflow MVP.`,
+      suggestion:
+        "Remove or ignore this legacy Manual Link, replace Wiki Page navigation with inline Wiki Page References, and use Citations to Source Documents for evidence.",
+      details: { from, to, label: stringField(link, "label"), reason: stringField(link, "reason") },
+    });
   }
 
   const pagesByDuplicateKey = new Map<string, Record<string, unknown>[]>();
@@ -3310,6 +3334,24 @@ export function lintGraphWikiStatements(
     const slug = stringField(page, "slug");
     const body = stringField(page, "body") ?? "";
     if (!id) continue;
+
+    const pageReferenceValidation = validateWikiPageReferencesForPage({
+      wikiPageId: id,
+      title,
+      slug,
+      pageBody: body,
+      knownPages: pages,
+    });
+    for (const issue of pageReferenceValidation.issues) {
+      issues.push({
+        kind: graphLintKindFromPageReferenceIssue(issue.kind),
+        severity: issue.kind === "duplicate-reference" ? "warning" : "error",
+        recordId: id,
+        message: issue.message,
+        suggestion: issue.action,
+        details: { validationIssue: issue },
+      });
+    }
 
     const pageCitations = citationsByPage.get(id) ?? [];
     const pageCitationKeys = pageCitations.flatMap((citation) => {
@@ -3467,9 +3509,10 @@ function enrichGraphLintIssue(issue: GraphLintIssue): GraphLintIssue {
 
 function graphLintIssueFamily(kind: GraphLintIssue["kind"]): NonNullable<GraphLintIssue["family"]> {
   if (kind.startsWith("source-projection")) return "source";
+  if (kind.includes("wiki-page-reference")) return "page-reference";
   if (kind.includes("citation")) return "citation";
   if (kind === "broad-citation-target") return "citation";
-  if (kind === "weak-manual-link") return "link";
+  if (kind === "deprecated-manual-link") return "link";
   return "page";
 }
 
@@ -3481,8 +3524,22 @@ function graphLintRetrievalImpact(kind: GraphLintIssue["kind"]): "none" | "low" 
   if (kind === "empty-wiki-page" || kind === "source-projection-not-ready") return "high";
   if (kind === "stub-wiki-page" || kind === "broad-citation-target" || kind === "source-projection-missing-hash")
     return "medium";
-  if (kind === "uncited-wiki-page" || kind === "orphan-page" || kind === "duplicate-ish-page") return "low";
+  if (
+    kind === "uncited-wiki-page" ||
+    kind === "orphan-page" ||
+    kind === "duplicate-ish-page" ||
+    kind.includes("wiki-page-reference") ||
+    kind === "deprecated-manual-link"
+  )
+    return "low";
   return "none";
+}
+
+function graphLintKindFromPageReferenceIssue(kind: PageReferenceIssue["kind"]): GraphLintIssue["kind"] {
+  if (kind === "malformed-reference") return "malformed-wiki-page-reference";
+  if (kind === "duplicate-reference") return "duplicate-wiki-page-reference";
+  if (kind === "self-reference") return "self-wiki-page-reference";
+  return "unresolved-wiki-page-reference";
 }
 
 function groupBy(records: readonly Record<string, unknown>[], key: string): Map<string, Record<string, unknown>[]> {
@@ -3506,9 +3563,101 @@ function stringField(record: Record<string, unknown>, key: string): string | und
   return typeof value === "string" ? value : undefined;
 }
 
-function hasWeakGraphManualLinkReason(reason: string): boolean {
-  const normalized = reason.trim().toLowerCase();
-  return normalized.length < 16 || /^(related|see also|link|manual|todo|tbd|context)$/.test(normalized);
+type PageReferenceIssue = {
+  readonly kind: "malformed-reference" | "duplicate-reference" | "unresolved-reference" | "self-reference";
+  readonly wikiPageId: string;
+  readonly message: string;
+  readonly action: string;
+  readonly target?: string;
+  readonly marker?: string;
+  readonly index?: number;
+  readonly resolvedPageId?: string;
+};
+
+type PageReferenceValidation = {
+  readonly references: ReturnType<typeof validatePageBodyWikiPageReferences>["references"];
+  readonly issues: readonly PageReferenceIssue[];
+};
+
+function validateWikiPageReferencesForPage(input: {
+  readonly wikiPageId: string;
+  readonly title?: string;
+  readonly slug?: string;
+  readonly pageBody: string;
+  readonly knownPages?: readonly Record<string, unknown>[];
+}): PageReferenceValidation {
+  const validation = validatePageBodyWikiPageReferences({
+    wikiPageId: input.wikiPageId,
+    pageBody: input.pageBody,
+  });
+  const issues: PageReferenceIssue[] = validation.issues.map((issue) => ({
+    kind: issue.kind,
+    wikiPageId: input.wikiPageId,
+    marker: issue.marker,
+    target: issue.target,
+    index: issue.index,
+    message: issue.message,
+    action: "Use [[Page Title]] or [[Page Title|label]] with one non-empty target per referenced Wiki Page.",
+  }));
+
+  for (const reference of validation.references) {
+    const resolvedPageId = resolveWikiPageReferenceTarget(reference.target, input.knownPages);
+    if (isSelfWikiPageReference(reference.target, input, resolvedPageId)) {
+      issues.push({
+        kind: "self-reference",
+        wikiPageId: input.wikiPageId,
+        target: reference.target,
+        marker: reference.marker,
+        index: reference.index,
+        resolvedPageId,
+        message: `Wiki Page Reference validation failed for Wiki Page "${input.wikiPageId}": self-reference for marker "${reference.marker}" targeting "${reference.target}". A Wiki Page should not reference itself as navigation.`,
+        action: "Remove the self-reference or rewrite the prose without a Wiki Page Reference.",
+      });
+    } else if (input.knownPages && resolvedPageId === undefined) {
+      issues.push({
+        kind: "unresolved-reference",
+        wikiPageId: input.wikiPageId,
+        target: reference.target,
+        marker: reference.marker,
+        index: reference.index,
+        message: `Graph lint page-reference failed for Wiki Page "${input.wikiPageId}": unresolved-reference for Wiki Page Reference "${reference.marker}" targeting "${reference.target}".`,
+        action:
+          "Create or retitle the target Wiki Page, update the reference target, or remove the inline reference if it is not durable navigation.",
+      });
+    }
+  }
+
+  return { references: validation.references, issues };
+}
+
+function resolveWikiPageReferenceTarget(
+  target: string,
+  knownPages: readonly Record<string, unknown>[] | undefined,
+): string | undefined {
+  if (!knownPages) return undefined;
+  const targetSlug = wikiPageSlugFromTitle(target);
+  const targetLower = target.trim().toLowerCase();
+  for (const page of knownPages) {
+    const id = stringField(page, "id");
+    const title = stringField(page, "title");
+    const slug = stringField(page, "slug");
+    if (id === target) return id;
+    if (slug && slug === targetSlug) return id;
+    if (title && title.trim().toLowerCase() === targetLower) return id;
+  }
+  return undefined;
+}
+
+function isSelfWikiPageReference(
+  target: string,
+  page: { readonly wikiPageId: string; readonly title?: string; readonly slug?: string },
+  resolvedPageId: string | undefined,
+): boolean {
+  if (resolvedPageId === page.wikiPageId) return true;
+  if (target === page.wikiPageId) return true;
+  const targetSlug = wikiPageSlugFromTitle(target);
+  if (page.slug && targetSlug === page.slug) return true;
+  return page.title !== undefined && target.trim().toLowerCase() === page.title.trim().toLowerCase();
 }
 
 async function fetchOllamaEmbedding(
@@ -4300,6 +4449,30 @@ function parseMetadataJson(value: string): Record<string, unknown> | Error {
   } catch (error) {
     return new Error(errorReason(error));
   }
+}
+
+function validateCitationSourceDocumentTarget(input: {
+  readonly command: string;
+  readonly operation: string;
+  readonly argv: readonly string[];
+  readonly pageId: string;
+  readonly key: string;
+  readonly sourceId: string;
+}): CliFailure | undefined {
+  if (isRecordId(input.sourceId, "source_document")) return undefined;
+  return operationFailure(
+    input.command,
+    input.operation,
+    input.argv,
+    `Citation target validation failed for Wiki Page "${input.pageId}", Citation key "${input.key}", invalid target "${input.sourceId}". Citations target Source Documents only.`,
+    "Pass --source source_document:<id>. Use inline Wiki Page References such as [[Page Title]] for page-to-page navigation instead of Citation targets.",
+    {
+      pageId: input.pageId,
+      citationKey: input.key,
+      invalidTarget: input.sourceId,
+      requiredTargetPrefix: "source_document:",
+    },
+  );
 }
 
 function errorReason(error: unknown): string {

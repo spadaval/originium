@@ -23,6 +23,9 @@ loading the whole document into context.
 **Wiki Page**: durable agent-written synthesis about a topic, entity, question,
 procedure, requirement set, technology component, reference architecture, use
 case, or operational risk. Wiki Pages are the primary place to answer from.
+Do not create a Wiki Page merely because source material exists. Source-only
+material can remain Source Document/projection context until repeated use
+justifies durable synthesis.
 
 **Page Body**: the prose field of a Wiki Page. It may contain Citation Markers
 such as `[^network-architecture]` and inline Wiki Page References such as
@@ -62,7 +65,8 @@ Citations for evidence support, and frame metadata for classification.
 
 **Domain Relation**: a future governed semantic graph edge with a typed
 predicate, evidence, review status, and lint rules. Generic `related` edges are
-non-examples.
+non-examples. Domain Relations require an accepted decision and must not be
+introduced as casual Manual Links or relation-label search.
 
 **Agent Session**: a bounded unit of agent work. Start one for every meaningful
 task.

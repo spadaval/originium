@@ -64,3 +64,8 @@ Do not add generic Manual Links. If indexing repeatedly needs a semantic graph
 edge such as `depends on`, `constrains`, `implements`, `uses`, `applies to`,
 `contrasts with`, or `supersedes`, file a follow-up for a governed Domain
 Relation with typed predicates, evidence, review status, and lint rules.
+
+Do not promote every useful source section into a record. Source-only material
+can remain Source Document/projection context, contradictions can stay in cited
+prose or follow-up tasks, and procedure ordering should be written as cited
+Wiki Page prose before proposing procedure-step schema.

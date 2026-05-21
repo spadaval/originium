@@ -70,6 +70,52 @@ DEFINE FIELD IF NOT EXISTS created_at ON agent_session TYPE datetime DEFAULT tim
 DEFINE FIELD IF NOT EXISTS updated_at ON agent_session TYPE datetime DEFAULT time::now();
 DEFINE INDEX IF NOT EXISTS agent_session_workspace_key ON agent_session FIELDS workspace_key;
 
+DEFINE TABLE OVERWRITE domain_frame SCHEMAFULL;
+DEFINE FIELD IF NOT EXISTS name ON domain_frame TYPE string;
+DEFINE FIELD IF NOT EXISTS scope_note ON domain_frame TYPE string;
+DEFINE FIELD IF NOT EXISTS record_scope ON domain_frame TYPE string ASSERT $value IN ["source_document", "wiki_page"];
+DEFINE FIELD IF NOT EXISTS status ON domain_frame TYPE string DEFAULT "draft" ASSERT $value IN ["draft", "reviewed", "deprecated"];
+DEFINE FIELD IF NOT EXISTS examples ON domain_frame TYPE option<array<string>>;
+DEFINE FIELD IF NOT EXISTS non_examples ON domain_frame TYPE option<array<string>>;
+DEFINE FIELD IF NOT EXISTS created_session ON domain_frame TYPE option<record<agent_session>>;
+DEFINE FIELD IF NOT EXISTS updated_session ON domain_frame TYPE option<record<agent_session>>;
+DEFINE FIELD IF NOT EXISTS created_by ON domain_frame TYPE option<string>;
+DEFINE FIELD IF NOT EXISTS updated_by ON domain_frame TYPE option<string>;
+DEFINE FIELD IF NOT EXISTS reviewed_at ON domain_frame TYPE option<datetime>;
+DEFINE FIELD IF NOT EXISTS reviewed_by ON domain_frame TYPE option<string>;
+DEFINE FIELD IF NOT EXISTS review_note ON domain_frame TYPE option<string>;
+DEFINE FIELD IF NOT EXISTS created_at ON domain_frame TYPE datetime DEFAULT time::now();
+DEFINE FIELD IF NOT EXISTS updated_at ON domain_frame TYPE datetime DEFAULT time::now();
+DEFINE INDEX IF NOT EXISTS domain_frame_scope_name ON domain_frame FIELDS record_scope, name UNIQUE;
+
+DEFINE TABLE OVERWRITE metadata_slot_definition SCHEMAFULL;
+DEFINE FIELD IF NOT EXISTS domain_frame ON metadata_slot_definition TYPE record<domain_frame>;
+DEFINE FIELD IF NOT EXISTS name ON metadata_slot_definition TYPE string;
+DEFINE FIELD IF NOT EXISTS presence ON metadata_slot_definition TYPE string ASSERT $value IN ["required", "recommended", "optional"];
+DEFINE FIELD IF NOT EXISTS value_kind ON metadata_slot_definition TYPE string ASSERT $value IN ["string", "string_list", "date", "boolean", "number", "controlled_string"];
+DEFINE FIELD IF NOT EXISTS description ON metadata_slot_definition TYPE option<string>;
+DEFINE FIELD IF NOT EXISTS allowed_values ON metadata_slot_definition TYPE option<array<string>>;
+DEFINE FIELD IF NOT EXISTS created_at ON metadata_slot_definition TYPE datetime DEFAULT time::now();
+DEFINE FIELD IF NOT EXISTS updated_at ON metadata_slot_definition TYPE datetime DEFAULT time::now();
+DEFINE INDEX IF NOT EXISTS metadata_slot_definition_frame_name ON metadata_slot_definition FIELDS domain_frame, name UNIQUE;
+
+DEFINE TABLE OVERWRITE frame_assignment TYPE RELATION SCHEMAFULL;
+DEFINE FIELD IF NOT EXISTS record_scope ON frame_assignment TYPE string ASSERT $value IN ["source_document", "wiki_page"];
+DEFINE FIELD IF NOT EXISTS metadata ON TABLE frame_assignment TYPE option<object> FLEXIBLE;
+DEFINE FIELD IF NOT EXISTS assignment_status ON frame_assignment TYPE string DEFAULT "advisory" ASSERT $value IN ["advisory", "needs-review", "reviewed", "deprecated"];
+DEFINE FIELD IF NOT EXISTS created_session ON frame_assignment TYPE option<record<agent_session>>;
+DEFINE FIELD IF NOT EXISTS updated_session ON frame_assignment TYPE option<record<agent_session>>;
+DEFINE FIELD IF NOT EXISTS created_by ON frame_assignment TYPE option<string>;
+DEFINE FIELD IF NOT EXISTS updated_by ON frame_assignment TYPE option<string>;
+DEFINE FIELD IF NOT EXISTS reviewed_at ON frame_assignment TYPE option<datetime>;
+DEFINE FIELD IF NOT EXISTS reviewed_by ON frame_assignment TYPE option<string>;
+DEFINE FIELD IF NOT EXISTS review_note ON frame_assignment TYPE option<string>;
+DEFINE FIELD IF NOT EXISTS created_at ON frame_assignment TYPE datetime DEFAULT time::now();
+DEFINE FIELD IF NOT EXISTS updated_at ON frame_assignment TYPE datetime DEFAULT time::now();
+DEFINE INDEX IF NOT EXISTS frame_assignment_record_frame ON frame_assignment FIELDS in, out UNIQUE;
+
+-- Deferred: relation-label registries, Domain Model proposal workflows, and full model versioning.
+
 DEFINE TABLE OVERWRITE change_log SCHEMAFULL;
 DEFINE FIELD IF NOT EXISTS agent_session ON change_log TYPE option<record<agent_session>>;
 DEFINE FIELD IF NOT EXISTS command ON change_log TYPE string;

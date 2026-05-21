@@ -390,6 +390,62 @@ test("bundled citation create reports locator validation failures before databas
   assert.match(output.error.reason, /confidence 1.5 is invalid/);
 });
 
+test("bundled citation create rejects non-Source Document targets before database access", () => {
+  for (const source of ["wiki_page:autonomous_operations", "source_text_projection:ia_p1", "manual_link:legacy"]) {
+    const result = spawnSync(
+      bundledCli,
+      [
+        "citation",
+        "add",
+        "--page",
+        "wiki_page:curwb",
+        "--source",
+        source,
+        "--key",
+        "source",
+        "--json",
+      ],
+      { encoding: "utf8" },
+    );
+
+    assert.equal(result.status, 1);
+    const output = JSON.parse(result.stdout);
+    assert.equal(output.ok, false);
+    assert.equal(output.error.operation, "citation.add");
+    assert.match(output.error.reason, /Citations target Source Documents only/);
+    assert.match(output.error.reason, /wiki_page:curwb/);
+    assert.match(output.error.reason, /source/);
+    assert.equal(output.data.invalidTarget, source);
+    assert.match(output.error.action, /source_document:<id>/);
+    assert.match(output.error.action, /Wiki Page References/);
+  }
+});
+
+test("bundled citation repair rejects non-Source Document retargets before database access", () => {
+  const result = spawnSync(
+    bundledCli,
+    [
+      "citation",
+      "repair",
+      "--page",
+      "wiki_page:curwb",
+      "--key",
+      "source",
+      "--source",
+      "wiki_page:autonomous_operations",
+      "--json",
+    ],
+    { encoding: "utf8" },
+  );
+
+  assert.equal(result.status, 1);
+  const output = JSON.parse(result.stdout);
+  assert.equal(output.ok, false);
+  assert.equal(output.error.operation, "citation.repair");
+  assert.match(output.error.reason, /invalid target "wiki_page:autonomous_operations"/);
+  assert.match(output.error.action, /inline Wiki Page References/);
+});
+
 test("Graph Wiki lint can return focused citation and source families", () => {
   const lint = lintGraphWikiStatements(
     [
@@ -413,7 +469,7 @@ test("Graph Wiki lint can return focused citation and source families", () => {
   assert.ok(sourceLint.issues.some((issue) => issue.kind === "source-projection-not-ready"));
 });
 
-test("bundled link add rejects unsupported labels before database access", () => {
+test("bundled link add rejects semantic Manual Link writes before database access", () => {
   const result = spawnSync(
     bundledCli,
     [
@@ -436,14 +492,28 @@ test("bundled link add rejects unsupported labels before database access", () =>
   const output = JSON.parse(result.stdout);
   assert.equal(output.ok, false);
   assert.equal(output.error.operation, "link.add");
-  assert.match(output.error.reason, /Unsupported Manual Link label 'see also'/);
-  assert.match(output.error.action, /depends on/);
+  assert.match(output.error.reason, /Manual Link writes are disabled/);
+  assert.match(output.error.reason, /see also/);
+  assert.match(output.error.action, /Wiki Page Reference/);
+  assert.match(output.error.action, /Domain Relation/);
 });
 
-test("bundled link add rejects vague reasons before database access", () => {
+test("bundled link add rejects evidence Manual Link writes before database access", () => {
   const result = spawnSync(
     bundledCli,
-    ["link", "add", "--from", "wiki_page:a", "--to", "wiki_page:b", "--label", "uses", "--reason", "related", "--json"],
+    [
+      "link",
+      "add",
+      "--from",
+      "wiki_page:a",
+      "--to",
+      "source_document:b",
+      "--label",
+      "related evidence",
+      "--reason",
+      "evidence support",
+      "--json",
+    ],
     { encoding: "utf8" },
   );
 
@@ -451,8 +521,8 @@ test("bundled link add rejects vague reasons before database access", () => {
   const output = JSON.parse(result.stdout);
   assert.equal(output.ok, false);
   assert.equal(output.error.operation, "link.add");
-  assert.match(output.error.reason, /too vague/);
-  assert.match(output.error.action, /concrete reason/);
+  assert.match(output.error.reason, /Manual Link writes are disabled/);
+  assert.match(output.error.action, /Citation to a Source Document/);
 });
 
 test("Wiki Page replace preview reports before/after context and does not mutate", () => {
@@ -467,6 +537,7 @@ test("Wiki Page replace preview reports before/after context and does not mutate
   assert.match(result.data.beforeContext, /Beta detail/);
   assert.match(result.data.afterContext, /Gamma detail/);
   assert.equal(result.data.citationValidation.issues.length, 0);
+  assert.equal(result.data.pageReferenceValidation.issues.length, 0);
 });
 
 test("Wiki Page replace fails for absent and ambiguous find text", () => {
@@ -501,6 +572,37 @@ test("Wiki Page replace blocks edits that break citation marker validation", () 
   );
 });
 
+test("Wiki Page replace blocks malformed Wiki Page References separately from citations", () => {
+  const result = previewPageReplace("wiki_page:test", "Alpha detail.[^source]", ["source"], {
+    find: "Alpha",
+    replace: "See [[|broken]]",
+  });
+
+  assert.equal(result.ok, false);
+  assert.match(result.reason, /Wiki Page Reference validation/);
+  assert.doesNotMatch(result.reason, /citation marker validation/);
+  assert.equal(
+    (result.data as { pageReferenceValidation: { issues: readonly { kind: string }[] } }).pageReferenceValidation
+      .issues[0]?.kind,
+    "malformed-reference",
+  );
+});
+
+test("bundled page update reports Wiki Page Reference validation before database access", () => {
+  const result = spawnSync(
+    bundledCli,
+    ["page", "update", "--title", "Autonomous Operations", "--body", "Self [[Autonomous Operations]]", "--json"],
+    { encoding: "utf8" },
+  );
+
+  assert.equal(result.status, 1);
+  const output = JSON.parse(result.stdout);
+  assert.equal(output.ok, false);
+  assert.equal(output.error.operation, "page.update");
+  assert.match(output.error.reason, /self-reference/);
+  assert.equal(output.data.pageReferenceValidation.issues[0].kind, "self-reference");
+});
+
 test("Graph Wiki lint reports empty uncited residue pages", () => {
   const result = lintGraphWikiStatements([
     { result: [{ id: "wiki_page:test", title: "Test", slug: "test", body: "" }] },
@@ -514,4 +616,60 @@ test("Graph Wiki lint reports empty uncited residue pages", () => {
   assert.equal(result.summary["uncited-wiki-page"], 1);
   assert.equal(result.summary["orphan-page"], 1);
   assert.equal(result.issueCount, 3);
+});
+
+test("Graph Wiki lint reports Wiki Page References separately from citations", () => {
+  const result = lintGraphWikiStatements(
+    [
+      {
+        result: [
+          {
+            id: "wiki_page:a",
+            title: "A",
+            slug: "a",
+            body: "See [[B]] and [[Missing]]. Evidence remains cited [^source].",
+          },
+          { id: "wiki_page:b", title: "B", slug: "b", body: "Target page.[^source]" },
+          { id: "wiki_page:self", title: "Self", slug: "self", body: "Self [[Self]]." },
+        ],
+      },
+      { result: [{ in: "wiki_page:a", key: "source", locator_kind: "page-range", claim: "Claim", page_range: {} }] },
+      { result: [] },
+      { result: [] },
+    ],
+    "page-reference",
+  );
+
+  assert.equal(result.family, "page-reference");
+  assert.ok(result.issues.every((issue) => issue.family === "page-reference"));
+  assert.ok(result.issues.some((issue) => issue.kind === "unresolved-wiki-page-reference"));
+  assert.ok(result.issues.some((issue) => issue.kind === "self-wiki-page-reference"));
+  assert.equal(result.summary["citation-marker-mismatch"], undefined);
+});
+
+test("Graph Wiki lint flags existing Manual Links as deprecated", () => {
+  const result = lintGraphWikiStatements(
+    [
+      { result: [] },
+      { result: [] },
+      { result: [] },
+      {
+        result: [
+          {
+            id: "manual_link:legacy",
+            in: "wiki_page:a",
+            out: "wiki_page:b",
+            label: "uses",
+            reason: "A uses B.",
+          },
+        ],
+      },
+    ],
+    "link",
+  );
+
+  assert.equal(result.family, "link");
+  assert.equal(result.issueCount, 1);
+  assert.equal(result.issues[0]?.kind, "deprecated-manual-link");
+  assert.match(result.issues[0]?.message ?? "", /disabled/);
 });

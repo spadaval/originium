@@ -11,6 +11,8 @@ import {
   sourceTextProjectionRecordId,
   toSlug,
   validateCitationLocator,
+  validateDomainFrameDraft,
+  validateFrameMetadata,
   validatePageBodyCitationMarkers,
   validatePageBodyWikiPageReferences,
   wikiPageRecordId,
@@ -152,6 +154,110 @@ test("Citation locator validation reports actionable locator failures", () => {
   assert.deepEqual(validateCitationLocator({ locatorKind: "quote-context", confidence: 0.5 }), [
     "Citation locator kind quote-context requires quote or context evidence.",
   ]);
+});
+
+test("Frame metadata validation accepts sparse advisory metadata by default", () => {
+  const issues = validateFrameMetadata({
+    operation: "assign frame",
+    recordId: "source_document:ia_mining_dg_fixture",
+    frameId: "domain_frame:design_guide",
+    slotDefinitions: [
+      { name: "publisher", presence: "recommended", valueKind: "string" },
+      { name: "industries", presence: "recommended", valueKind: "string_list" },
+    ],
+    metadata: {
+      publisher: "Cisco",
+    },
+  });
+
+  assert.deepEqual(issues, []);
+});
+
+test("Frame metadata validation reports unknown slots without rejecting sparse assignments", () => {
+  const issues = validateFrameMetadata({
+    operation: "set metadata",
+    recordId: "wiki_page:curwb_overview",
+    frameId: "domain_frame:source_backed_concept",
+    slotDefinitions: [{ name: "source_confidence", presence: "recommended", valueKind: "controlled_string" }],
+    metadata: {
+      source_confidence: "high",
+      arbitrary_note: "needs cleanup",
+    },
+  });
+
+  assert.equal(issues.length, 1);
+  assert.equal(issues[0]?.kind, "unknown-slot");
+  assert.equal(issues[0]?.slot, "arbitrary_note");
+  assert.equal(
+    issues[0]?.message,
+    'Frame metadata set metadata for record "wiki_page:curwb_overview" using frame "domain_frame:source_backed_concept" received unknown slot "arbitrary_note". Define the slot on the Domain Frame, remove the metadata, or keep it as an explicit review issue.',
+  );
+});
+
+test("Frame metadata validation reports invalid value kinds with concrete slot context", () => {
+  const issues = validateFrameMetadata({
+    operation: "set metadata",
+    recordId: "source_document:ia_mining_dg_fixture",
+    frameId: "domain_frame:design_guide",
+    slotDefinitions: [
+      { name: "industries", presence: "recommended", valueKind: "string_list" },
+      {
+        name: "trust_status",
+        presence: "recommended",
+        valueKind: "controlled_string",
+        allowedValues: ["trusted", "superseded", "draft", "unknown"],
+      },
+    ],
+    metadata: {
+      industries: "mining",
+      trust_status: "canonical",
+    },
+  });
+
+  assert.deepEqual(
+    issues.map((issue) => issue.kind),
+    ["invalid-slot-type", "invalid-slot-type"],
+  );
+  assert.equal(issues[0]?.slot, "industries");
+  assert.equal(
+    issues[0]?.message,
+    'Frame metadata set metadata for record "source_document:ia_mining_dg_fixture" using frame "domain_frame:design_guide" received invalid value "mining" for slot "industries". Expected string_list.',
+  );
+  assert.equal(
+    issues[1]?.message,
+    'Frame metadata set metadata for record "source_document:ia_mining_dg_fixture" using frame "domain_frame:design_guide" received invalid value "canonical" for slot "trust_status". Expected controlled_string with one of: trusted, superseded, draft, unknown.',
+  );
+});
+
+test("Reviewed Domain Frames require review and audit provenance", () => {
+  assert.deepEqual(
+    validateDomainFrameDraft({
+      name: "Design Guide",
+      scopeNote: "Prescriptive engineering guidance.",
+      recordScope: "source_document",
+      status: "reviewed",
+      createdSessionId: "agent_session:frame_catalog_seed",
+      updatedBy: "sumeet",
+      reviewedBy: "sumeet",
+      reviewedAt: "2026-05-21T10:00:00.000Z",
+    }),
+    [],
+  );
+
+  assert.deepEqual(
+    validateDomainFrameDraft({
+      name: "Procedure",
+      scopeNote: "Task-oriented Wiki Page.",
+      recordScope: "wiki_page",
+      status: "reviewed",
+    }),
+    [
+      'Domain Frame "Procedure" is missing creation provenance. Set createdBy or createdSessionId before persisting the frame.',
+      'Domain Frame "Procedure" is missing update provenance. Set updatedBy or updatedSessionId before persisting the frame.',
+      'Domain Frame "Procedure" has status reviewed but no reviewedBy value. Record the reviewer.',
+      'Domain Frame "Procedure" has status reviewed but reviewedAt is missing or invalid. Use an ISO date-time string.',
+    ],
+  );
 });
 
 test("Citation Marker validation accepts markers with keys and optional labels", () => {

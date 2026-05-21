@@ -10,6 +10,8 @@
 - Use inline Wiki Page References for navigation to other Wiki Pages, not for
   evidence.
 - Process large documents one bounded page range, chapter, or theme at a time.
+- Leave source-only material in Source Document/projection context unless a
+  repeated workflow justifies durable synthesis.
 - Make every meaningful read and write part of an Agent Session.
 - Validate retrieval after indexing with likely questions, aliases, acronyms,
   broader terms, and at least one graph-neighborhood inspection when available.
@@ -33,6 +35,8 @@ roles, known tradeoffs, and operational risks.
   the document. Cite each materially different source of evidence.
 - Preserve contradictions, stale information, and superseded guidance in cited
   Wiki Page sections.
+- Preserve procedural order in cited prose before proposing any procedure-step
+  schema. Use Citation Markers to show the source evidence for ordered steps.
 
 Use this split-vs-merge heuristic:
 
@@ -63,6 +67,8 @@ Use this split-vs-merge heuristic:
   when available.
 - If a source point is unclear or contradictory, create a page that preserves
   the uncertainty instead of silently choosing one interpretation.
+- Keep contradictions in cited prose or follow-up maintenance tasks. Do not
+  create contradiction records until repeated workflows prove the record shape.
 - If a projection snippet looks useful but cannot be verified against the Source
   Document or a trustworthy Source Text Projection, do not use it for a durable
   claim. Report the evidence gap.

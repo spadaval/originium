@@ -55,6 +55,54 @@ export type CitationDraft = {
   readonly confidence: number;
 };
 
+export type DomainFrameRecordScope = "source_document" | "wiki_page";
+
+export type DomainFrameStatus = "draft" | "reviewed" | "deprecated";
+
+export type MetadataSlotPresence = "required" | "recommended" | "optional";
+
+export type MetadataSlotValueKind = "string" | "string_list" | "date" | "boolean" | "number" | "controlled_string";
+
+export type MetadataSlotDefinition = {
+  readonly name: string;
+  readonly presence: MetadataSlotPresence;
+  readonly valueKind: MetadataSlotValueKind;
+  readonly allowedValues?: readonly string[];
+};
+
+export type DomainFrameDraft = {
+  readonly name: string;
+  readonly scopeNote: string;
+  readonly recordScope: DomainFrameRecordScope;
+  readonly status: DomainFrameStatus;
+  readonly slotDefinitions?: readonly MetadataSlotDefinition[];
+  readonly createdBy?: string;
+  readonly createdSessionId?: string;
+  readonly updatedBy?: string;
+  readonly updatedSessionId?: string;
+  readonly reviewedAt?: string;
+  readonly reviewedBy?: string;
+};
+
+export type FrameAssignmentStatus = "advisory" | "needs-review" | "reviewed" | "deprecated";
+
+export type FrameMetadata = Readonly<Record<string, unknown>>;
+
+export type FrameMetadataValidationIssueKind =
+  | "missing-required-slot"
+  | "missing-recommended-slot"
+  | "unknown-slot"
+  | "invalid-slot-type";
+
+export type FrameMetadataValidationIssue = {
+  readonly kind: FrameMetadataValidationIssueKind;
+  readonly recordId: string;
+  readonly frameId: string;
+  readonly slot: string;
+  readonly receivedValue?: unknown;
+  readonly message: string;
+};
+
 export type GraphWikiRecordIdConflict = {
   readonly operation: string;
   readonly inputIdentifier: string;
@@ -222,6 +270,98 @@ export function validateCitationLocator(
 
   if (draft.locatorKind === "quote-context" && draft.quote === undefined && draft.context === undefined) {
     issues.push("Citation locator kind quote-context requires quote or context evidence.");
+  }
+
+  return issues;
+}
+
+export function validateDomainFrameDraft(draft: DomainFrameDraft): readonly string[] {
+  const issues: string[] = [];
+
+  if (!hasAuditActor(draft.createdBy, draft.createdSessionId)) {
+    issues.push(
+      `Domain Frame "${draft.name}" is missing creation provenance. Set createdBy or createdSessionId before persisting the frame.`,
+    );
+  }
+
+  if (!hasAuditActor(draft.updatedBy, draft.updatedSessionId)) {
+    issues.push(
+      `Domain Frame "${draft.name}" is missing update provenance. Set updatedBy or updatedSessionId before persisting the frame.`,
+    );
+  }
+
+  if (draft.status === "reviewed") {
+    if (draft.reviewedBy === undefined || draft.reviewedBy.trim() === "") {
+      issues.push(`Domain Frame "${draft.name}" has status reviewed but no reviewedBy value. Record the reviewer.`);
+    }
+
+    if (draft.reviewedAt === undefined || Number.isNaN(Date.parse(draft.reviewedAt))) {
+      issues.push(
+        `Domain Frame "${draft.name}" has status reviewed but reviewedAt is missing or invalid. Use an ISO date-time string.`,
+      );
+    }
+  }
+
+  return issues;
+}
+
+export function validateFrameMetadata(input: {
+  readonly operation: string;
+  readonly recordId: string;
+  readonly frameId: string;
+  readonly slotDefinitions: readonly MetadataSlotDefinition[];
+  readonly metadata?: FrameMetadata;
+  readonly reportMissingRecommended?: boolean;
+}): readonly FrameMetadataValidationIssue[] {
+  const metadata = input.metadata ?? {};
+  const issues: FrameMetadataValidationIssue[] = [];
+  const slotsByName = new Map(input.slotDefinitions.map((slot) => [slot.name, slot]));
+
+  for (const slot of input.slotDefinitions) {
+    if (Object.hasOwn(metadata, slot.name)) {
+      continue;
+    }
+
+    if (slot.presence === "required" || (slot.presence === "recommended" && input.reportMissingRecommended)) {
+      const kind: FrameMetadataValidationIssueKind =
+        slot.presence === "required" ? "missing-required-slot" : "missing-recommended-slot";
+      issues.push({
+        kind,
+        recordId: input.recordId,
+        frameId: input.frameId,
+        slot: slot.name,
+        message: `Frame metadata ${input.operation} for record "${input.recordId}" using frame "${input.frameId}" is missing ${slot.presence} slot "${slot.name}". Add the slot when known or leave the sparse assignment with this lint issue visible.`,
+      });
+    }
+  }
+
+  for (const [slotName, receivedValue] of Object.entries(metadata)) {
+    const slot = slotsByName.get(slotName);
+
+    if (slot === undefined) {
+      issues.push({
+        kind: "unknown-slot",
+        recordId: input.recordId,
+        frameId: input.frameId,
+        slot: slotName,
+        receivedValue,
+        message: `Frame metadata ${input.operation} for record "${input.recordId}" using frame "${input.frameId}" received unknown slot "${slotName}". Define the slot on the Domain Frame, remove the metadata, or keep it as an explicit review issue.`,
+      });
+      continue;
+    }
+
+    if (!isValidFrameMetadataValue(slot, receivedValue)) {
+      issues.push({
+        kind: "invalid-slot-type",
+        recordId: input.recordId,
+        frameId: input.frameId,
+        slot: slotName,
+        receivedValue,
+        message: `Frame metadata ${input.operation} for record "${input.recordId}" using frame "${input.frameId}" received invalid value ${formatReceivedValue(
+          receivedValue,
+        )} for slot "${slotName}". Expected ${describeMetadataSlotValueKind(slot)}.`,
+      });
+    }
   }
 
   return issues;
@@ -421,6 +561,46 @@ function shortSha256(input: string): string {
   }
 
   return createHash("sha256").update(input).digest("hex").slice(0, 12);
+}
+
+function hasAuditActor(actor: string | undefined, sessionId: string | undefined): boolean {
+  return actor !== undefined && actor.trim() !== "" ? true : sessionId !== undefined && sessionId.trim() !== "";
+}
+
+function isValidFrameMetadataValue(slot: MetadataSlotDefinition, value: unknown): boolean {
+  switch (slot.valueKind) {
+    case "string":
+      return typeof value === "string";
+    case "string_list":
+      return Array.isArray(value) && value.every((item) => typeof item === "string");
+    case "date":
+      return typeof value === "string" && !Number.isNaN(Date.parse(value));
+    case "boolean":
+      return typeof value === "boolean";
+    case "number":
+      return typeof value === "number" && Number.isFinite(value);
+    case "controlled_string":
+      return (
+        typeof value === "string" &&
+        (slot.allowedValues === undefined || slot.allowedValues.length === 0 || slot.allowedValues.includes(value))
+      );
+  }
+}
+
+function describeMetadataSlotValueKind(slot: MetadataSlotDefinition): string {
+  if (slot.valueKind === "controlled_string" && slot.allowedValues !== undefined && slot.allowedValues.length > 0) {
+    return `controlled_string with one of: ${slot.allowedValues.join(", ")}`;
+  }
+
+  return slot.valueKind;
+}
+
+function formatReceivedValue(value: unknown): string {
+  if (typeof value === "string") {
+    return `"${value}"`;
+  }
+
+  return JSON.stringify(value) ?? String(value);
 }
 
 function parseCitationMarker(rawMarker: string, index: number): CitationMarker | undefined {
