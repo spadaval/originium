@@ -14,9 +14,12 @@ _Avoid_: document, file, reference
 
 **Source Text Projection**:
 A lossy, rebuildable search cache derived from a Source Document for retrieval,
-agent reading, and evidence discovery. It may preserve whole-document text,
-page-range text, extraction provenance, and embeddings, but it is not canonical
-evidence and must be regenerated when extraction policy changes.
+agent reading, and evidence discovery. For paginated Source Documents, the
+stored projection unit is one page. Larger text views are derived by ordering
+and combining page projections unless a later performance need justifies a
+separate cache. It may preserve page text, extraction provenance, and
+embeddings, but it is not canonical evidence and must be regenerated when
+extraction policy changes.
 _Avoid_: canonical text, source copy, evidence record
 
 **Wiki Page**:
@@ -92,7 +95,7 @@ _Avoid_: file browser, document editor
 - An **Agent Workspace** is centered on one **Agent Session**.
 - An **Agent Activity Log** is derived from persisted **Agent Session** activity and Change Log records.
 - A **Change Log** entry describes one mutation to Graph Wiki state.
-- **Source Document Ingestion** creates Source Text Projections as whole-document or page-range text blocks.
+- **Source Document Ingestion** creates per-page Source Text Projections for paginated Source Documents.
 - **Source Document Ingestion** may use **Ingestion Chunks** sized to a practical agent context budget.
 - A **Manual Link** may connect Wiki Pages or other graph records.
 - **Graph Retrieval** ranks graph records using both relevance and graph authority.
@@ -107,13 +110,13 @@ _Avoid_: file browser, document editor
 
 - "document" can mean raw trusted material or agent-authored synthesis. Resolved: use **Source Document** for raw trusted material and **Wiki Page** for synthesis.
 - "reference" can mean source metadata, a citation, or a graph edge. Resolved: use **Citation** for the relationship from synthesis to Source Document evidence, and keep precise location data as citation-local locator metadata.
-- Extracted headings or sections are not domain concepts. Resolved: do not model **Source Headings** or **Source Anchors** as graph records; store source text as whole-document or page-range **Source Text Projections**.
+- Extracted headings or sections are not domain concepts. Resolved: do not model **Source Headings** or **Source Anchors** as graph records; store paginated source text as per-page **Source Text Projections**.
 - Wiki Page content should not absorb metadata, citations, or links. Resolved: a **Wiki Page** has a **Page Body** for prose synthesis, while citations, metadata, and links live in graph records and relations.
 - Inline citation syntax is a projection concern. Resolved: a **Citation Marker** appears in the Page Body, while the **Citation** graph relation is canonical.
 - Document linking is deliberately agent-driven for the first proof of concept. Resolved: only create **Manual Links** on explicit trigger.
 - Source text is not copied into Wiki Pages or treated as canonical evidence.
   Resolved: Source Documents stay in file buckets as immutable evidence;
-  Source Text Projections may store lossy extracted text, page ranges,
+  Source Text Projections may store lossy extracted page text, page numbers,
   provenance, and embeddings as rebuildable search caches.
 - Search requests can mean different jobs. Resolved: use **Graph Retrieval**
   for answer retrieval, concept reuse checks for finding existing Wiki Pages
