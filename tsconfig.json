@@ -3,6 +3,7 @@
     "allowImportingTsExtensions": true,
     "baseUrl": ".",
     "ignoreDeprecations": "6.0",
+    "jsx": "react-jsx",
     "module": "ESNext",
     "moduleDetection": "force",
     "moduleResolution": "Bundler",

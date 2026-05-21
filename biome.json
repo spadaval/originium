@@ -3,7 +3,6 @@
   "files": {
     "includes": [
       "**",
-      "!!**/biome.json",
       "!!**/node_modules",
       "!!**/dist",
       "!!**/build",
@@ -12,6 +11,7 @@
       "!!**/.turbo",
       "!!**/.beads",
       "!!**/.claude",
+      "!!**/.originium",
       "!!**/.agents/plugins",
       "!!**/plugins"
     ]

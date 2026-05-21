@@ -10,7 +10,6 @@ import {
   type ChangeLogRecord,
   createOrResumeWorkspaceAgentSession,
   type GraphNeighborhoodData,
-  type GraphNeighborhoodNode,
   listAgentActivity,
   listChangeLogs,
   listWikiPages,
@@ -489,7 +488,6 @@ function WorkspaceRoute() {
               page={data.page}
               pageError={data.pageError}
               pageValidation={data.pageValidation}
-              selectedNode={selectedNode}
               selectedRecordId={data.selectedRecordId}
             />
           )}
@@ -507,13 +505,11 @@ function PageTab({
   page,
   pageError,
   pageValidation,
-  selectedNode,
   selectedRecordId,
 }: {
   readonly page?: WorkspaceWikiPage;
   readonly pageError?: WorkspaceDataError;
   readonly pageValidation?: PageCitationValidation;
-  readonly selectedNode?: GraphNeighborhoodNode;
   readonly selectedRecordId?: string;
 }) {
   const router = useRouter();
