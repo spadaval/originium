@@ -138,7 +138,7 @@ a {
 .route-stack {
   display: grid;
   gap: 20px;
-  max-width: 1180px;
+  width: 100%;
 }
 
 .page-header,
@@ -246,17 +246,17 @@ p {
 }
 
 .workspace-layout {
-  grid-template-columns: minmax(320px, 0.9fr) minmax(420px, 1.25fr);
+  grid-template-columns: minmax(320px, 480px) minmax(420px, 1fr);
   align-items: stretch;
 }
 
 .sources-layout {
-  grid-template-columns: minmax(300px, 0.75fr) minmax(460px, 1.35fr);
+  grid-template-columns: minmax(300px, 430px) minmax(460px, 1fr);
   align-items: stretch;
 }
 
 .detail-grid {
-  grid-template-columns: minmax(220px, 0.75fr) minmax(280px, 1fr);
+  grid-template-columns: minmax(260px, 0.72fr) minmax(360px, 1fr);
   grid-template-areas:
     "metadata pdf"
     "headings pdf";
