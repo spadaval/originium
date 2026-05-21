@@ -10,8 +10,8 @@ overlays for retrieval, learning, indexes, projections, and proposals.
 
 Recommended layers:
 
-- **Domain Graph**: source documents, source anchors, wiki pages, concepts,
-  reviewed relationships, citations, evidence, role classification, and graph
+- **Domain Graph**: Source Documents, Wiki Pages, Domain Frames, reviewed
+  relationships, Citations, source evidence, role classification, and graph
   evolution records.
 - **Retrieval Projections**: full-text indexes, embeddings, source text
   projections, synthesized context bundles, graph neighborhoods, centrality,
@@ -20,7 +20,7 @@ Recommended layers:
   misconceptions, session history, per-learner skill/concept projections, and
   scheduling state.
 - **Alignment Layer**: links from learner observations and learning items back
-  to Domain Graph nodes, source anchors, examples, misconceptions, and graph
+  to Domain Graph nodes, Citation locators, examples, misconceptions, and graph
   versions.
 - **Proposal Layer**: generated or inferred concepts, edges, summaries, and
   learning items awaiting review or lint acceptance.
@@ -35,7 +35,8 @@ query patterns.
 
 Answer retrieval should be global and evidence-first:
 
-- Search sources, anchors, wiki pages, concepts, and projections.
+- Search Source Documents, citation locators, Wiki Pages, concepts, and
+  projections.
 - Rank by relevance, citation coverage, source authority, freshness,
   contradiction handling, and graph importance.
 - Use concept/prerequisite structure as supporting context, not as truth.
@@ -46,7 +47,7 @@ Learning planning should be local and ordered:
 - Start from a learner, target topic, current frontier, or recent observation.
 - Filter by teachable role, prerequisite readiness, learner state, and
   intervention value.
-- Retrieve nearby examples, references, source anchors, and misconceptions.
+- Retrieve nearby examples, references, citation locators, and misconceptions.
 - Emit a learning item or session plan with explicit assessed concepts.
 - Record the resulting response as an observation, then update derived learner
   projections.
@@ -96,7 +97,7 @@ Operational relationships:
 
 Every semantic edge that can affect retrieval or learning should carry:
 
-- source or source anchor
+- Source Document or Citation locator
 - evidence text or evidence reference
 - confidence
 - review status
@@ -110,8 +111,8 @@ Every semantic edge that can affect retrieval or learning should carry:
 The landscape strongly supports the spec's distinction between learnable
 concepts and reference/support material.
 
-Originium should not try to teach every source heading, wiki page, entity, or
-reference record. Instead, classify graph nodes by role:
+Originium should not try to teach every source outline entry, Wiki Page, entity,
+or reference record. Instead, classify graph nodes by role:
 
 - `concept`
 - `skill`
@@ -148,7 +149,8 @@ Store learner observations as append-only events with:
 - response/session ID
 - learning item ID
 - assessed concept or skill IDs
-- source anchor IDs used in the prompt or expected answer
+- Source Document IDs or Citation locator IDs used in the prompt or expected
+  answer
 - correctness or rubric outcome
 - confidence, latency, hints, and interaction metadata where available
 - Domain Graph version
@@ -240,8 +242,8 @@ The next useful milestone should prove that Originium can:
 
 1. Extract concept-like Domain Graph nodes from a curated source.
 2. Classify nodes by graph role and teachable role.
-3. Add prerequisite/support edges with source anchors, confidence, and review
-   status.
+3. Add prerequisite/support edges with Source Document or Citation locator
+   provenance, confidence, and review status.
 4. Use concept structure as an optional retrieval signal without losing
    citation-backed answer context.
 5. Record learner observations aligned to concepts without mutating the Domain

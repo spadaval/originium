@@ -17,8 +17,8 @@ page matching, citation construction, validation, and index updates.
 Agent judgment:
 
 - identify candidate knowledge objects in the page or chapter
-- decide whether each candidate is durable knowledge, evidence-only reference
-  material, or noise
+- decide whether each candidate is durable knowledge, source-only context, or
+  noise
 - choose the best existing frame or propose a new one when the material does
   not fit
 - decide whether to update an existing Wiki Page, create a new page, or leave
@@ -56,14 +56,14 @@ payload or projection metadata, but they should not be Citation targets.
    - reference architectures
    - procedures
    - technology components
-   - examples or evidence-only material
+   - examples or source-only context
 3. CLI searches existing Wiki Pages, aliases, frames, and nearby graph records
    before creating anything.
 4. Agent decides whether each candidate should become:
    - a new Wiki Page
    - an update to an existing Wiki Page
    - a citation on an existing page
-   - a Manual Link or proposed semantic edge
+   - a Manual Link when explicit navigation is useful
    - no durable graph object yet
 5. CLI creates citation-local evidence records from agent-supplied locator
    input:
@@ -190,12 +190,12 @@ new concept.
 Expected behavior:
 
 - search for `Spanning Tree Protocol`, `Spanning Tree Protocols`, and `STP`
-- create a concept Wiki Page only if the topic is important enough to retrieve
-  or teach later
-- set `page_kind = concept`
+- create a Wiki Page only if the topic is important enough to retrieve or teach
+  later
+- assign the best existing Domain Frame, such as a source-backed concept frame,
+  when the CLI supports frame assignment
 - add a scope note and aliases
 - cite the Source Document with citation-local locator fields
-- frame it as a source-backed concept when Domain Model tools exist
 
 The agent should not automatically add prerequisites or contrast edges unless
 the source supports them.
@@ -223,14 +223,16 @@ Expected behavior:
 
 - classify the candidate under the best existing frame
 - create a Wiki Page only when durable synthesis is useful
-- otherwise leave it as source evidence and add frame metadata/proposals later
-- do not force everything into `page_kind = concept`
+- otherwise leave it as Source Document evidence and add frame metadata or a
+  frame proposal only when a repeated workflow justifies it
+- do not fall back to the legacy `page_kind = concept` bucket for roles that
+  need a frame
 
 CLI support needed:
 
 - frame search and frame examples so the agent can compare candidate roles
-- evidence-only annotation or proposal commands for useful source regions that
-  should not become teachable Wiki Pages yet
+- Source Document metadata and frame validation so useful source regions can
+  remain source-owned instead of becoming weak Wiki Pages
 
 ## Case: Source Material Contradicts Or Revises Existing Graph Knowledge
 
@@ -248,8 +250,8 @@ CLI support needed:
 
 - conflict lint that detects incompatible claims or competing citations when the
   agent flags a contradiction
-- contradiction or supersession note creation that does not require immediately
-  changing the Domain Model
+- cited conflict or supersession note creation that does not require immediately
+  changing the frame catalog
 
 ## Outputs
 
@@ -257,7 +259,7 @@ A successful indexing pass may produce:
 
 - new or updated Wiki Pages
 - new Citations with precise locators
-- Manual Links or proposed semantic edges
+- Manual Links only when explicit navigation is useful
 - frame assignments or frame proposals
 - follow-up maintenance issues for extraction failures, duplicates, or unclear
   scope
@@ -268,4 +270,4 @@ It should not produce:
 - duplicate pages for the same concept
 - broad Source Document citations without locator fields when page-local
   evidence is known
-- Domain Model changes unless a repeated shape cannot fit existing frames
+- frame catalog changes unless a repeated shape cannot fit existing frames

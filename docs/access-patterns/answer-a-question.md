@@ -23,7 +23,7 @@ Agent judgment:
 - decide when to answer directly from source evidence versus creating or
   updating a Wiki Page first
 - write the final answer with visible confidence, gaps, and source scope
-- avoid mutating learner state or the Domain Model unless the command is
+- avoid mutating learner state or the frame catalog unless the command is
   explicitly a learning or modeling workflow
 
 CLI responsibility:
@@ -186,15 +186,14 @@ Expected behavior:
 - show both sides with their citations
 - describe source scope and date if available
 - avoid picking a winner unless the graph has review/supersession metadata
-- create a maintenance task if this should become durable contradiction state
+- create a maintenance task if the conflict requires durable review
 
 The answer should make conflict visible.
 
 CLI support needed:
 
-- conflict notes or contradiction records linked to the affected claims and
-  citations
 - retrieval display that groups evidence by source scope, date, and confidence
+- maintenance issue creation for cited conflicts that need review
 
 ## Case: The Question Is Procedural
 
@@ -249,5 +248,5 @@ It should not produce:
 
 - unsupported semantic edges
 - uncited source-backed claims
-- new Domain Model frames during ordinary answer generation unless the user
+- new Domain Frames during ordinary answer generation unless the user
   explicitly asks for modeling work

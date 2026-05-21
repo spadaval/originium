@@ -8,9 +8,10 @@ user-invocable: true
 # Originium Graph Wiki
 
 Originium is a CLI-operated knowledge base for agents. It stores trusted source
-material, agent-written synthesis, citations, explicit links, and edit logs in a
-graph database. The goal is to turn raw Source Documents into a maintained Graph
-Wiki that gets more useful over time.
+material, source metadata, agent-written synthesis, frame assignments,
+citations, explicit links, and edit logs in a graph database. The goal is to
+turn raw Source Documents into a maintained Graph Wiki that gets more useful
+over time.
 
 The `originium` CLI is the main interface. Prefer the installed command:
 

@@ -11,9 +11,9 @@
   configured test database.
 - PDF ingestion tests should separate pure parsing/projection behavior from
   fixture-backed extraction behavior.
-- POC manual inspection should use Surrealist to inspect source document
-  records, source heading records, wiki pages, citation relations, graph
-  neighborhoods, sessions, and change logs.
+- POC manual inspection should use Surrealist to inspect Source Document
+  records, Source Text Projections, Wiki Pages, frame metadata, Citation
+  relations, graph neighborhoods, sessions, and Change Logs.
 - Web tests are deferred until Originium owns a human-facing app. When that work
   starts, tests should focus on user workflows, editing, projections, agent chat,
   and layout.

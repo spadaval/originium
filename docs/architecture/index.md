@@ -35,6 +35,8 @@ projections for humans, agents, and retrieval.
    projections from the stored Source Document and processes one page range,
    chapter, theme, or Ingestion Chunk at a time.
 5. Agents write Wiki Pages, Citations, Manual Links, Agent Sessions, and Change Logs into SurrealDB.
+   Source Document provenance and Wiki Page semantic roles are stored as
+   frame-guided metadata, not Page Body frontmatter.
 6. Retrieval uses SurrealDB hybrid candidate search across Wiki Pages, Source
    Documents, and Source Text Projections, then applies graph-aware reranking
    from Citation relations, Manual Links, and local graph neighborhoods.
@@ -66,6 +68,11 @@ Contradictions should be represented as cited disagreement in Wiki Page prose
 and retrieval output until repeated workflows justify a dedicated contradiction
 record or relation. Do not encode a hardcoded contradiction schema in the first
 retrieval foundation.
+
+The current proof-of-concept graph may be rebuilt when frame-guided metadata
+changes the schema. Compatibility migrations are deferred until Originium has
+durable user data that cannot be regenerated from Source Documents and checked-in
+catalogs.
 
 ## Single-Host Topology
 

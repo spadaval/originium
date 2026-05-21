@@ -40,8 +40,8 @@ Indexing is not a page-by-page summary. Build a maintained knowledge layer.
    granularity rules in [../standards/wiki-writing.md](../standards/wiki-writing.md).
 6. Create or update pages with citation markers in the body.
 7. Add Citation relations whose keys exactly match the body markers.
-8. Add Manual Links when the indexing assignment asks for a rich graph and you
-   can state the relationship reason concretely.
+8. Add Manual Links only when the indexing assignment asks for navigational
+   graph enrichment and you can state the relationship reason concretely.
 9. Validate citations for every page touched.
 10. Run Graph lint and address or report hygiene issues:
 
@@ -57,5 +57,5 @@ Indexing is not a page-by-page summary. Build a maintained knowledge layer.
 ## Manual Link Labels
 
 When supported by the CLI, prefer controlled labels such as `depends on`,
-`constrains`, `implements`, `uses`, `applies to`, `contrasts with`,
-`supersedes`, and `related evidence`. Do not add decorative or vague links.
+`constrains`, `implements`, `uses`, `applies to`, `contrasts with`, and
+`supersedes`. Do not add decorative, vague, or evidence-support links.

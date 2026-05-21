@@ -1,7 +1,7 @@
 # Graph Wiki Access Patterns
 
 These reference documents enumerate the main ways an agent is expected to use
-Originium before the Domain Model, frame, citation, and schema-lint design is
+Originium before the frame-guided metadata, citation, and schema-lint design is
 finalized.
 
 The current graph is source-heavy and synthesis-light: many Source Documents,
@@ -23,13 +23,13 @@ The agent is responsible for:
   into Wiki Pages
 - choosing the semantic role of a candidate record, such as concept, procedure,
   requirement set, reference architecture, technology component, or
-  evidence-only reference material
+  source-only reference material
 - deciding when an existing page is the right home for a claim versus when the
   graph needs a split, merge, redirect, or frame proposal
 - explaining uncertainty, conflict, missing evidence, and scope decisions to the
   user
-- proposing Domain Model changes when repeated graph examples no longer fit the
-  active model
+- proposing Domain Frame changes when repeated graph examples no longer fit the
+  active frame catalog
 
 The CLI is responsible for:
 
@@ -64,9 +64,9 @@ These access patterns imply a few high-leverage CLI families:
   pages, migrate aliases, rewrite Manual Links, retarget citations, rebuild
   projections, and reindex embeddings.
 - Proposal tools: create frame proposals, unresolved evidence notes,
-  contradiction notes, and follow-up maintenance issues without mutating the
-  active model prematurely. Relation-label proposal/search primitives are
-  deferred until frame workflows show a concrete need.
+  cited conflict notes, and follow-up maintenance issues without mutating the
+  active frame catalog prematurely. Relation-label proposal/search primitives
+  are deferred until frame workflows show a concrete need.
 
 ## Patterns
 
@@ -77,7 +77,7 @@ These access patterns imply a few high-leverage CLI families:
   knowledge, creating or updating pages when the maintained graph is missing or
   insufficient.
 - [Maintain The Graph](maintain-the-graph.md): merge pages, repair citations,
-  tighten links, refine the Domain Model, and keep graph state coherent.
+  tighten links, refine Domain Frames, and keep graph state coherent.
 
 ## Cross-Cutting Rules
 
@@ -89,10 +89,16 @@ These access patterns imply a few high-leverage CLI families:
 - Citations are claim-to-evidence edges. Citation-local locators should carry
   Source Document target, page range, quote/context, projection identity/hash,
   and claim metadata when available.
-- The Domain Model should guide classification, linting, and extraction. It
-  should not be casually changed during ordinary question answering.
+- Domain Frames should guide classification, metadata slots, linting, and
+  extraction. They should not be casually changed during ordinary question
+  answering.
 - A frame assignment is a semantic claim. If uncertain, propose or flag rather
   than silently forcing a record into the nearest frame.
+- Source Document metadata belongs on Source Documents, Wiki Page semantic
+  metadata belongs on Wiki Pages through frame assignments, and Citation
+  metadata belongs on Citation locators.
+- Manual Links are explicit navigation edges. Use Citations for evidence and
+  frame metadata for semantic classification.
 - Graph maintenance should make failures concrete: name the record, operation,
   input, reason, and next action.
 

@@ -5,6 +5,9 @@ records in SurrealDB, not markdown files and not an opaque RAG index.
 
 **Source Document**: trusted raw material, such as an imported PDF. Source
 Documents provide evidence, but they are not the final compiled knowledge layer.
+Source Document provenance, corpus, document class, publisher, product family,
+publication date, URL, and trust status belong on the Source Document as
+metadata when known.
 
 **Source Text Projection**: a derived, rebuildable, lossy text cache extracted
 from a Source Document for search and retrieval. For paginated Source
@@ -18,7 +21,8 @@ chapter-sized slice, or theme. Use it to process large documents without
 loading the whole document into context.
 
 **Wiki Page**: durable agent-written synthesis about a topic, entity, question,
-or procedure. Wiki Pages are the primary place to answer from.
+procedure, requirement set, technology component, reference architecture, use
+case, or operational risk. Wiki Pages are the primary place to answer from.
 
 **Page Body**: the prose field of a Wiki Page. It may contain Citation Markers
 such as `[^network-architecture]`, but it should not contain raw record IDs,
@@ -31,8 +35,21 @@ Citation `key` must match the Page Body Citation Marker key. Page ranges,
 quotes, context, projection IDs, text hashes, and supported-claim details live
 as citation-local locator metadata.
 
+**Domain Frame**: an advisory Source Document class or Wiki Page role that
+defines useful metadata slots. Frames guide classification and linting; they do
+not block sparse imports or ordinary page creation.
+
+**Frame Assignment**: the semantic claim that a Source Document or Wiki Page
+uses a Domain Frame. Leave uncertain records unframed or propose a better frame
+rather than forcing a poor fit.
+
+**Frame Metadata**: sparse record metadata scoped by the assigned Domain Frame.
+Do not put frame metadata in the Page Body.
+
 **Manual Link**: an explicit graph relationship between records. Create one only
-when the user asks for a relationship and you can state the reason.
+when the user asks for a relationship and you can state the navigation reason.
+Use Citations for evidence support and frame metadata for semantic
+classification.
 
 **Agent Session**: a bounded unit of agent work. Start one for every meaningful
 task.

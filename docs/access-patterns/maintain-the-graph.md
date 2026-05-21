@@ -2,7 +2,7 @@
 
 This access pattern covers deliberate graph maintenance: reading through graph
 state, merging pages, tightening citations, adjusting links, simplifying source
-structure, and evolving the Domain Model.
+structure, and evolving the Domain Frame catalog.
 
 Maintenance differs from ordinary indexing or question answering. The agent is
 allowed to change structure, but should make each structural decision explicit
@@ -20,8 +20,8 @@ Agent judgment:
 - decide whether two pages are duplicates, adjacent concepts, parent/child
   scopes, or legitimately separate records
 - decide whether a weak pattern is a data cleanup issue or evidence that the
-  Domain Model needs to evolve
-- define frame boundaries, examples, non-examples, slots, and relation semantics
+  frame catalog needs to evolve
+- define frame boundaries, examples, non-examples, slots, and metadata semantics
 - review lint failures and decide which repairs are semantically correct
 
 CLI responsibility:
@@ -57,7 +57,7 @@ then let the CLI execute and validate the mechanical work.
    - a graph data cleanup
    - a citation locator cleanup
    - a page merge/split
-   - a Domain Model/frame change
+   - a Domain Frame change
    - an extraction/indexing problem
 5. CLI proposes the smallest refactor plan that makes the graph more coherent.
 6. Agent approves, rejects, or revises semantic choices in the plan.
@@ -99,7 +99,7 @@ Expected behavior:
 - change frame assignment when the page is misclassified
 - keep old citations attached to the claims they actually support
 
-This is graph cleanup, not Domain Model evolution, unless the existing frames
+This is graph cleanup, not frame catalog evolution, unless the existing frames
 cannot represent the corrected scope.
 
 CLI support needed:
@@ -121,8 +121,10 @@ Expected behavior:
 - prefer Citation edges for evidence support rather than page-to-page
   `related evidence` links when the source evidence is direct
 
-If a needed label is missing repeatedly, create a Domain Model or relation
-vocabulary proposal rather than inventing ad hoc labels.
+If a needed link label is missing repeatedly, create a follow-up modeling issue
+rather than inventing ad hoc labels. Do not use `related evidence`; direct
+support belongs in Citation relations and semantic classification belongs in
+frame metadata.
 
 CLI support needed:
 
@@ -137,10 +139,9 @@ Deferred until the frame workflow MVP proves a concrete need:
 
 ## Case: Citation Is Too Broad
 
-Legacy graph records may cite Source Headings directly. The target model is
-simpler: Citations point to Source Documents and carry citation-local locator
-fields. Any heading, outline path, or source section label should be treated as
-metadata on the locator or Source Text Projection, not as a graph target.
+Citations point to Source Documents and carry citation-local locator fields.
+Any heading, outline path, or source section label should be treated as metadata
+on the locator or Source Text Projection, not as a graph target.
 
 Expected behavior:
 
@@ -149,8 +150,6 @@ Expected behavior:
 - add short quote/context when available
 - attach Source Text Projection ID and text hash when available
 - do not create a separate evidence node by default
-- migrate legacy heading-level citations to Source Document targets when the
-  locator fields are precise enough to preserve the supported claim
 
 Promote evidence into a reusable evidence object only when it has independent
 value across multiple pages, claims, or maintenance workflows.
@@ -212,7 +211,7 @@ CLI support needed:
 
 ## Case: Records Are Unframed
 
-When Domain Model tools exist, maintenance should identify high-value unframed
+When frame tools exist, maintenance should identify high-value unframed
 records.
 
 Expected behavior:
@@ -235,9 +234,9 @@ CLI support needed:
 
 ## Case: Existing Frame Fits Poorly
 
-This is the core decision point for Domain Model evolution.
+This is the core decision point for frame catalog evolution.
 
-Convert input to match the existing Domain Model when:
+Convert input to match the existing frame catalog when:
 
 - one existing frame captures the record without distortion
 - the issue is missing metadata, weak citation locators, vague links, or missing
@@ -245,7 +244,7 @@ Convert input to match the existing Domain Model when:
 - the fix affects only one or two records
 - the model already distinguishes the relevant semantic role
 
-Change the Domain Model when:
+Change the frame catalog when:
 
 - several records share a shape that no frame captures
 - forcing the records into an existing frame loses important meaning
@@ -254,44 +253,46 @@ Change the Domain Model when:
 - agents repeatedly produce the same frame proposal
 - the user explicitly asks for modeling work
 
-If uncertain, create a frame proposal. Do not silently change the active Domain
-Model during unrelated question answering.
+If uncertain, create a frame proposal. Do not silently change the active frame
+catalog during unrelated question answering.
 
 CLI support needed:
 
 - frame proposal commands that attach concrete graph examples, non-examples,
-  expected slots, allowed edges, and affected lint behavior
+  expected slots, metadata semantics, and affected lint behavior
 
 Deferred until the frame workflow MVP proves a concrete need:
 
 - model-impact reports showing which pages, source locator patterns, links,
   citations, and retrieval queries would change if the proposal is accepted
 
-## Case: Frame Or Relation Vocabulary Needs Tightening
+## Case: Frame Or Link Vocabulary Needs Tightening
 
 Expected behavior:
 
 - inspect examples and non-examples from the current graph
 - define the semantic boundary
-- define expected slots and allowed edges
+- define expected metadata slots and any allowed link labels
 - define lint rules and severities
-- migrate or reclassify existing instances
-- keep the old frame version available for audit when behavior changes
+- rebuild or reclassify current proof-of-concept instances when needed
+- keep future durable frame changes reviewed when behavior changes
 
-Domain Model changes should be versioned and reviewed like architecture
-decisions, not treated as incidental metadata edits.
+Frame catalog changes should be reviewed like architecture decisions, not
+treated as incidental metadata edits.
 
 CLI support needed:
 
-- frame/relation lint that can run against both the current model and a proposed
-  model
+- frame/link lint that can run against both the current catalog and a proposed
+  catalog
 
 Deferred until the frame workflow MVP proves a concrete need:
 
-- Domain Model versioning, migration dry runs, and accepted/rejected proposal
-  history
-- migration tooling that reclassifies instances, rewrites labels, and records
-  the old semantics for audit
+- frame catalog versioning and accepted/rejected proposal history
+- migration tooling that reclassifies durable instances, rewrites labels, and
+  records the old semantics for audit
+
+For the current proof-of-concept graph, incompatible frame changes may rebuild
+graph records from Source Documents instead of migrating existing local data.
 
 ## Outputs
 
@@ -302,7 +303,7 @@ A successful maintenance pass may produce:
 - removed or clarified Manual Links
 - rebuilt projections or embeddings
 - frame assignments or frame proposals
-- Domain Model frame revisions
+- Domain Frame revisions
 - follow-up issues for blocked repairs
 
 It should not produce:
@@ -310,4 +311,4 @@ It should not produce:
 - silent deletion of cited claims
 - unsupported relationship labels
 - bulk frame assignments without review
-- Domain Model changes with no concrete graph examples
+- frame catalog changes with no concrete graph examples

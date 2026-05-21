@@ -101,6 +101,7 @@ Use schemafull SurrealDB tables for core records and relations:
 
 - `source_document`
 - `source_text_projection`
+- `domain_frame`
 - `wiki_page`
 - `agent_session`
 - `change_log`
@@ -109,7 +110,12 @@ Use schemafull SurrealDB tables for core records and relations:
 - `manual_link`
 - `edited_in`
 
-Use flexible metadata objects only where the input is inherently extractor- or provider-specific.
+Use flexible metadata objects only where the input is inherently extractor-,
+provider-, or frame-specific. Source Document and Wiki Page semantic metadata
+should be guided by Domain Frames rather than stored as unowned arbitrary JSON.
+Domain Frames are advisory: they define relevant slots, value kinds, and
+required/recommended/optional guidance without blocking sparse imports or
+ordinary page creation.
 
 Store schema definitions in checked-in `.surql` files. The CLI should expose a database setup/apply command rather than relying on ad hoc manual setup.
 
@@ -137,6 +143,8 @@ Initial fields:
 - `mime_type`
 - `page_count`
 - `source_uri`
+- `frame`
+- `metadata`
 - `created_at`
 - `updated_at`
 
@@ -145,6 +153,14 @@ changed file creates a new Source Document identity because the evidence hash
 changed. Derived outline metadata, projections, embeddings, Wiki Pages, and citations
 may be rebuilt or revised around that stable evidence record, but they do not
 overwrite the Source Document's evidentiary content.
+
+Source Document metadata is frontmatter-like provenance and filtering
+information owned by the Source Document record. Typical slots include corpus,
+publisher, document class, industries, product families, version, publication
+date, source URL, and trust status. The assigned document frame defines which
+slots are expected for that class of source, but missing recommended slots
+should be reported as incomplete metadata rather than treated as invalid
+evidence.
 
 ### Source Text Projection
 
@@ -204,17 +220,48 @@ Chunking rule:
 
 ### Wiki Page
 
-A durable synthesis page about a topic, entity, concept, question, or procedure.
+A durable synthesis page about a topic, entity, concept, question, procedure,
+requirement set, technology component, reference architecture, deployment
+pattern, use case, operational risk, or other maintained knowledge object.
 
 Initial fields:
 
 - `title`
 - `slug`
 - `body`
+- `frame`
+- `metadata`
 - `created_at`
 - `updated_at`
 
 `body` is markdown-ish prose for humans and LLMs. It should not contain canonical source addresses, metadata, link objects, or citation targets.
+
+Wiki Page semantic role is owned by frame assignment, not by a small
+`page_kind` enum. Frame metadata should stay sparse and graph-owned; Page Body
+prose should remain the synthesis layer. A frame assignment is a semantic claim,
+so agents should leave uncertain pages unframed or propose a better frame
+rather than forcing the nearest category.
+
+### Domain Frame
+
+An advisory semantic frame for Source Documents and Wiki Pages.
+
+Initial fields:
+
+- `name`
+- `scope_note`
+- `record_scope`: `source_document | wiki_page`
+- `status`: `draft | reviewed | deprecated`
+- `slots`
+- `examples`
+- `non_examples`
+- `created_at`
+- `updated_at`
+
+Slot definitions should support a small first-pass set of value kinds, such as
+string, string list, date, boolean, number, and controlled string values. Slots
+can be required, recommended, or optional. Unknown slots should be reportable by
+lint/validation, but frame metadata remains advisory by default.
 
 Citation markers in `body` should look like ordinary footnote-style markers:
 
@@ -268,7 +315,8 @@ Rules:
 
 ### `manual_link`
 
-Connects graph records when an agent is explicitly asked to create a semantic link.
+Connects graph records when an agent is explicitly asked to create a
+navigational relationship that improves traversal.
 
 Potential endpoints:
 
@@ -280,7 +328,11 @@ Potential endpoints:
 Rules:
 
 - Do not create links automatically in the POC.
-- Store reason, created session, and optional label on the edge.
+- Do not use Manual Links as evidence support; use Citations for support from
+  Source Documents.
+- Store reason, created session, and an optional small UI-renderable label on
+  the edge.
+- Vague labels such as `related evidence` should be removed or deprecated.
 
 ### `edited_in`
 
@@ -353,6 +405,12 @@ Preferred answer flow:
    provenance is stale or too lossy for the answer.
 
 Do not build the POC around raw PDF text search as the primary answer path. The point of the system is for Wiki Pages to compound into the useful knowledge layer.
+
+Retrieval and answer context should expose frame assignments and key metadata
+where available: Source Document corpus/document class/industry fields, Wiki
+Page frame roles and frame metadata, Citation locator and validation status,
+and projection provenance. Missing metadata should be visible so agents can
+decide whether to refine the graph, but retrieval should remain evidence-first.
 
 Contradiction handling should remain evidence-first without hardcoding a
 contradiction schema for the POC. When sources or Wiki Pages disagree, the
@@ -439,6 +497,13 @@ originium citation add --page <page> --key <key> --source <source-document> --pa
 originium citation list --page <page>
 originium citation validate --page <page>
 
+originium frame list
+originium frame show <frame-id-or-name>
+originium frame assign --record <record-id> --frame <frame-id-or-name>
+originium metadata set --record <record-id> --slot <name> --value <value>
+originium metadata show <record-id>
+originium metadata validate <record-id>
+
 originium link add --from <record-id> --to <record-id> --label <label>
 originium link list <record-id>
 
@@ -449,6 +514,18 @@ The CLI should print useful technical errors. A failed import should name the
 file path, operation, and reason. A failed citation add should name the page,
 marker key, target Source Document, locator fields, and concrete validation
 failure.
+
+Frame and metadata validation errors should name the operation, record ID,
+frame, slot, received value, reason, and next action. Missing recommended
+metadata should be reported separately from invalid metadata.
+
+## Rebuild Policy
+
+The current proof-of-concept graph is disposable. Frame-guided metadata work
+does not need a compatibility migration for existing local records; rebuilding
+the current graph from Source Documents, projections, and seed/catalog data is
+acceptable. Future deployments with durable user data must get a separate
+migration design before incompatible schema changes land.
 
 ## Package Boundaries
 

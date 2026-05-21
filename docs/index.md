@@ -8,7 +8,7 @@ This is the top-level router for the repository docs.
 - [CONTEXT.md](../CONTEXT.md) for canonical product language and ambiguity resolutions.
 - [docs/learning-graph-spec.md](learning-graph-spec.md) for the proposed learning graph capability, dual graph model, relationship types, and CLI direction.
 - [docs/landscape/index.md](landscape/index.md) for the knowledge graph, PKM, agent memory, and adaptive learning landscape review.
-- [docs/access-patterns/index.md](access-patterns/index.md) for Graph Wiki agent access patterns that shape the Domain Model, citation, and lint design.
+- [docs/access-patterns/index.md](access-patterns/index.md) for Graph Wiki agent access patterns that shape Domain Frames, citation, metadata, and lint design.
 
 ## Architecture Docs
 

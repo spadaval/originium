@@ -27,7 +27,7 @@ The strongest pattern across the landscape is:
 - Treat embeddings, indexes, wiki projections, graph neighborhoods, learning
   plans, and mastery estimates as derived state.
 - Store learner observations as append-only events aligned to Domain Graph
-  concepts, source anchors, examples, and assessment items.
+  concepts, Citation locators, examples, and assessment items.
 - Recompute learner mastery and scheduling projections from those observations
   when the graph or learning model changes.
 - Keep generated or inferred edges visibly distinct from reviewed graph facts.

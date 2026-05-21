@@ -8,9 +8,8 @@
 - Source Text Projections may persist extracted text only as lossy, rebuildable
   search caches with source document ID, page range, extraction provenance, and
   warning context.
-- Durable records may store stable metadata, source document IDs, source heading
-  paths, page ranges, hashes, MIME types, extraction methods, and concise
-  diagnostics.
+- Durable records may store stable metadata, source document IDs, outline paths,
+  page ranges, hashes, MIME types, extraction methods, and concise diagnostics.
 - Wiki Pages may quote short source excerpts when needed for citation evidence,
   but should not become a copy of the source document.
 

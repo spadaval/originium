@@ -1,9 +1,10 @@
 # Add Explicit Links
 
-Use Citations for evidence. Use Manual Links for explicit semantic
-relationships requested by the user or required by an indexing assignment.
-Manual Links should improve future traversal; they are not tags, backlinks, or
-decorative related-content links.
+Use Citations for evidence. Use frame metadata for semantic classification. Use
+Manual Links only for explicit navigation relationships requested by the user or
+required by an indexing assignment. Manual Links should improve future
+traversal; they are not tags, backlinks, evidence support, or decorative
+related-content links.
 
 Load first:
 
@@ -31,12 +32,13 @@ originium link list --record <record-id> --session <session-id>
 
 - Use a concrete label from the controlled vocabulary when the CLI supports it.
   Good labels include `depends on`, `constrains`, `implements`, `uses`,
-  `applies to`, `contrasts with`, `supersedes`, and `related evidence`.
+  `applies to`, `contrasts with`, and `supersedes`.
 - Make the reason specific enough that another agent can explain why traversing
   the edge is useful.
 - Prefer Citations for source support and Manual Links for domain
   relationships. Do not use a Manual Link as a substitute for a missing
   Citation.
+- Do not use `related evidence`; direct support belongs in a Citation relation.
 - Do not infer links just because two pages seem related. If the user or
   indexing assignment did not ask for graph enrichment, leave the relationship
   out.

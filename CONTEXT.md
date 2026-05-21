@@ -12,6 +12,10 @@ _Avoid_: knowledge graph, wiki, RAG index
 A trusted raw document that the Graph Wiki reads from but does not treat as agent-authored synthesis.
 _Avoid_: document, file, reference
 
+**Source Document Metadata**:
+Source Document-owned provenance and filtering fields such as corpus, publisher, document class, product family, publication date, source URL, and trust status.
+_Avoid_: source tags, citation metadata
+
 **Source Text Projection**:
 A lossy, rebuildable search cache derived from a Source Document for retrieval,
 agent reading, and evidence discovery. For paginated Source Documents, the
@@ -25,6 +29,18 @@ _Avoid_: canonical text, source copy, evidence record
 **Wiki Page**:
 An agent-maintained synthesis record about a topic, entity, question, or other durable subject in the Graph Wiki.
 _Avoid_: markdown page, concept cache
+
+**Domain Frame**:
+An advisory semantic frame that names a Source Document class or Wiki Page role and defines useful metadata slots for that frame.
+_Avoid_: ontology class, page kind
+
+**Frame Assignment**:
+The graph claim that a Source Document or Wiki Page is best interpreted through a Domain Frame, with sparse frame-scoped metadata.
+_Avoid_: enum classification, hard ontology membership
+
+**Frame Metadata**:
+Sparse metadata on a Source Document or Wiki Page whose expected slots are described by the assigned Domain Frame.
+_Avoid_: arbitrary JSON blob, Page Body frontmatter
 
 **Page Body**:
 The prose synthesis of a Wiki Page, separate from citations, metadata, and graph links.
@@ -69,8 +85,8 @@ A token-budgeted slice of a Source Document processed as one agent-readable unit
 _Avoid_: arbitrary chunk, page batch
 
 **Manual Link**:
-An agent-created relationship between Wiki Pages or other graph records, created only when explicitly requested.
-_Avoid_: automatic link, inferred edge
+An agent-created navigational relationship between durable graph records, created only when explicitly requested and never used as evidence support.
+_Avoid_: automatic link, inferred edge, related evidence
 
 **Graph Retrieval**:
 A query process that over-fetches candidates with SurrealDB full-text and
@@ -86,10 +102,13 @@ _Avoid_: file browser, document editor
 
 - A **Graph Wiki** contains many **Source Documents** and many **Wiki Pages**.
 - A **Source Document** may have many **Source Text Projections**.
+- A **Source Document** may have **Source Document Metadata** and a **Frame Assignment**.
 - A **Source Text Projection** is derived from a **Source Document** and can be rebuilt from it.
 - A **Wiki Page** has one **Page Body**.
+- A **Wiki Page** may have a **Frame Assignment** and sparse **Frame Metadata**.
 - A **Wiki Page** uses **Citations** to point to supporting **Source Documents**.
 - A **Page Body** may contain Citation Markers, but Citation targets live in graph relations.
+- A **Domain Frame** defines advisory metadata slots but does not block ingestion or page creation.
 - A **Projection** is derived from graph state and is not the canonical source of truth.
 - An **Agent Session** writes one or more **Change Log** entries.
 - An **Agent Workspace** is centered on one **Agent Session**.
@@ -113,13 +132,21 @@ _Avoid_: file browser, document editor
 - Extracted headings or sections are not domain concepts. Resolved: keep
   document structure as locator/projection metadata rather than graph records;
   store paginated source text as per-page **Source Text Projections**.
-- Wiki Page content should not absorb metadata, citations, or links. Resolved: a **Wiki Page** has a **Page Body** for prose synthesis, while citations, metadata, and links live in graph records and relations.
+- Wiki Page content should not absorb metadata, citations, or links. Resolved: a **Wiki Page** has a **Page Body** for prose synthesis, while citations, frame metadata, and links live in graph records and relations.
 - Inline citation syntax is a projection concern. Resolved: a **Citation Marker** appears in the Page Body, while the **Citation** graph relation is canonical.
-- Document linking is deliberately agent-driven for the first proof of concept. Resolved: only create **Manual Links** on explicit trigger.
+- Document linking is deliberately agent-driven for the first proof of concept. Resolved: only create **Manual Links** on explicit trigger, and do not use them for evidence support.
 - Source text is not copied into Wiki Pages or treated as canonical evidence.
   Resolved: Source Documents stay in file buckets as immutable evidence;
   Source Text Projections may store lossy extracted page text, page numbers,
   provenance, and embeddings as rebuildable search caches.
+- `page_kind` is too small for Originium's knowledge objects. Resolved: use
+  **Domain Frames** and **Frame Assignments** for Source Document classes and
+  Wiki Page roles; keep any legacy `page_kind` value only as disposable
+  compatibility data while the current proof-of-concept graph can be rebuilt.
+- Free-form metadata is too loose, but a strict ontology is premature.
+  Resolved: **Domain Frames** describe recommended slots and validation
+  guidance; missing recommended frame metadata should be visible rather than a
+  hard ingestion blocker.
 - Search requests can mean different jobs. Resolved: use **Graph Retrieval**
   for answer retrieval, concept reuse checks for finding existing Wiki Pages
   before creating new ones, evidence search for finding Source Documents or

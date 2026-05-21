@@ -11,9 +11,9 @@ relations during manual validation.
 
 This page documents the legacy POC database shape where `source_heading` records
 and heading-targeted `cites` relations may still exist. Those names are retained
-here only so operators can inspect and migrate existing raw records; the target
-domain model uses Source Documents as Citation targets with citation-local
-locator metadata.
+here only so operators can inspect old raw records before rebuilding the local
+graph; the target model uses Source Documents as Citation targets with
+citation-local locator metadata.
 
 ## Release Cache
 

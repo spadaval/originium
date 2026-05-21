@@ -33,11 +33,11 @@ The Domain Graph is the objective-ish, source-backed map of the material.
 It contains:
 
 - Source Documents and Source Text Projections.
-- Wiki Pages and concept-like synthesis records.
+- Wiki Pages with Domain Frame assignments and sparse frame metadata.
 - Citations and evidence provenance.
-- Concept structure, including prerequisite, hierarchy, contrast, application,
-  and example relationships.
-- Review status and confidence for extracted or agent-created structure.
+- Source Document provenance and filtering metadata.
+- Review status and confidence for extracted or agent-created structure when
+  the active frames define those slots.
 
 The Domain Graph may evolve continuously as agents query, refine, split, merge,
 and clean up graph state. It is the canonical graph for answering questions.
@@ -76,9 +76,10 @@ It answers:
 
 ## Domain Relationships
 
-The learning capability should add stricter relationships than generic Manual
-Links. Manual Links remain useful for wiki navigation, but learning and retrieval
-need validated semantic edges.
+The learning capability will eventually need stricter relationships than
+generic Manual Links. Manual Links remain useful for wiki navigation, but
+learning and retrieval should first use Domain Frames, frame metadata, and
+Citations before introducing new semantic edge types.
 
 Minimum useful Domain Graph relationships:
 
@@ -104,15 +105,17 @@ Useful edge fields:
 - `citation_locator`
 - `strength`
 
-Prerequisite-like edges should never be treated as true merely because they are
-pedagogically plausible. They need provenance, confidence, and graph linting.
+Prerequisite-like edges should not be part of the frame-guided metadata MVP.
+They should never be treated as true merely because they are pedagogically
+plausible. They need provenance, confidence, graph linting, and concrete
+learning workflows before becoming first-class graph relations.
 
 ## Node Roles
 
 Not all graph material should be taught directly. The graph should distinguish
 learnable concepts from reference or support material.
 
-Recommended role axes:
+Recommended future role axes:
 
 - `graph_role`: `concept`, `reference`, `example`, `procedure`, `evidence`,
   `case_study`, `assessment`, `misconception`, `skill`
@@ -122,6 +125,9 @@ Recommended role axes:
 Learning should model mastery only over learnable concepts and skills. Reference
 material can still be used as context, examples, assessment substrate, or
 interactive session material.
+
+For the first frame-guided metadata model, these roles should be expressed as
+Domain Frames or frame metadata where useful, not as another `page_kind` enum.
 
 ## Learner Relationships
 
