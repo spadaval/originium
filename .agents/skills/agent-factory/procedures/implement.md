@@ -8,9 +8,9 @@ closeout work, independent validation, or read-only review.
 
 ## Start Gate
 
-Follow [repository workflow](../standards/repo-workflow.md) for the shared git
-start and checkpoint rules, and [beads.md](../standards/beads.md) for tracker
-mechanics and Dolt sync.
+Follow [repository workflow](../standards/repo-workflow.md) for git worktree
+checks, and [beads.md](../standards/beads.md) for tracker mechanics and Dolt
+sync. Then verify the bead:
 
 ```bash
 bd show <id>
@@ -90,4 +90,5 @@ Before stopping, leave concise handoff context:
 - expected failures, if any;
 - follow-up bead IDs.
 
-Push tracker state with `bd dolt push` before handoff when bead state changed.
+Follow [repository workflow](../standards/repo-workflow.md) for the handoff
+git check, and [beads.md](../standards/beads.md) for pushing tracker state.

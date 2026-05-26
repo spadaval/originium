@@ -1,8 +1,6 @@
 # Repository Shape
 
 This document describes the intended shape of an agent-ready repository.
-Both `install` and `readiness` use it as the shared definition of what an
-agent-operable repository looks like.
 
 A fresh agent must be able to answer these questions without private chat
 history:
@@ -145,9 +143,15 @@ clearly. Missing equivalents are gaps, not harmless omissions.
 ### `.beads/`
 
 - **Purpose**: Beads tracker state.
-- **Quality**: Tracker is initialized and syncable. Dolt remote is configured.
-  Tracker backup/export path is named in `AGENTFACTORY.md`.
-- **Anti-pattern**: Tracker not initialized; no sync; no backup path.
+- **Quality**:
+  - Tracker is initialized and syncable. Dolt remote is configured.
+  - `config.yaml` sets `dolt.shared-server: true`. The per-project server and
+    embedded mode are not used.
+  - `config.yaml` defines custom bead types (e.g., `types.custom:`) for
+    repository-specific workflows such as `validation` and `closeout`.
+  - Tracker backup/export path is named in `AGENTFACTORY.md`.
+- **Anti-pattern**: Tracker not initialized; no sync; no backup path; missing
+  custom types; using per-project or embedded Dolt server.
 
 ## Basic Hygiene
 

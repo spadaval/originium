@@ -5,11 +5,10 @@ work where temporary downstream breakage is named, scoped, and handed off.
 
 ## First Classify The Bead
 
-Read the bead, parent epic, and nearby siblings before editing:
-
-Follow [repository workflow](../standards/repo-workflow.md) for the shared git
-start and checkpoint rules, and [beads.md](../standards/beads.md) for tracker
-mechanics and Dolt sync.
+Read the bead, parent epic, and nearby siblings before editing. Follow
+[repository workflow](../standards/repo-workflow.md) for git worktree checks,
+and [beads.md](../standards/beads.md) for tracker mechanics and Dolt sync. Then
+inspect the tracker:
 
 ```bash
 bd show <id>
@@ -98,3 +97,6 @@ broken callers or commands, and reconnect/closeout bead IDs.
 For closeout handoff, include child beads inspected, docs/ADRs updated or
 confirmed, broad checks run, validation scenarios and result states, remaining
 failures, and follow-up bead IDs.
+
+Follow [repository workflow](../standards/repo-workflow.md) for the handoff
+git check, and [beads.md](../standards/beads.md) for pushing tracker state.

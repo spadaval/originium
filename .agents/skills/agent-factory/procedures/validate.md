@@ -6,9 +6,9 @@ not from the diff.
 
 ## Start Gate
 
-Follow [repository workflow](../standards/repo-workflow.md) for the shared git
-start and checkpoint rules, and [beads.md](../standards/beads.md) for tracker
-mechanics and Dolt sync.
+Follow [repository workflow](../standards/repo-workflow.md) for git worktree
+checks, and [beads.md](../standards/beads.md) for tracker mechanics and Dolt
+sync. Then inspect the validation bead and parent epic:
 
 ```bash
 bd show <validation-or-closeout-id>
@@ -83,8 +83,9 @@ recommend the next bead shape rather than silently broadening scope.
 ## Handoff
 
 Before closing a validation bead, confirm acceptance criteria are satisfied or
-explicitly classified. Push tracker state before handoff when bead notes or
-status changed.
+explicitly classified. Follow
+[repository workflow](../standards/repo-workflow.md) for the handoff git check,
+and [beads.md](../standards/beads.md) for pushing tracker state.
 
 Handoff names the scenario result, evidence, checks or steps run,
 failures, follow-up beads, and deferred validation.

@@ -29,11 +29,10 @@ clearly. Missing equivalents are installation gaps, not harmless omissions.
 
 ## Start Gate
 
-Inspect the repository before writing:
-
-Follow [repository workflow](../standards/repo-workflow.md) for the shared git
-start and checkpoint rules, and [beads.md](../standards/beads.md) for tracker
-mechanics and Dolt sync. Then run the repository discovery commands below:
+Inspect the repository before writing. Follow
+[repository workflow](../standards/repo-workflow.md) for git worktree checks,
+and [beads.md](../standards/beads.md) for tracker mechanics and Dolt sync. Then
+run the repository discovery commands below:
 
 ```bash
 find . -maxdepth 3 -type f \( -name AGENTS.md -o -name AGENTFACTORY.md -o -name CONTEXT.md -o -name SPEC.md \)
@@ -214,7 +213,7 @@ Ensure agent instructions say:
 - orchestrators assign one subskill per subagent;
 - do not use interactive tracker commands (see the agent-factory beads reference for conventions).
 
-Keep this short. Do not duplicate the subskill references in `AGENTS.md`.
+Keep this short.
 
 ## Verification
 

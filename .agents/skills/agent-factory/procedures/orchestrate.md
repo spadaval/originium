@@ -1,22 +1,43 @@
 # Orchestrate
 
-Use this subskill when acting as the primary orchestrator for an epic or multi-bead
-workstream. The orchestrator selects, shapes, assigns, integrates, reviews,
-checkpoints, and steers. Worker subagents use the subskill assigned to them, not
-this subskill.
+Use this subskill when you are the primary orchestrator for an epic or multi-bead
+workstream. You select, shape, assign, integrate, review, checkpoint, and steer.
+
+In this system, **one agent → one skill**. You do **not** load skills. Instead,
+you spawn subagents and tell them which agent-factory role/subskill to use. You
+may read files, run basic commands, and perform high-context actions directly,
+but hand off all complex work to subagents.
+
+## Orchestrator Workflow
+
+At a high level, your orchestration lifecycle follows these phases:
+
+1. **Start Gate** — Verify the repo and tracker are clean and synced before any
+   work begins. Fix sync issues or dirty worktrees before proceeding.
+2. **Shape & Plan** — Review the parent epic, open children, blockers, and
+   overlap. Ensure every validation criterion is owned, close stale beads, and
+   define acceptance criteria and proof methods.
+3. **Delegate** — Spawn subagents for each coherent slice of work. Assign one
+   skill per subagent, provide exact bead IDs, owned files, constraints, and
+   validation expectations.
+4. **Integrate & Checkpoint** — Commit approved subtask results, sync tracker
+   state with Dolt, and verify the worktree before assigning the next worker.
+5. **Review & Validate** — Route high-risk changes to the `review` subskill and
+   scenario-centered proof to the `validate` subskill.
+6. **Closeout** — Run final validation, reconcile docs and ADRs, push tracker
+   state, and hand off the completed epic with commits, closed beads, and
+   follow-up items.
+
+The sections below provide detailed instructions for each phase.
 
 ## Start Gate
 
-Before assigning work, prove the local repo and tracker can absorb a long run:
-
-Follow [repository workflow](../standards/repo-workflow.md) for the shared git
-start and checkpoint rules, and [beads.md](../standards/beads.md) for tracker
-mechanics and Dolt sync.
+Before assigning work, prove the local repo and tracker can absorb a long run.
+Follow [repository workflow](../standards/repo-workflow.md) for git worktree
+checks, and [beads.md](../standards/beads.md) for tracker mechanics and Dolt
+sync. Then run the orchestrator-specific checks below:
 
 ```bash
-bd dolt status
-bd dolt pull
-bd dolt push
 bd ready
 bd lint
 bd show <epic-or-candidate>
@@ -46,7 +67,14 @@ unrelated user changes.
 
 ## Subagent Delegation
 
-Perform all real work through subagents.
+Do not load skills yourself. Spawn subagents and tell each one which
+agent-factory role/subskill to apply. **One agent → one skill.**
+
+You may read files, run basic commands, and perform high-context actions
+directly. A good guideline is to keep work yourself when a subagent would
+require more than ~500 words of context to understand what to do. Hand off all
+complex or long-running implementation work to subagents.
+
 Assign one coherent owned slice per worker, usually one to three beads.
 Be careful with parallel subagents. Use them only when readers are parallel or
 writers are clearly disjoint.
@@ -66,9 +94,6 @@ Each worker prompt should include:
 - instruction to list changed files, checks run, bead state changes, risks, and
   follow-up needs.
 
-
-Perform high-context actions yourself; A good guideline is if a subagent would require more than ~500 words of context to understand what to do.
-
 ## Review And Validation
 
 Use the `review` subskill for high-risk diffs, public contracts, persistence,
@@ -81,11 +106,11 @@ understand expected behavior.
 
 ## Checkpoint Commits
 
-Commit after each approved subtask, bead, or small coherent bead group using
-the [repository workflow](../standards/repo-workflow.md) checkpoint pattern.
-When tracker changes update the mapped tracker backup, stage it explicitly.
-Before assigning the next worker, make sure the previous checkpoint is either
-committed or deliberately reverted.
+Commit after each approved subtask, bead, or small coherent bead group.
+Follow [repository workflow](../standards/repo-workflow.md) for the checkpoint
+pattern. When tracker changes update the mapped tracker backup, stage it
+explicitly. Before assigning the next worker, make sure the previous checkpoint
+is either committed or deliberately reverted.
 
 ## Closeout
 
@@ -96,9 +121,9 @@ Before closing an epic:
 - run targeted residue searches for removed terms, legacy imports, and old
   contracts;
 - reconcile docs, ADRs, glossary, and bead notes with the implemented state;
-- run `bd dolt push`;
 - commit remaining tracker backup changes;
-- verify the worktree is clean per [repository workflow](../standards/repo-workflow.md).
+- follow [repository workflow](../standards/repo-workflow.md) for the handoff
+  git check, and [beads.md](../standards/beads.md) for pushing tracker state.
 
 Final handoff names completed epic, commits, closed beads, validation
 commands, residual breakage, follow-up beads, and tracker/Dolt status.

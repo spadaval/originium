@@ -66,8 +66,4 @@ Each subskill is a self-contained procedure loaded by a subagent when assigned w
 - Behavior validation (use `validate`).
 - CI/CD pipelines, PR workflows, or observability systems (out of scope).
 
-## Shared References
 
-- [Beads](beads.md): tracker mechanics, standards, and command conventions referenced by multiple subskills.
-- [Repository Workflow](repo-workflow.md): shared git/worktree start, checkpoint, and handoff hygiene.
-- [Repository Shape](repo-shape.md): the intended shape of an agent-ready repository, shared by `install` and `readiness`.

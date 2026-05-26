@@ -8,16 +8,11 @@ code bead.
 ## Inspect Before Mutating
 
 Start with enough read-only context to prevent duplicate or contradictory graph
-changes:
-
-Follow [repository workflow](../standards/repo-workflow.md) for the shared git
-start and checkpoint rules, and [beads.md](../standards/beads.md) for tracker
-mechanics and Dolt sync. Then inspect the tracker and graph:
+changes. Follow [repository workflow](../standards/repo-workflow.md) for git
+worktree checks, and [beads.md](../standards/beads.md) for tracker mechanics,
+Dolt sync, and tracker command conventions. Then inspect the tracker and graph:
 
 ```bash
-bd dolt status
-bd dolt pull
-bd dolt push
 bd list --status=open
 bd ready
 bd lint
@@ -27,8 +22,7 @@ bd show <id>
 ```
 
 Read parent epics, siblings, blockers, relevant ADRs, and existing decision
-beads before changing meaning or sequencing. Use
-[beads.md](../standards/beads.md) for tracker standards and command mechanics.
+beads before changing meaning or sequencing.
 
 ## Planning Flow
 
@@ -91,3 +85,6 @@ the area you are already managing.
 At handoff, the bead graph must be clearer than when you started. Report
 beads created or changed, dependency changes, validation or lint run, remaining
 ambiguity, and any follow-up decisions needed.
+
+Follow [repository workflow](../standards/repo-workflow.md) for the handoff
+git check, and [beads.md](../standards/beads.md) for pushing tracker state.

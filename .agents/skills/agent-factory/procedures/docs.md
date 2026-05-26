@@ -41,6 +41,12 @@ output is reconciling docs with target design, code, beads, or agent process.
 - Keep Beads-native acceptance criteria as the executable contract for bead
   done-ness.
 
+## Start Gate
+
+Follow [repository workflow](../standards/repo-workflow.md) for git worktree
+checks, and [beads.md](../standards/beads.md) for tracker mechanics and Dolt
+sync.
+
 ## Reconciliation Workflow
 
 1. Identify the docs scope: domain, architecture, ADR, product, agent process,
