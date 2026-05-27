@@ -1,7 +1,7 @@
 # Beads Workflow
 
 Beads is the durable issue tracker for Originium agent work. Agent role
-procedure lives in the repo-local agent-factory skill; this page is the stable
+procedure lives in the root-level agent-factory skill; this page is the stable
 tracker reference for docs readers.
 
 ## Core Commands
